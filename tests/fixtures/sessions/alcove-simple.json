@@ -1,0 +1,77 @@
+{
+    "session_id": "ae7d2bf4-2f77-4ea6-8e3c-5442fe3d9fa7",
+    "transcript": [
+        {
+            "type": "system",
+            "model": "claude-sonnet-4-20250514",
+            "tools": ["Bash", "Edit", "Read"],
+            "subtype": "init",
+            "session_id": "08b5c518-551f-4e38-89bf-5bd17f68f74c",
+            "permissionMode": "bypassPermissions",
+            "claude_code_version": "2.1.110"
+        },
+        {
+            "type": "assistant",
+            "uuid": "8baf420d-ac6b-4f95-94d9-500d7bad6f6c",
+            "message": {
+                "id": "msg_01",
+                "role": "assistant",
+                "model": "claude-sonnet-4-20250514",
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+                "content": [{"type": "text", "text": "I'll check the environment variable."}]
+            },
+            "session_id": "08b5c518-551f-4e38-89bf-5bd17f68f74c"
+        },
+        {
+            "type": "assistant",
+            "uuid": "91c14589-e5ac-444f-beac-b3674b643494",
+            "message": {
+                "id": "msg_01",
+                "role": "assistant",
+                "model": "claude-sonnet-4-20250514",
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+                "content": [{"id": "toolu_01", "name": "Bash", "type": "tool_use", "input": {"command": "echo $TOKEN", "description": "Check token"}}]
+            },
+            "session_id": "08b5c518-551f-4e38-89bf-5bd17f68f74c"
+        },
+        {
+            "type": "user",
+            "uuid": "c77a4515-d208-4b37-89d2-51bba4268964",
+            "message": {"role": "user", "content": [{"type": "tool_result", "content": "my-token-value", "is_error": false, "tool_use_id": "toolu_01"}]},
+            "timestamp": "2026-04-16T12:11:06.161Z",
+            "session_id": "08b5c518-551f-4e38-89bf-5bd17f68f74c",
+            "tool_use_result": {"stdout": "my-token-value", "stderr": ""}
+        },
+        {
+            "type": "assistant",
+            "uuid": "8932acaa-2912-4bd4-b740-fc29a51d2c8a",
+            "message": {
+                "id": "msg_02",
+                "role": "assistant",
+                "model": "claude-sonnet-4-20250514",
+                "usage": {"input_tokens": 5, "output_tokens": 20},
+                "content": [{"text": "The TOKEN is set to my-token-value.", "type": "text"}]
+            },
+            "session_id": "08b5c518-551f-4e38-89bf-5bd17f68f74c"
+        },
+        {
+            "type": "result",
+            "uuid": "bf4c2099-e02f-4132-8e14-cc5befca1ce2",
+            "usage": {"input_tokens": 20, "output_tokens": 396},
+            "result": "The TOKEN is set to my-token-value.",
+            "subtype": "success",
+            "is_error": false,
+            "num_turns": 3,
+            "modelUsage": {
+                "claude-sonnet-4-20250514": {
+                    "costUSD": 0.027,
+                    "inputTokens": 20,
+                    "outputTokens": 396
+                }
+            },
+            "session_id": "08b5c518-551f-4e38-89bf-5bd17f68f74c",
+            "duration_ms": 9316,
+            "total_cost_usd": 0.027
+        }
+    ]
+}

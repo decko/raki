@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from raki.adapters.redact import redact_sensitive
+from raki.adapters.redact import redact_dict, redact_sensitive
 from raki.model import EvalSample, PhaseResult, ReviewFinding, SessionEvent, SessionMeta
 
 PHASE_NAMES = ["triage", "plan", "implement", "verify"]
@@ -93,7 +93,7 @@ class SessionSchemaAdapter:
                     cost_usd=phase_meta.get("cost"),
                     duration_ms=phase_meta.get("duration_ms"),
                     output=output_text,
-                    output_structured=raw,
+                    output_structured=redact_dict(raw),
                 )
             )
         return results
@@ -146,10 +146,7 @@ class SessionSchemaAdapter:
                         timestamp=raw["timestamp"],
                         phase=raw.get("phase") or None,
                         kind=raw["kind"],
-                        data={
-                            k: redact_sensitive(v) if isinstance(v, str) else v
-                            for k, v in raw.get("data", {}).items()
-                        },
+                        data=redact_dict(raw.get("data", {})),
                     )
                 )
             except KeyError, ValueError, ValidationError:
