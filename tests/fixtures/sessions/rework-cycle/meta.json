@@ -1,0 +1,13 @@
+{
+  "ticket": "53",
+  "summary": "Wire TUI pause signal to engine",
+  "branch": "soda/53",
+  "started_at": "2026-04-16T08:29:00-03:00",
+  "total_cost": 26.1,
+  "rework_cycles": 2,
+  "phases": {
+    "implement": {"status": "completed", "cost": 3.97, "duration_ms": 454433, "generation": 4},
+    "verify": {"status": "completed", "cost": 2.06, "duration_ms": 236539, "generation": 6},
+    "review": {"status": "completed", "cost": 2.38, "duration_ms": 239088, "generation": 3}
+  }
+}
