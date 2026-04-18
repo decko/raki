@@ -26,8 +26,6 @@ class DatasetLoader:
         self.errors = []
         self.skipped = []
         for child in sorted(root.iterdir()):
-            if not child.is_dir():
-                continue
             adapter = self._detect_adapter(child)
             if adapter is None:
                 self.skipped.append(child)
