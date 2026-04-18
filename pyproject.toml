@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "raki"
+version = "0.1.0"
+description = "Retrieval Assessment for Knowledge Impact — evaluate agentic RAG quality"
+requires-python = ">=3.14"
+license = "Apache-2.0"
+
+dependencies = [
+    "click>=8.0",
+    "pydantic>=2.0,<3.0",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+ragas = [
+    "ragas>=0.4,<0.5",
+    "anthropic>=0.40",
+    "google-auth>=2.0",
+]
+html = [
+    "jinja2>=3.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "ty",
+]
+all = ["raki[ragas,html,dev]"]
+
+[project.scripts]
+raki = "raki.cli:main"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: marks tests requiring LLM calls"]
