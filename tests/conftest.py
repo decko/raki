@@ -84,3 +84,35 @@ def rework_cycle_dir(sessions_dir: Path) -> Path:
 def malformed_dir(sessions_dir: Path) -> Path:
     """Return the path to the malformed session fixture."""
     return sessions_dir / "malformed"
+
+
+@pytest.fixture
+def manifest_with_session(tmp_path: Path, pass_simple_dir: Path) -> tuple[Path, Path]:
+    """Create a tmp_path with a manifest and a copied pass-simple session.
+
+    Returns:
+        Tuple of (manifest_path, sessions_directory).
+    """
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    session_dest = sessions / "101"
+    session_dest.mkdir()
+    for file_path in pass_simple_dir.iterdir():
+        (session_dest / file_path.name).write_text(file_path.read_text())
+    manifest = tmp_path / "raki.yaml"
+    manifest.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
+    return manifest, sessions
+
+
+@pytest.fixture
+def empty_manifest(tmp_path: Path) -> Path:
+    """Create a tmp_path with a manifest pointing to an empty sessions directory.
+
+    Returns:
+        Path to the manifest file.
+    """
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    manifest = tmp_path / "raki.yaml"
+    manifest.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
+    return manifest
