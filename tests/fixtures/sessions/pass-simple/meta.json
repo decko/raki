@@ -1,0 +1,15 @@
+{
+  "ticket": "101",
+  "summary": "Add input validation to API endpoint",
+  "branch": "soda/101",
+  "started_at": "2026-04-10T08:00:00-03:00",
+  "total_cost": 12.5,
+  "rework_cycles": 0,
+  "phases": {
+    "triage": {"status": "completed", "cost": 0.8, "duration_ms": 80000, "generation": 1},
+    "plan": {"status": "completed", "cost": 1.0, "duration_ms": 120000, "generation": 1},
+    "implement": {"status": "completed", "cost": 3.5, "duration_ms": 300000, "generation": 1},
+    "verify": {"status": "completed", "cost": 2.0, "duration_ms": 200000, "generation": 1},
+    "review": {"status": "completed", "cost": 2.5, "duration_ms": 250000, "generation": 1}
+  }
+}

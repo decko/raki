@@ -1,0 +1,1 @@
+{"ticket_key": "101", "complexity": "small", "approach": "Add pydantic validation to the request handler", "automatable": true}

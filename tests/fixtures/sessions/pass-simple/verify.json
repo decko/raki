@@ -1,0 +1,1 @@
+{"ticket_key": "101", "verdict": "PASS", "command_results": [{"command": "go test ./...", "exit_code": 0, "passed": true}], "criteria_results": [{"criterion": "Input validation rejects invalid payloads", "passed": true, "evidence": "Test covers 3 invalid cases"}]}
