@@ -30,3 +30,9 @@ def pass_simple_dir(sessions_dir: Path) -> Path:
 def rework_cycle_dir(sessions_dir: Path) -> Path:
     """Return the path to the rework-cycle session fixture."""
     return sessions_dir / "rework-cycle"
+
+
+@pytest.fixture
+def malformed_dir(sessions_dir: Path) -> Path:
+    """Return the path to the malformed session fixture."""
+    return sessions_dir / "malformed"
