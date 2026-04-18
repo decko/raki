@@ -30,3 +30,6 @@ Thumbs.db
 
 # Results
 results/
+
+# Claude Code local settings
+.claude/
