@@ -1,0 +1,5 @@
+sessions:
+  path: ../sessions
+  format: auto
+  filter:
+    min_phases: 2
