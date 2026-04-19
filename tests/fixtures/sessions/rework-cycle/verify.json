@@ -1,0 +1,1 @@
+{"ticket_key": "53", "verdict": "PASS", "command_results": [{"command": "go test ./internal/pipeline/ -v", "exit_code": 0, "passed": true}], "criteria_results": [{"criterion": "Checkpoint mode: TUI unpause calls engine.Confirm()", "passed": true, "evidence": "TestEngine_CheckpointWithPauseSignal passes"}]}

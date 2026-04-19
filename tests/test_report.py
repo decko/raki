@@ -1,0 +1,311 @@
+"""Tests for report generation — CLI summary (Rich) and JSON serialization."""
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from raki.model.report import EvalReport, MetricResult, SampleResult
+from raki.report.cli_summary import color_for_score, format_metric_line, print_summary
+from raki.report.json_report import load_json_report, write_json_report
+
+from conftest import make_sample
+
+
+def _make_report() -> EvalReport:
+    return EvalReport(
+        run_id="eval-test-001",
+        config={"adapter": "session-schema", "metrics": ["rework_cycles"]},
+        aggregate_scores={
+            "first_pass_verify_rate": 0.58,
+            "rework_cycles": 1.3,
+            "review_severity_distribution": 0.85,
+            "cost_efficiency": 18.4,
+        },
+    )
+
+
+def _make_report_with_samples() -> EvalReport:
+    """Build a report that includes sample results with session data."""
+    sample = make_sample("session-001", rework_cycles=1, cost=15.0)
+    metric_result = MetricResult(
+        name="rework_cycles",
+        score=1.0,
+        sample_scores={"session-001": 1.0},
+    )
+    sample_result = SampleResult(sample=sample, scores=[metric_result])
+    return EvalReport(
+        run_id="eval-with-sessions-001",
+        config={"adapter": "session-schema"},
+        aggregate_scores={"rework_cycles": 1.0},
+        sample_results=[sample_result],
+    )
+
+
+# --- JSON round-trip tests ---
+
+
+class TestJsonReportRoundTrip:
+    def test_round_trip_preserves_data(self, tmp_path: Path) -> None:
+        report = _make_report()
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        assert output_path.exists()
+        loaded = load_json_report(output_path)
+        assert loaded.run_id == "eval-test-001"
+        assert loaded.aggregate_scores["rework_cycles"] == 1.3
+
+    def test_output_is_valid_json(self, tmp_path: Path) -> None:
+        report = _make_report()
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        raw = json.loads(output_path.read_text())
+        assert "run_id" in raw
+        assert "aggregate_scores" in raw
+
+    def test_creates_parent_directories(self, tmp_path: Path) -> None:
+        report = _make_report()
+        output_path = tmp_path / "nested" / "deep" / "report.json"
+        write_json_report(report, output_path)
+        assert output_path.exists()
+
+    def test_timestamp_preserved_after_round_trip(self, tmp_path: Path) -> None:
+        report = _make_report()
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        loaded = load_json_report(output_path)
+        assert loaded.timestamp.tzinfo is not None
+
+
+class TestJsonReportStripping:
+    def test_strips_session_data_by_default(self, tmp_path: Path) -> None:
+        report = _make_report_with_samples()
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        raw = json.loads(output_path.read_text())
+        sample = raw["sample_results"][0]["sample"]
+        # Phase output should be replaced with sentinel (required field)
+        for phase in sample["phases"]:
+            assert phase["output"] == "<stripped>"
+        # Optional sensitive fields should be removed entirely
+        for phase in sample["phases"]:
+            assert "output_structured" not in phase
+            assert "knowledge_context" not in phase
+            assert "instruction_context" not in phase
+        # Events data should be stripped
+        for event in sample.get("events", []):
+            assert "data" not in event
+
+    def test_stripped_report_round_trips_successfully(self, tmp_path: Path) -> None:
+        """A stripped report must be loadable — required fields use sentinels, not removed."""
+        report = _make_report_with_samples()
+        output_path = tmp_path / "stripped.json"
+        write_json_report(report, output_path)  # strips by default
+        loaded = load_json_report(output_path)
+        assert loaded.run_id == report.run_id
+        for sample_result in loaded.sample_results:
+            for phase in sample_result.sample.phases:
+                assert phase.output == "<stripped>"
+
+    def test_include_sessions_retains_data(self, tmp_path: Path) -> None:
+        report = _make_report_with_samples()
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path, include_sessions=True)
+        raw = json.loads(output_path.read_text())
+        sample = raw["sample_results"][0]["sample"]
+        # Phase output should be retained
+        has_output = any("output" in phase for phase in sample["phases"])
+        assert has_output
+
+
+class TestJsonReportTimestampFilename:
+    def test_timestamp_based_filename_avoids_overwrites(self, tmp_path: Path) -> None:
+        """Timestamp-based filenames should use datetime, not date-only, to avoid overwrites."""
+        report_a = EvalReport(
+            run_id="eval-a",
+            timestamp=datetime(2026, 4, 18, 10, 30, 0, tzinfo=timezone.utc),
+            aggregate_scores={"metric": 0.5},
+        )
+        report_b = EvalReport(
+            run_id="eval-b",
+            timestamp=datetime(2026, 4, 18, 14, 45, 30, tzinfo=timezone.utc),
+            aggregate_scores={"metric": 0.7},
+        )
+        from raki.report.json_report import timestamp_filename
+
+        filename_a = timestamp_filename(report_a)
+        filename_b = timestamp_filename(report_b)
+        assert filename_a != filename_b
+        # Filenames should contain time components, not just date
+        assert "1030" in filename_a or "10-30" in filename_a or "T" in filename_a
+        assert filename_a.endswith(".json")
+        assert filename_b.endswith(".json")
+
+
+# --- color_for_score tests ---
+
+
+class TestColorForScore:
+    def test_high_score_higher_is_better_green(self) -> None:
+        assert color_for_score(0.85, higher_is_better=True) == "green"
+
+    def test_medium_score_higher_is_better_yellow(self) -> None:
+        assert color_for_score(0.65, higher_is_better=True) == "yellow"
+
+    def test_low_score_higher_is_better_red(self) -> None:
+        assert color_for_score(0.45, higher_is_better=True) == "red"
+
+    def test_currency_lower_is_better_white(self) -> None:
+        """Currency metrics where lower is better should be white, not colored."""
+        assert color_for_score(18.4, higher_is_better=False, display_format="currency") == "white"
+
+    def test_count_lower_is_better_white(self) -> None:
+        """Count metrics where lower is better should be white, not colored."""
+        assert color_for_score(1.3, higher_is_better=False, display_format="count") == "white"
+
+    def test_inverted_scale_low_value_green(self) -> None:
+        """For inverted score metrics (lower is better on 0-1 scale), low = green."""
+        assert color_for_score(0.15, higher_is_better=False, display_format="score") == "green"
+
+    def test_inverted_scale_high_value_red(self) -> None:
+        assert color_for_score(0.75, higher_is_better=False, display_format="score") == "red"
+
+    def test_inverted_scale_mid_value_yellow(self) -> None:
+        assert color_for_score(0.35, higher_is_better=False, display_format="score") == "yellow"
+
+
+# --- format_metric_line tests ---
+
+
+class TestFormatMetricLine:
+    def test_contains_name_and_score(self) -> None:
+        line = format_metric_line("first_pass_verify_rate", 0.85, "(32/38 passed)")
+        assert "first_pass_verify_rate" in line
+        assert "0.85" in line
+
+    def test_red_for_low_score(self) -> None:
+        line = format_metric_line("first_pass_verify_rate", 0.45, "(17/38 passed)")
+        assert "0.45" in line
+        assert "[red]" in line
+
+    def test_green_for_high_score(self) -> None:
+        line = format_metric_line("first_pass_verify_rate", 0.85)
+        assert "[green]" in line
+
+    def test_currency_display_format(self) -> None:
+        line = format_metric_line(
+            "cost_efficiency",
+            18.40,
+            display_format="currency",
+            higher_is_better=False,
+        )
+        assert "$18.40" in line
+
+    def test_count_display_format(self) -> None:
+        line = format_metric_line(
+            "rework_cycles",
+            1.3,
+            display_format="count",
+            higher_is_better=False,
+        )
+        assert "1.3" in line
+
+    def test_sample_count_shown(self) -> None:
+        line = format_metric_line("first_pass_verify_rate", 0.85, sample_count=38)
+        assert "(n=38)" in line
+
+    def test_display_name_used_when_provided(self) -> None:
+        line = format_metric_line(
+            "first_pass_verify_rate",
+            0.85,
+            display_name="First-Pass Verify Rate",
+        )
+        assert "First-Pass Verify Rate" in line
+        assert "first_pass_verify_rate" not in line
+
+    def test_percent_display_format(self) -> None:
+        line = format_metric_line(
+            "review_severity_distribution",
+            0.85,
+            display_format="percent",
+        )
+        assert "0.85" in line
+
+
+# --- print_summary tests ---
+
+
+class TestPrintSummary:
+    def test_prints_operational_health_heading(self) -> None:
+        """print_summary should show Operational Health as a category heading."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = _make_report()
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=38, console=test_console)
+        output = string_io.getvalue()
+        assert "Operational Health" in output
+
+    def test_small_sample_caveat_below_50(self) -> None:
+        """When n < 50, a caveat should appear alongside scores."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = _make_report()
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=30, console=test_console)
+        output = string_io.getvalue()
+        assert "Small sample size" in output or "small sample" in output.lower()
+
+    def test_no_caveat_at_50_or_above(self) -> None:
+        """When n >= 50, no small sample caveat should be shown."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = _make_report()
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=50, console=test_console)
+        output = string_io.getvalue()
+        assert "small sample" not in output.lower()
+
+    def test_skipped_and_error_counts(self) -> None:
+        """When there are skipped or errored sessions, counts should be shown."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = _make_report()
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(
+            report, session_count=38, skipped_count=2, error_count=1, console=test_console
+        )
+        output = string_io.getvalue()
+        assert "38" in output
+        assert "skipped" in output.lower()
+
+    def test_two_categories_displayed(self) -> None:
+        """Both Operational Health and Retrieval Quality should appear when both exist."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="eval-both",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "faithfulness": 0.92,
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=100, console=test_console)
+        output = string_io.getvalue()
+        assert "Operational Health" in output
+        assert "Retrieval Quality" in output

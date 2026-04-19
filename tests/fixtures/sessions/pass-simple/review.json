@@ -1,0 +1,1 @@
+{"ticket_key": "101", "verdict": "approve", "findings": [{"source": "go-specialist", "severity": "minor", "file": "handler.go", "line": 42, "issue": "Error message could be more specific", "suggestion": "Include the field name in the validation error"}]}
