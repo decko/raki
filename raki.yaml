@@ -1,0 +1,21 @@
+# RAKI evaluation manifest for bootstrap data.
+# Points at the curated ground truth and session fixtures used during
+# development and CI.
+
+sessions:
+  path: tests/fixtures/sessions
+  format: auto
+
+sources:
+  - path: AGENTS.md
+    repo: raki
+    domains: [conventions, architecture, tooling]
+
+ground_truth:
+  path: ground-truth/curated.yaml
+
+synthetic:
+  enabled: false
+  output: ground-truth/synthetic.yaml
+  count: 50
+  seed: 42
