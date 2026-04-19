@@ -244,14 +244,6 @@ class TestCliUnimplementedOptions:
         )
         assert "Warning: --metrics is not yet implemented" in result.output
 
-    def test_warns_parallel_option(self, empty_manifest):
-        runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "-p", "8"],
-        )
-        assert "Warning: --parallel is not yet implemented" in result.output
-
     def test_warns_tenant_option(self, empty_manifest):
         runner = CliRunner()
         result = runner.invoke(
@@ -260,10 +252,40 @@ class TestCliUnimplementedOptions:
         )
         assert "Warning: --tenant is not yet implemented" in result.output
 
-    def test_no_warning_for_default_parallel(self, empty_manifest):
+
+class TestCliJudgeModel:
+    def test_judge_model_option_accepted(self, empty_manifest):
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--no-llm",
+                "--judge-model",
+                "claude-opus-4-6",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_judge_model_default(self, empty_manifest):
+        """Default judge model should be accepted without errors."""
         runner = CliRunner()
         result = runner.invoke(
             main,
             ["run", "-m", str(empty_manifest), "--no-llm"],
         )
+        assert result.exit_code == 0
+
+
+class TestCliParallelWiring:
+    def test_parallel_option_accepted(self, empty_manifest):
+        """--parallel should be accepted without 'not yet implemented' warning."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(empty_manifest), "--no-llm", "-p", "8"],
+        )
+        assert result.exit_code == 0
         assert "Warning: --parallel" not in result.output

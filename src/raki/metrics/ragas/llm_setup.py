@@ -30,6 +30,19 @@ def create_ragas_llm(config: MetricConfig):
     )
 
 
+def create_ragas_embeddings():
+    """Create embeddings for answer_relevancy metric.
+
+    Uses the legacy Ragas embedding_factory which returns BaseRagasEmbeddings,
+    compatible with the AnswerRelevancy @dataclass metric.
+
+    Defers ragas imports so this module can be imported without ragas installed.
+    """
+    from ragas.embeddings import embedding_factory  # ty: ignore[unresolved-import]
+
+    return embedding_factory()
+
+
 def _validate_judge_log_path(log_path: Path) -> Path:
     """Validate that the judge log path is under the current working directory.
 
@@ -67,7 +80,7 @@ class JudgeLogger:
                 json.dumps(
                     {
                         "metric": metric_name,
-                        "user_input": redact_sensitive(user_input[:200]),
+                        "user_input": redact_sensitive(user_input)[:200],
                         "score": result_value,
                         "reason": result_reason,
                     }

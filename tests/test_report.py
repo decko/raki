@@ -297,7 +297,7 @@ class TestPrintSummary:
         from rich.console import Console
 
         report = EvalReport(
-            run_id="eval-both",
+            run_id="both-categories",
             aggregate_scores={
                 "first_pass_verify_rate": 0.80,
                 "faithfulness": 0.92,
@@ -309,3 +309,71 @@ class TestPrintSummary:
         output = string_io.getvalue()
         assert "Operational Health" in output
         assert "Retrieval Quality" in output
+
+    def test_experimental_tag_for_faithfulness(self) -> None:
+        """Faithfulness should show [experimental] tag in CLI summary."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="exp-faith",
+            aggregate_scores={
+                "faithfulness": 0.85,
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "experimental" in output.lower()
+
+    def test_experimental_tag_for_answer_relevancy(self) -> None:
+        """answer_relevancy should show [experimental] tag in CLI summary."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="exp-relevancy",
+            aggregate_scores={
+                "answer_relevancy": 0.72,
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "experimental" in output.lower()
+
+    def test_calibration_caveat_for_retrieval_metrics(self) -> None:
+        """When retrieval metrics are shown, a calibration caveat should appear."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="calibration-test",
+            aggregate_scores={
+                "context_precision": 0.80,
+                "faithfulness": 0.85,
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "same-provider" in output.lower() or "llm judge" in output.lower()
+
+    def test_no_calibration_caveat_when_no_retrieval(self) -> None:
+        """When only operational metrics are shown, no calibration caveat should appear."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = _make_report()
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "same-provider" not in output.lower()

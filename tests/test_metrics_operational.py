@@ -232,3 +232,219 @@ def test_engine_run_single():
 
     with pytest.raises(ValueError, match="Unknown metric"):
         engine.run_single("nonexistent_metric", dataset)
+
+
+# --- KnowledgeRetrievalMissRate ---
+
+
+def test_knowledge_miss_rate_no_rework():
+    """Sessions with zero rework should produce score 0.0."""
+    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
+
+    dataset = make_dataset(
+        make_sample("1", rework_cycles=0),
+        make_sample("2", rework_cycles=0),
+    )
+    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
+    assert result.score == 0.0
+    assert result.details["total_rework_findings"] == 0
+    assert result.details["retrieval_gaps"] == 0
+    assert result.details["capability_gaps"] == 0
+
+
+def test_knowledge_miss_rate_retrieval_gap():
+    """Finding with no related knowledge should be classified as retrieval_gap."""
+    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
+
+    meta = SessionMeta(
+        session_id="rework-1",
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=3,
+        rework_cycles=1,
+    )
+    implement_phase = PhaseResult(
+        name="implement",
+        generation=1,
+        status="completed",
+        output="done",
+        knowledge_context="information about database schemas and migrations",
+    )
+    finding = ReviewFinding(
+        reviewer="ai-review",
+        severity="critical",
+        issue="Missing authentication check on the API endpoint",
+    )
+    sample = EvalSample(
+        session=meta,
+        phases=[implement_phase],
+        findings=[finding],
+        events=[],
+    )
+    dataset = make_dataset(sample)
+    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
+
+    assert result.score == 1.0  # all findings are retrieval gaps
+    assert result.details["retrieval_gaps"] == 1
+    assert result.details["capability_gaps"] == 0
+    assert result.details["total_rework_findings"] == 1
+
+
+def test_knowledge_miss_rate_capability_gap():
+    """Finding with related knowledge present should be classified as capability_gap."""
+    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
+
+    meta = SessionMeta(
+        session_id="rework-2",
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=3,
+        rework_cycles=1,
+    )
+    implement_phase = PhaseResult(
+        name="implement",
+        generation=1,
+        status="completed",
+        output="done",
+        knowledge_context="Authentication must validate tokens before processing requests",
+    )
+    finding = ReviewFinding(
+        reviewer="ai-review",
+        severity="major",
+        issue="Missing authentication check on the endpoint",
+    )
+    sample = EvalSample(
+        session=meta,
+        phases=[implement_phase],
+        findings=[finding],
+        events=[],
+    )
+    dataset = make_dataset(sample)
+    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
+
+    assert result.score == 0.0  # no retrieval gaps, all capability gaps
+    assert result.details["retrieval_gaps"] == 0
+    assert result.details["capability_gaps"] == 1
+    assert result.details["total_rework_findings"] == 1
+
+
+def test_knowledge_miss_rate_mixed_gaps():
+    """Mix of retrieval and capability gaps should produce correct ratio."""
+    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
+
+    meta = SessionMeta(
+        session_id="rework-3",
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=3,
+        rework_cycles=1,
+    )
+    implement_phase = PhaseResult(
+        name="implement",
+        generation=1,
+        status="completed",
+        output="done",
+        knowledge_context="Authentication tokens must be validated before processing",
+    )
+    finding_capability = ReviewFinding(
+        reviewer="ai-review",
+        severity="critical",
+        issue="Missing authentication token validation",
+    )
+    finding_retrieval = ReviewFinding(
+        reviewer="ai-review",
+        severity="major",
+        issue="Database connection pooling not configured properly",
+    )
+    sample = EvalSample(
+        session=meta,
+        phases=[implement_phase],
+        findings=[finding_capability, finding_retrieval],
+        events=[],
+    )
+    dataset = make_dataset(sample)
+    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
+
+    assert result.details["total_rework_findings"] == 2
+    assert result.details["capability_gaps"] == 1
+    assert result.details["retrieval_gaps"] == 1
+    assert result.score == pytest.approx(0.5)  # 1 retrieval / 2 total
+
+
+def test_knowledge_miss_rate_ignores_minor_findings():
+    """Minor findings should not be counted in the miss rate."""
+    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
+
+    meta = SessionMeta(
+        session_id="minor-only",
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=3,
+        rework_cycles=1,
+    )
+    implement_phase = PhaseResult(
+        name="implement",
+        generation=1,
+        status="completed",
+        output="done",
+    )
+    finding = ReviewFinding(
+        reviewer="ai-review",
+        severity="minor",
+        issue="Style nit: use snake_case",
+    )
+    sample = EvalSample(
+        session=meta,
+        phases=[implement_phase],
+        findings=[finding],
+        events=[],
+    )
+    dataset = make_dataset(sample)
+    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
+
+    assert result.score == 0.0
+    assert result.details["total_rework_findings"] == 0
+
+
+def test_knowledge_miss_rate_properties():
+    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
+
+    metric = KnowledgeRetrievalMissRate()
+    assert metric.name == "knowledge_retrieval_miss_rate"
+    assert metric.requires_ground_truth is False
+    assert metric.requires_llm is False
+    assert metric.higher_is_better is False
+    assert metric.display_format == "score"
+    assert metric.display_name == "Knowledge miss rate"
+
+
+def test_knowledge_miss_rate_uses_session_phase_fallback():
+    """Should find knowledge_context from 'session' phase when 'implement' is absent."""
+    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
+
+    meta = SessionMeta(
+        session_id="session-phase",
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=2,
+        rework_cycles=1,
+    )
+    session_phase = PhaseResult(
+        name="session",
+        generation=1,
+        status="completed",
+        output="done",
+        knowledge_context="information about authentication and authorization patterns",
+    )
+    finding = ReviewFinding(
+        reviewer="ai-review",
+        severity="critical",
+        issue="Missing authentication check",
+    )
+    sample = EvalSample(
+        session=meta,
+        phases=[session_phase],
+        findings=[finding],
+        events=[],
+    )
+    dataset = make_dataset(sample)
+    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
+
+    # "authentication" appears in knowledge_context, so it's a capability gap
+    assert result.details["capability_gaps"] == 1
+    assert result.details["retrieval_gaps"] == 0
