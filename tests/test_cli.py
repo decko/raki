@@ -190,6 +190,70 @@ class TestCliRunJson:
             for phase in sample.get("phases", []):
                 assert phase["output"] == "<stripped>"
 
+    def test_json_stdout_without_quiet_produces_valid_json(self, manifest_with_session):
+        """--json without -q must still produce valid JSON on stdout.
+
+        Rich console output must not corrupt JSON. When --json is set,
+        console output should be suppressed or redirected to stderr.
+        """
+        import json
+        import subprocess
+        import sys
+
+        manifest, _sessions = manifest_with_session
+        proc = subprocess.run(
+            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--no-llm", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert proc.returncode == 0
+        # stdout must be parseable JSON — no Rich markup mixed in
+        data = json.loads(proc.stdout)
+        assert "run_id" in data
+
+    def test_json_flag_sends_rich_output_to_stderr(self, manifest_with_session):
+        """When --json is active, Rich console output goes to stderr, not stdout."""
+        import subprocess
+        import sys
+
+        manifest, _sessions = manifest_with_session
+        proc = subprocess.run(
+            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--no-llm", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert proc.returncode == 0
+        # stderr should contain human-readable messages (loading, summary, etc.)
+        assert len(proc.stderr) > 0, "Expected Rich output on stderr when --json is active"
+
+    def test_json_pipe_roundtrip(self, manifest_with_session):
+        """Simulate `raki run --json -m manifest --no-llm | python -m json.tool`."""
+        import subprocess
+        import sys
+
+        manifest, _sessions = manifest_with_session
+        # First get JSON output
+        raki_proc = subprocess.run(
+            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--no-llm", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert raki_proc.returncode == 0
+        # Pipe through python -m json.tool to validate
+        json_tool_proc = subprocess.run(
+            [sys.executable, "-m", "json.tool"],
+            input=raki_proc.stdout,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert json_tool_proc.returncode == 0, (
+            f"json.tool failed: {json_tool_proc.stderr}\nstdout was: {raki_proc.stdout[:500]}"
+        )
+
 
 class TestCliRunVerbose:
     def test_verbose_shows_debug_info(self, tmp_path):
