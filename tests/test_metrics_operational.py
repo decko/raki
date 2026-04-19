@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from conftest import make_dataset, make_sample
+from raki.metrics.engine import MetricsEngine
 from raki.metrics.operational.cost import CostEfficiency
 from raki.metrics.operational.rework import ReworkCycles
 from raki.metrics.operational.severity import ReviewSeverityDistribution
@@ -17,6 +18,7 @@ from raki.model import (
     ReviewFinding,
     SessionMeta,
 )
+from raki.model.report import SampleResult
 
 
 # --- FirstPassVerifyRate ---
@@ -196,8 +198,6 @@ def test_cost_efficiency_properties():
 
 def test_engine_skips_llm_metrics():
     """MetricsEngine.run() with skip_llm=True should skip metrics requiring LLM."""
-    from raki.metrics.engine import MetricsEngine
-
     metrics = [FirstPassVerifyRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
     dataset = make_dataset(make_sample("1"))
@@ -209,8 +209,6 @@ def test_engine_skips_llm_metrics():
 
 def test_engine_skips_ground_truth_metrics():
     """MetricsEngine.run() with skip_ground_truth=True should skip metrics requiring ground truth."""
-    from raki.metrics.engine import MetricsEngine
-
     metrics = [FirstPassVerifyRate(), CostEfficiency()]
     engine = MetricsEngine(metrics=metrics)
     dataset = make_dataset(make_sample("1"))
@@ -222,8 +220,6 @@ def test_engine_skips_ground_truth_metrics():
 
 def test_engine_run_single():
     """MetricsEngine.run_single() runs only the named metric."""
-    from raki.metrics.engine import MetricsEngine
-
     metrics = [FirstPassVerifyRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
     dataset = make_dataset(make_sample("1"))
@@ -232,6 +228,116 @@ def test_engine_run_single():
 
     with pytest.raises(ValueError, match="Unknown metric"):
         engine.run_single("nonexistent_metric", dataset)
+
+
+def test_engine_sample_results_populated():
+    """engine.run() should populate report.sample_results with one SampleResult per session."""
+    sample_a = make_sample("session-a", rework_cycles=0, cost=10.0)
+    sample_b = make_sample("session-b", rework_cycles=2, cost=20.0)
+    dataset = make_dataset(sample_a, sample_b)
+
+    metrics = [FirstPassVerifyRate(), ReworkCycles(), CostEfficiency()]
+    engine = MetricsEngine(metrics=metrics)
+    report = engine.run(dataset)
+
+    assert len(report.sample_results) == 2
+    for sample_result in report.sample_results:
+        assert isinstance(sample_result, SampleResult)
+
+
+def test_engine_sample_results_correct_session_ids():
+    """Each SampleResult should reference the correct session_id via its EvalSample."""
+    sample_a = make_sample("session-a", rework_cycles=0)
+    sample_b = make_sample("session-b", rework_cycles=3)
+    dataset = make_dataset(sample_a, sample_b)
+
+    metrics = [FirstPassVerifyRate(), ReworkCycles()]
+    engine = MetricsEngine(metrics=metrics)
+    report = engine.run(dataset)
+
+    session_ids = {sr.sample.session.session_id for sr in report.sample_results}
+    assert session_ids == {"session-a", "session-b"}
+
+
+def test_engine_sample_results_contain_metric_scores():
+    """Each SampleResult should contain per-metric scores for that session."""
+    sample_a = make_sample("session-a", rework_cycles=0, cost=10.0)
+    sample_b = make_sample("session-b", rework_cycles=2, cost=20.0)
+    dataset = make_dataset(sample_a, sample_b)
+
+    metrics = [FirstPassVerifyRate(), ReworkCycles(), CostEfficiency()]
+    engine = MetricsEngine(metrics=metrics)
+    report = engine.run(dataset)
+
+    # Find sample_result for session-b
+    result_b = next(
+        sr for sr in report.sample_results if sr.sample.session.session_id == "session-b"
+    )
+    score_names = {metric_score.name for metric_score in result_b.scores}
+    assert score_names == {"first_pass_verify_rate", "rework_cycles", "cost_efficiency"}
+
+    # Verify that sample-level scores match expected values
+    rework_score = next(ms for ms in result_b.scores if ms.name == "rework_cycles")
+    assert rework_score.score == 2.0
+
+    cost_score = next(ms for ms in result_b.scores if ms.name == "cost_efficiency")
+    assert cost_score.score == 20.0
+
+
+def test_engine_sample_results_with_skipped_metrics():
+    """SampleResult should only contain scores for metrics that were not skipped."""
+    dataset = make_dataset(make_sample("session-a"))
+
+    metrics = [FirstPassVerifyRate(), ReworkCycles()]
+    engine = MetricsEngine(metrics=metrics)
+    report = engine.run(dataset, skip_llm=True)
+
+    # Neither metric requires LLM, so both should appear
+    assert len(report.sample_results) == 1
+    score_names = {ms.name for ms in report.sample_results[0].scores}
+    assert score_names == {"first_pass_verify_rate", "rework_cycles"}
+
+
+def test_engine_sample_results_empty_dataset():
+    """engine.run() with an empty dataset should produce empty sample_results."""
+    dataset = EvalDataset(samples=[])
+    metrics = [FirstPassVerifyRate(), ReworkCycles()]
+    engine = MetricsEngine(metrics=metrics)
+    report = engine.run(dataset)
+
+    assert report.sample_results == []
+
+
+def test_engine_sample_results_excludes_metrics_without_sample_scores():
+    """Metrics that don't populate sample_scores (like ReviewSeverityDistribution)
+    should appear in aggregate_scores but NOT in sample_results[].scores.
+
+    This is by design: aggregate-only metrics compute a dataset-wide value and
+    have no meaningful per-session breakdown, so _build_sample_results excludes
+    them from the per-session drill-down.
+    """
+    findings = [
+        ReviewFinding(reviewer="ai", severity="critical", issue="panic"),
+        ReviewFinding(reviewer="ai", severity="minor", issue="nit"),
+    ]
+    dataset = make_dataset(
+        make_sample("session-a", rework_cycles=1, findings=findings),
+    )
+
+    metrics = [ReworkCycles(), ReviewSeverityDistribution()]
+    engine = MetricsEngine(metrics=metrics)
+    report = engine.run(dataset)
+
+    # Both metrics must appear in aggregate_scores
+    assert "rework_cycles" in report.aggregate_scores
+    assert "review_severity_distribution" in report.aggregate_scores
+
+    # Only ReworkCycles populates sample_scores, so ReviewSeverityDistribution
+    # must be absent from the per-session drill-down
+    assert len(report.sample_results) == 1
+    score_names = {ms.name for ms in report.sample_results[0].scores}
+    assert "rework_cycles" in score_names
+    assert "review_severity_distribution" not in score_names
 
 
 # --- KnowledgeRetrievalMissRate ---

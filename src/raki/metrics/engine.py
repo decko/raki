@@ -3,7 +3,7 @@ from collections.abc import Sequence
 
 from raki.metrics.protocol import Metric, MetricConfig
 from raki.model import EvalDataset
-from raki.model.report import EvalReport, MetricResult
+from raki.model.report import EvalReport, MetricResult, SampleResult
 
 
 class MetricsEngine:
@@ -26,6 +26,7 @@ class MetricsEngine:
             result = metric.compute(dataset, self._config)
             results.append(result)
         aggregate = {result.name: result.score for result in results}
+        sample_results = self._build_sample_results(dataset, results)
         return EvalReport(
             run_id=f"eval-{uuid.uuid4().hex[:8]}",
             config={
@@ -34,9 +35,43 @@ class MetricsEngine:
                 "skip_llm": skip_llm,
             },
             aggregate_scores=aggregate,
-            sample_results=[],
+            sample_results=sample_results,
             manifest_hash=dataset.manifest_hash,
         )
+
+    @staticmethod
+    def _build_sample_results(
+        dataset: EvalDataset,
+        metric_results: list[MetricResult],
+    ) -> list[SampleResult]:
+        """Build one SampleResult per session from per-metric sample_scores.
+
+        Only metrics that populate ``sample_scores`` with a per-session key are
+        included in each :class:`SampleResult`.  Aggregate-only metrics (e.g.
+        ``ReviewSeverityDistribution``, ``KnowledgeRetrievalMissRate``) that
+        leave ``sample_scores`` empty will appear in
+        :attr:`EvalReport.aggregate_scores` but **not** in the per-session
+        drill-down returned here.
+        """
+        sample_results: list[SampleResult] = []
+        for sample in dataset.samples:
+            session_id = sample.session.session_id
+            per_metric_scores: list[MetricResult] = []
+            for metric_result in metric_results:
+                if session_id in metric_result.sample_scores:
+                    per_metric_scores.append(
+                        MetricResult(
+                            name=metric_result.name,
+                            score=metric_result.sample_scores[session_id],
+                        )
+                    )
+            sample_results.append(
+                SampleResult(
+                    sample=sample,
+                    scores=per_metric_scores,
+                )
+            )
+        return sample_results
 
     def run_single(self, metric_name: str, dataset: EvalDataset) -> MetricResult:
         for metric in self._metrics:
