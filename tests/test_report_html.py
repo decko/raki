@@ -264,15 +264,15 @@ class TestHtmlSections:
         assert "Aggregate" in content or "aggregate" in content
 
     def test_operational_health_displayed(self, tmp_path: Path) -> None:
-        """Operational metrics should appear in the report."""
+        """Operational metrics should appear in the report using display names."""
         from raki.report.html_report import write_html_report
 
         report = _make_report_with_samples()
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        assert "first_pass_verify_rate" in content
-        assert "rework_cycles" in content
+        assert "Verify rate" in content
+        assert "Rework cycles" in content
 
     def test_retrieval_quality_displayed(self, tmp_path: Path) -> None:
         """Retrieval metrics should appear when present."""
@@ -589,3 +589,399 @@ class TestComputeWorstSessionsRetrieval:
         assert len(worst) == 1
         # Should use faithfulness (0.70), not the blended avg of (2.0 + 0.70) / 2
         assert worst[0].avg_score == pytest.approx(0.70)
+
+
+# --- Issue #33: HTML report fixes ---
+
+
+class TestHtmlColorHigherIsBetter:
+    """html_color_for_score respects higher_is_better for inverted metrics."""
+
+    def test_inverted_metric_low_score_is_green(self) -> None:
+        """For inverted metrics (higher_is_better=False), low scores should be green."""
+        from raki.report.html_report import html_color_for_score
+
+        assert html_color_for_score(0.1, higher_is_better=False) == "green"
+
+    def test_inverted_metric_high_score_is_red(self) -> None:
+        """For inverted metrics (higher_is_better=False), high scores should be red."""
+        from raki.report.html_report import html_color_for_score
+
+        assert html_color_for_score(0.8, higher_is_better=False) == "red"
+
+    def test_inverted_metric_mid_score_is_yellow(self) -> None:
+        """For inverted metrics (higher_is_better=False), mid scores should be yellow."""
+        from raki.report.html_report import html_color_for_score
+
+        assert html_color_for_score(0.3, higher_is_better=False) == "yellow"
+
+    def test_non_normalized_currency_returns_white(self) -> None:
+        """Non-normalized metrics (currency) should return white, not a color band."""
+        from raki.report.html_report import html_color_for_score
+
+        assert (
+            html_color_for_score(18.4, higher_is_better=False, display_format="currency") == "white"
+        )
+
+    def test_non_normalized_count_returns_white(self) -> None:
+        """Non-normalized metrics (count) should return white, not a color band."""
+        from raki.report.html_report import html_color_for_score
+
+        assert html_color_for_score(3.0, higher_is_better=False, display_format="count") == "white"
+
+    def test_inverted_metric_colors_in_report(self, tmp_path: Path) -> None:
+        """Inverted metrics like knowledge_retrieval_miss_rate should show correct colors."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-inverted",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={
+                "knowledge_retrieval_miss_rate": 0.1,  # Low miss rate = good = green
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Miss rate 0.1 with higher_is_better=False should be green
+        assert "color-green" in content
+
+
+class TestProgressBarOmission:
+    """Progress bars omitted for non-normalized metrics (cost, rework count)."""
+
+    def test_no_progress_bar_for_cost(self, tmp_path: Path) -> None:
+        """Cost metric should not have a progress bar since it's not 0-1 normalized."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-cost",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"cost_efficiency": 18.4},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # The cost card should not have a metric-bar element
+        # Look for the display name "Cost / session" which is now used in the template
+        cost_idx = content.find("Cost / session")
+        assert cost_idx != -1, "Expected 'Cost / session' display name in HTML"
+        # Find the end of this score-card div
+        card_end = content.find("</div>", cost_idx + 50)
+        next_card_end = content.find("</div>", card_end + 1)
+        cost_section = (
+            content[cost_idx:next_card_end] if next_card_end != -1 else content[cost_idx:]
+        )
+        assert "metric-bar" not in cost_section
+
+    def test_no_progress_bar_for_rework_count(self, tmp_path: Path) -> None:
+        """Rework cycles metric should not have a progress bar since it's a count."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-rework",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"rework_cycles": 1.3},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # rework_cycles card should not have a metric-bar — uses display name "Rework cycles"
+        rework_idx = content.find("Rework cycles")
+        assert rework_idx != -1, "Expected 'Rework cycles' display name in HTML"
+        card_end = content.find("</div>", rework_idx + 50)
+        next_card_end = content.find("</div>", card_end + 1)
+        rework_section = (
+            content[rework_idx:next_card_end] if next_card_end != -1 else content[rework_idx:]
+        )
+        assert "metric-bar" not in rework_section
+
+    def test_progress_bar_present_for_normalized_metric(self, tmp_path: Path) -> None:
+        """Normalized metrics (like verify rate, 0-1) should still have progress bars."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-verify",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.85},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "metric-bar" in content
+
+
+class TestSessionCount:
+    """session_count passed as separate template variable, not derived from sample_results."""
+
+    def test_session_count_in_header(self, tmp_path: Path) -> None:
+        """Session count should appear in the header from the session_count variable."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-count",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.85},
+            config={"session_count": 42},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, session_count=42)
+        content = output.read_text()
+        assert "42" in content
+
+    def test_session_count_defaults_to_sample_results_length(self, tmp_path: Path) -> None:
+        """When session_count not provided, it should fall back to sample_results length."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # 3 sample results in _make_report_with_samples
+        assert ">3<" in content or ">3 " in content or "Sessions:</strong> 3" in content
+
+
+class TestEmptyStates:
+    """All conditional sections have .empty-state messages when data is empty."""
+
+    def test_no_retrieval_metrics_shows_empty_state(self, tmp_path: Path) -> None:
+        """When there are no retrieval metrics, show an empty-state message."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-no-retrieval",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={
+                "first_pass_verify_rate": 0.85,
+                "rework_cycles": 1.0,
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "empty-state" in content
+        assert "Retrieval metrics require LLM judge" in content
+
+    def test_no_recurring_failures_shows_empty_state(self, tmp_path: Path) -> None:
+        """When there are no recurring failures, show an empty-state message."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_minimal_report()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "empty-state" in content
+        # Should have some message about no recurring failures
+        assert "No recurring" in content or "no recurring" in content
+
+    def test_no_drilldown_shows_empty_state(self, tmp_path: Path) -> None:
+        """When sample_results is empty, the drill-down section should show empty-state."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_minimal_report()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "empty-state" in content
+
+    def test_no_worst_sessions_shows_empty_state(self, tmp_path: Path) -> None:
+        """When there are no worst sessions, show an empty-state message."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_minimal_report()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "empty-state" in content
+
+
+class TestDisplayNames:
+    """display_name used on score cards, raw metric names in JSON only."""
+
+    def test_display_name_on_score_card(self, tmp_path: Path) -> None:
+        """Score cards should show display_name (e.g., 'Verify rate') not raw name."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-display",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={
+                "first_pass_verify_rate": 0.85,
+                "cost_efficiency": 7.74,
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Should show display names
+        assert "Verify rate" in content
+        assert "Cost / session" in content
+
+    def test_metric_description_subtitle(self, tmp_path: Path) -> None:
+        """Score cards should show metric description as a subtitle."""
+        from raki.report.html_report import METRIC_METADATA, write_html_report
+
+        report = EvalReport(
+            run_id="eval-desc",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.85},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Should contain the description from METRIC_METADATA
+        meta = METRIC_METADATA["first_pass_verify_rate"]
+        assert meta["description"] in content
+
+
+class TestAccessibility:
+    """Accessibility improvements: button, aria-expanded, main landmark."""
+
+    def test_main_landmark_present(self, tmp_path: Path) -> None:
+        """HTML should use a <main> landmark for the main content area."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_minimal_report()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "<main" in content
+        assert "</main>" in content
+
+    def test_button_for_worst_session_rows(self, tmp_path: Path) -> None:
+        """Worst session rows should use <button> instead of <a> for clickable rows."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_many_sessions()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Should use button, not anchor
+        assert "<button" in content
+        assert 'class="worst-session-row"' in content or "worst-session-row" in content
+        # Should NOT use <a> for worst session rows
+        assert '<a class="worst-session-row"' not in content
+
+    def test_aria_expanded_on_collapsibles(self, tmp_path: Path) -> None:
+        """Collapsible sections should have aria-expanded attributes."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "aria-expanded" in content
+
+
+class TestCostFormatting:
+    """Cost should display as $7.74, not 7.74."""
+
+    def test_cost_displays_with_dollar_sign(self, tmp_path: Path) -> None:
+        """Cost values should be formatted with a dollar sign prefix."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-cost-fmt",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"cost_efficiency": 7.74},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "$7.74" in content
+
+    def test_cost_in_drilldown_has_dollar_sign(self, tmp_path: Path) -> None:
+        """Cost in the per-session drill-down should also show dollar sign."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # The drill-down already shows $25.00 etc. - verify this is still the case
+        assert "$25.00" in content or "$15.00" in content
+
+
+class TestMetricMetadataSync:
+    """METRIC_METADATA stays in sync with actual metric class attributes."""
+
+    def test_metadata_matches_metric_classes(self) -> None:
+        """Every metric class's display_name, higher_is_better, and display_format
+        must match the corresponding entry in METRIC_METADATA."""
+        from raki.metrics.operational import ALL_OPERATIONAL
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+        from raki.metrics.ragas.recall import ContextRecallMetric
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+        from raki.report.html_report import METRIC_METADATA
+
+        all_metrics = list(ALL_OPERATIONAL) + [
+            FaithfulnessMetric(),
+            AnswerRelevancyMetric(),
+            ContextPrecisionMetric(),
+            ContextRecallMetric(),
+        ]
+
+        for metric in all_metrics:
+            meta = METRIC_METADATA.get(metric.name)
+            assert meta is not None, f"Metric '{metric.name}' missing from METRIC_METADATA"
+            assert meta["display_name"] == metric.display_name, (
+                f"display_name mismatch for '{metric.name}': "
+                f"metadata={meta['display_name']!r}, class={metric.display_name!r}"
+            )
+            assert meta["higher_is_better"] == metric.higher_is_better, (
+                f"higher_is_better mismatch for '{metric.name}': "
+                f"metadata={meta['higher_is_better']!r}, class={metric.higher_is_better!r}"
+            )
+            assert meta["display_format"] == metric.display_format, (
+                f"display_format mismatch for '{metric.name}': "
+                f"metadata={meta['display_format']!r}, class={metric.display_format!r}"
+            )
+
+    def test_all_metadata_entries_have_metric_class(self) -> None:
+        """Every key in METRIC_METADATA must correspond to an actual metric class."""
+        from raki.metrics.operational import ALL_OPERATIONAL
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+        from raki.metrics.ragas.recall import ContextRecallMetric
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+        from raki.report.html_report import METRIC_METADATA
+
+        all_metrics = list(ALL_OPERATIONAL) + [
+            FaithfulnessMetric(),
+            AnswerRelevancyMetric(),
+            ContextPrecisionMetric(),
+            ContextRecallMetric(),
+        ]
+        metric_names = {metric.name for metric in all_metrics}
+
+        for metadata_key in METRIC_METADATA:
+            assert metadata_key in metric_names, (
+                f"METRIC_METADATA key '{metadata_key}' has no corresponding metric class"
+            )
+
+
+class TestPercentFormat:
+    """display_format='percent' renders as '85%' not '0.85'."""
+
+    def test_verify_rate_shows_percentage(self, tmp_path: Path) -> None:
+        """first_pass_verify_rate (display_format=percent) should render as percentage."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-percent",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.85},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "85%" in content
+        # Should NOT show raw 0.85 in the metric value
+        # (0.85 may appear elsewhere, e.g. in a bar width, so we check the metric-value div)
+        verify_idx = content.find("Verify rate")
+        assert verify_idx != -1
+        value_start = content.find("metric-value", verify_idx)
+        value_end = content.find("</div>", value_start)
+        value_section = content[value_start:value_end]
+        assert "85%" in value_section

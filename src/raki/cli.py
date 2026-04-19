@@ -221,7 +221,12 @@ def run(
         from raki.report.html_report import html_timestamp_filename, write_html_report
 
         html_file = output_path / html_timestamp_filename(report)
-        write_html_report(report, html_file, include_sessions=include_sessions)
+        write_html_report(
+            report,
+            html_file,
+            include_sessions=include_sessions,
+            session_count=len(dataset.samples),
+        )
     except ImportError:
         html_file = None
         if not quiet:
