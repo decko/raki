@@ -203,6 +203,7 @@ def run(
             skipped_count=len(loader.skipped),
             error_count=len(loader.errors),
             console=out,
+            metrics=all_metrics,
         )
 
     if threshold is not None and no_llm:
@@ -267,10 +268,11 @@ def run(
 
 @main.command()
 @click.option("-m", "--manifest", "manifest_path", default=None, help="Path to manifest file")
+@click.option("-q", "--quiet", is_flag=True, help="Suppress auto-discovery messages")
 @click.option("-v", "--verbose", is_flag=True, help="Show debug output")
-def validate(manifest_path: str | None, verbose: bool) -> None:
+def validate(manifest_path: str | None, quiet: bool, verbose: bool) -> None:
     """Check manifest and session data without running metrics."""
-    manifest_file = _resolve_manifest(manifest_path)
+    manifest_file = _resolve_manifest(manifest_path, quiet=quiet)
 
     try:
         from raki.ground_truth.manifest import load_manifest
@@ -314,7 +316,10 @@ def adapters() -> None:
     """List available session adapters."""
     registry = _build_registry()
     for adapter in registry.list_all():
-        console.print(f"  [bold]{adapter.name}[/bold]")
+        console.print(
+            f"  [bold]{adapter.name}[/bold]  {adapter.description}  "
+            f"[dim](detects: {adapter.detection_hint})[/dim]"
+        )
 
 
 if __name__ == "__main__":

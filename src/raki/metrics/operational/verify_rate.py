@@ -10,6 +10,7 @@ class FirstPassVerifyRate:
     higher_is_better: bool = True
     display_format: str = "percent"
     display_name: str = "Verify rate"
+    description: str = "% sessions passing verify on first try"
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         sample_scores: dict[str, float] = {}

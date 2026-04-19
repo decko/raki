@@ -10,6 +10,7 @@ class CostEfficiency:
     higher_is_better: bool = False
     display_format: str = "currency"
     display_name: str = "Cost / session"
+    description: str = "Mean USD cost per session"
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         sample_scores: dict[str, float] = {}

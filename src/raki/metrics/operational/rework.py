@@ -10,6 +10,7 @@ class ReworkCycles:
     higher_is_better: bool = False
     display_format: str = "count"
     display_name: str = "Rework cycles"
+    description: str = "Mean review-rework iterations per session"
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         sample_scores: dict[str, float] = {}

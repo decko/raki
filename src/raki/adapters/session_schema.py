@@ -35,6 +35,8 @@ def _validate_path(file_path: Path, session_dir: Path) -> None:
 
 class SessionSchemaAdapter:
     name: str = "session-schema"
+    description: str = "Directory-based session format with structured phases"
+    detection_hint: str = "meta.json + events.jsonl"
 
     def detect(self, source: Path) -> bool:
         return (source / "meta.json").exists() and (source / "events.jsonl").exists()

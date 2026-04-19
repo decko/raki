@@ -1,7 +1,10 @@
 """Rich CLI summary output — color-coded metrics grouped by category."""
 
+from collections.abc import Sequence
+
 from rich.console import Console
 
+from raki.metrics.protocol import Metric
 from raki.model.report import EvalReport
 
 OPERATIONAL_METRICS = {
@@ -16,6 +19,32 @@ EXPERIMENTAL_METRICS = {
     "faithfulness",
     "answer_relevancy",
 }
+
+
+class _MetricMeta:
+    """Lookup helper for metric display metadata."""
+
+    def __init__(self, metrics: Sequence[Metric] | None = None) -> None:
+        self._by_name: dict[str, Metric] = {}
+        if metrics:
+            for metric in metrics:
+                self._by_name[metric.name] = metric
+
+    def display_name(self, name: str) -> str:
+        metric = self._by_name.get(name)
+        return metric.display_name if metric else name
+
+    def description(self, name: str) -> str:
+        metric = self._by_name.get(name)
+        return metric.description if metric else ""
+
+    def display_format(self, name: str) -> str:
+        metric = self._by_name.get(name)
+        return metric.display_format if metric else "score"
+
+    def higher_is_better(self, name: str) -> bool:
+        metric = self._by_name.get(name)
+        return metric.higher_is_better if metric else True
 
 
 def color_for_score(
@@ -74,14 +103,20 @@ def print_summary(
     skipped_count: int = 0,
     error_count: int = 0,
     console: Console | None = None,
+    metrics: Sequence[Metric] | None = None,
 ) -> None:
     """Print a Rich CLI summary of the evaluation report.
 
     Metrics are split into two categories: Operational Health and Retrieval Quality.
     A small sample caveat is shown alongside scores when n < 50.
+
+    When *metrics* is provided, human-readable ``display_name`` and
+    ``description`` values are shown instead of raw metric names.
     """
     output_console = console or Console()
     output_console.print()
+
+    meta = _MetricMeta(metrics)
 
     operational = {
         name: score
@@ -97,7 +132,16 @@ def print_summary(
     if operational:
         output_console.print("[bold]Operational Health[/bold]")
         for name, score in operational.items():
-            output_console.print(format_metric_line(name, score))
+            output_console.print(
+                format_metric_line(
+                    name,
+                    score,
+                    detail=meta.description(name),
+                    display_format=meta.display_format(name),
+                    higher_is_better=meta.higher_is_better(name),
+                    display_name=meta.display_name(name),
+                )
+            )
         if session_count < 50:
             output_console.print(
                 f"[dim]  \u26a0 Small sample size (n={session_count}) \u2014 "
@@ -109,7 +153,17 @@ def print_summary(
         output_console.print("[bold]Retrieval Quality[/bold]")
         for name, score in retrieval.items():
             tag = " [yellow]\\[experimental][/yellow]" if name in EXPERIMENTAL_METRICS else ""
-            output_console.print(format_metric_line(name, score) + tag)
+            output_console.print(
+                format_metric_line(
+                    name,
+                    score,
+                    detail=meta.description(name),
+                    display_format=meta.display_format(name),
+                    higher_is_better=meta.higher_is_better(name),
+                    display_name=meta.display_name(name),
+                )
+                + tag
+            )
         if session_count < 50:
             output_console.print(
                 f"[dim]  \u26a0 Small sample size (n={session_count}) \u2014 "
