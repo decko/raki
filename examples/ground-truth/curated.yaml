@@ -1,0 +1,131 @@
+# Example ground truth entries for a fictional "web-api" project.
+# These entries demonstrate the full GroundTruth taxonomy: all difficulty
+# levels, all knowledge types, and a range of expected phases and domains.
+# Fields like id and source are ignored by load_ground_truth() but kept
+# for human readability.
+
+- id: gt-web-001
+  source: curated
+  question: "What authentication middleware is required for REST API endpoints?"
+  expected_contexts:
+    - "JWT bearer token validation on all protected routes"
+    - "middleware chain order: rate limiter before auth"
+  expected_approach: >
+    Check the middleware stack configuration and verify that the auth
+    middleware is registered after rate limiting but before route handlers.
+  expected_files:
+    - "src/web_api/middleware/auth.py"
+    - "src/web_api/app.py"
+  acceptance_criteria:
+    - "All /api/* routes require a valid JWT bearer token"
+    - "401 returned for missing or expired tokens"
+    - "Middleware ordering is rate-limit -> auth -> handler"
+  reference_answer: >
+    Every REST API endpoint under /api/* must pass through JWT bearer token
+    authentication middleware. The middleware validates the token signature
+    and expiry, returning 401 for invalid or missing tokens. The middleware
+    chain must be ordered so that rate limiting runs before authentication
+    to avoid wasting auth cycles on rate-limited requests.
+  domains: [api, auth, middleware]
+  difficulty: medium
+  knowledge_type: procedure
+  expected_phase: implement
+
+- id: gt-web-002
+  source: curated
+  question: "What are the rate limiting constraints for the public API?"
+  expected_contexts:
+    - "100 requests per minute per API key"
+    - "429 Too Many Requests with Retry-After header"
+  reference_answer: >
+    The public API enforces a rate limit of 100 requests per minute per
+    API key. When the limit is exceeded, the server returns 429 Too Many
+    Requests with a Retry-After header indicating how many seconds the
+    client should wait before retrying.
+  domains: [api, middleware, security]
+  difficulty: easy
+  knowledge_type: constraint
+  expected_phase: triage
+
+- id: gt-web-003
+  source: curated
+  question: "How should multi-tenant database migrations be performed safely?"
+  expected_contexts:
+    - "run migrations per-tenant in isolated transactions"
+    - "shared schema changes require downtime window"
+    - "rollback plan for each migration step"
+  expected_approach: >
+    Review the migration runner to confirm it iterates tenants and wraps
+    each migration in its own transaction. Verify that shared-schema
+    migrations are flagged for the downtime window process.
+  expected_files:
+    - "src/web_api/db/migrations/runner.py"
+    - "src/web_api/db/tenant.py"
+  acceptance_criteria:
+    - "Each tenant migration runs in a separate database transaction"
+    - "A failed tenant migration does not block other tenants"
+    - "Shared-schema migrations are annotated with requires_downtime=True"
+    - "Every migration has a corresponding rollback function"
+  reference_answer: >
+    Multi-tenant migrations must run per-tenant inside isolated database
+    transactions so that a failure in one tenant does not affect others.
+    Shared schema changes (cross-tenant tables, indexes) require a
+    scheduled downtime window and must be annotated with
+    requires_downtime=True. Every migration step must have a corresponding
+    rollback function that can undo the change if verification fails.
+  domains: [database, migration, security]
+  difficulty: hard
+  knowledge_type: procedure
+  expected_phase: implement
+
+- id: gt-web-004
+  source: curated
+  question: "What input validation framework does the web-api project use?"
+  expected_contexts:
+    - "Pydantic models for request body validation"
+    - "422 Unprocessable Entity with field-level error details"
+  reference_answer: >
+    The web-api project uses Pydantic models to validate all incoming
+    request bodies. Invalid input returns 422 Unprocessable Entity with
+    a JSON body containing field-level error messages so clients know
+    exactly which fields failed validation and why.
+  domains: [api, validation]
+  difficulty: easy
+  knowledge_type: fact
+  expected_phase: triage
+
+- id: gt-web-005
+  source: curated
+  question: >
+    When a WebSocket notification fails to deliver to a tenant, how should
+    the system behave given the rate limiting and auth constraints?
+  expected_contexts:
+    - "retry with exponential backoff up to 3 attempts"
+    - "dead-letter queue for undeliverable notifications"
+    - "tenant auth token refresh before retry"
+  expected_approach: >
+    Trace the notification delivery path from the WebSocket handler through
+    the retry logic and dead-letter queue. Verify that auth tokens are
+    refreshed before each retry attempt and that rate limits apply to
+    retry traffic.
+  expected_files:
+    - "src/web_api/notifications/websocket.py"
+    - "src/web_api/notifications/retry.py"
+    - "src/web_api/notifications/dead_letter.py"
+  acceptance_criteria:
+    - "Failed deliveries retry up to 3 times with exponential backoff"
+    - "Tenant auth token is refreshed before each retry"
+    - "After 3 failures the notification moves to the dead-letter queue"
+    - "Retry traffic counts against the tenant rate limit"
+  reference_answer: >
+    When a WebSocket notification fails, the system retries delivery up to
+    3 times using exponential backoff. Before each retry the tenant's auth
+    token is refreshed to handle expiry during the backoff window. If all
+    retries fail, the notification is moved to a dead-letter queue for
+    manual inspection. Retry traffic is subject to the same per-tenant
+    rate limits as normal requests, so bursts of retries cannot overwhelm
+    the system.
+  domains: [api, notifications, auth, middleware]
+  difficulty: hard
+  knowledge_type: context-dependent
+  expected_phase: implement
