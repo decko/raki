@@ -8,6 +8,80 @@ from typing import Literal
 from raki.model.report import EvalReport
 from raki.report.cli_summary import EXPERIMENTAL_METRICS, OPERATIONAL_METRICS
 
+# Metric metadata registry — maps raw metric names to display properties.
+# This mirrors the class-level attributes from each Metric implementation
+# so the HTML report can render display_name, format values, and pick colors
+# without importing the metric classes directly.
+METRIC_METADATA: dict[str, dict[str, str | bool]] = {
+    "first_pass_verify_rate": {
+        "display_name": "Verify rate",
+        "higher_is_better": True,
+        "display_format": "percent",
+        "description": "% sessions passing verify on first try",
+    },
+    "rework_cycles": {
+        "display_name": "Rework cycles",
+        "higher_is_better": False,
+        "display_format": "count",
+        "description": "Average review-fix iterations per session",
+    },
+    "review_severity_distribution": {
+        "display_name": "Severity score",
+        "higher_is_better": True,
+        "display_format": "score",
+        "description": "Weighted severity of review findings (1.0 = no findings)",
+    },
+    "cost_efficiency": {
+        "display_name": "Cost / session",
+        "higher_is_better": False,
+        "display_format": "currency",
+        "description": "Average LLM cost per session in USD",
+    },
+    "knowledge_retrieval_miss_rate": {
+        "display_name": "Knowledge miss rate",
+        "higher_is_better": False,
+        "display_format": "score",
+        "description": "Fraction of rework caused by missing retrieval context",
+    },
+    "faithfulness": {
+        "display_name": "Faithfulness",
+        "higher_is_better": True,
+        "display_format": "score",
+        "description": "Fraction of claims supported by retrieved context",
+    },
+    "answer_relevancy": {
+        "display_name": "Answer relevancy",
+        "higher_is_better": True,
+        "display_format": "score",
+        "description": "How relevant the response is to the user query",
+    },
+    "context_precision": {
+        "display_name": "Context precision",
+        "higher_is_better": True,
+        "display_format": "score",
+        "description": "Precision of retrieved context relative to ground truth",
+    },
+    "context_recall": {
+        "display_name": "Context recall",
+        "higher_is_better": True,
+        "display_format": "score",
+        "description": "Recall of retrieved context relative to ground truth",
+    },
+}
+
+
+def _get_metric_meta(name: str) -> dict[str, str | bool]:
+    """Look up metadata for a metric, falling back to sensible defaults."""
+    return METRIC_METADATA.get(
+        name,
+        {
+            "display_name": name,
+            "higher_is_better": True,
+            "display_format": "score",
+            "description": "",
+        },
+    )
+
 
 @dataclass(frozen=True)
 class RecurringFailure:
@@ -27,11 +101,19 @@ class WorstSessionEntry:
     avg_score: float
 
 
-def html_color_for_score(score: float, higher_is_better: bool = True) -> str:
+def html_color_for_score(
+    score: float,
+    higher_is_better: bool = True,
+    display_format: str = "score",
+) -> str:
     """Return a CSS color class name for a score value.
 
     Matches the CLI color_for_score semantics: green >= 0.8, yellow >= 0.6, red below.
+    Skip color for non-ratio metrics (currency, count) where higher_is_better
+    is False -- those values are not on a 0-1 scale.
     """
+    if not higher_is_better and display_format in ("currency", "count"):
+        return "white"
     if higher_is_better:
         if score >= 0.8:
             return "green"
@@ -137,7 +219,12 @@ def _build_jinja_env():  # type: ignore[no-any-return]
     )
 
 
-def write_html_report(report: EvalReport, output: Path, include_sessions: bool = False) -> None:
+def write_html_report(
+    report: EvalReport,
+    output: Path,
+    include_sessions: bool = False,
+    session_count: int | None = None,
+) -> None:
     """Render and write a self-contained HTML report.
 
     All CSS and JavaScript are inlined in the template — no external dependencies.
@@ -145,6 +232,9 @@ def write_html_report(report: EvalReport, output: Path, include_sessions: bool =
 
     When include_sessions is False (the default), raw session data is stripped
     from the report before rendering to avoid leaking sensitive information.
+
+    session_count is passed as a separate template variable so the header shows
+    the correct count even when sample_results is empty.
     """
     from raki.report.json_report import strip_session_data
 
@@ -157,12 +247,28 @@ def write_html_report(report: EvalReport, output: Path, include_sessions: bool =
         strip_session_data(data)
         report = EvalReport.model_validate(data)
 
+    resolved_session_count = (
+        session_count if session_count is not None else len(report.sample_results)
+    )
+
     operational_scores, retrieval_scores = _split_scores(report.aggregate_scores)
     recurring_failures = _collect_recurring_failures(report)
     worst_sessions = compute_worst_sessions(report, limit=5)
 
     env = _build_jinja_env()
     template = env.get_template("report.html.j2")
+
+    def color_class_fn(score: float, metric_name: str = "") -> str:
+        meta = _get_metric_meta(metric_name)
+        higher = bool(meta["higher_is_better"])
+        fmt = str(meta["display_format"])
+        return f"color-{html_color_for_score(score, higher, fmt)}"
+
+    def color_name_fn(score: float, metric_name: str = "") -> str:
+        meta = _get_metric_meta(metric_name)
+        higher = bool(meta["higher_is_better"])
+        fmt = str(meta["display_format"])
+        return html_color_for_score(score, higher, fmt)
 
     html_content = template.render(
         report=report,
@@ -171,8 +277,11 @@ def write_html_report(report: EvalReport, output: Path, include_sessions: bool =
         experimental_metrics=EXPERIMENTAL_METRICS,
         recurring_failures=recurring_failures,
         worst_sessions=worst_sessions,
-        color_class=lambda score: f"color-{html_color_for_score(score)}",
-        color_name=html_color_for_score,
+        session_count=resolved_session_count,
+        metric_metadata=METRIC_METADATA,
+        get_metric_meta=_get_metric_meta,
+        color_class=color_class_fn,
+        color_name=color_name_fn,
     )
 
     output.write_text(html_content)

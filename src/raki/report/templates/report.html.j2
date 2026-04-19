@@ -99,6 +99,13 @@
     margin-bottom: 0.4rem;
   }
 
+  .score-card .metric-description {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.4rem;
+    font-style: italic;
+  }
+
   .score-card .metric-value {
     font-size: 1.8rem;
     font-weight: 700;
@@ -202,9 +209,11 @@
     border-radius: 6px;
     margin-bottom: 0.5rem;
     cursor: pointer;
-    text-decoration: none;
     color: var(--text-primary);
     transition: background-color 0.15s;
+    width: 100%;
+    font-family: inherit;
+    font-size: inherit;
   }
 
   .worst-session-row:hover {
@@ -411,10 +420,11 @@
     <div class="meta">
       <span><strong>Run:</strong> {{ report.run_id }}</span>
       <span><strong>Timestamp:</strong> {{ report.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>
-      <span><strong>Sessions:</strong> {{ report.sample_results | length }}</span>
+      <span><strong>Sessions:</strong> {{ session_count }}</span>
     </div>
   </header>
 
+  <main>
   {# --- Aggregate Scores --- #}
   <section>
     <h2>Aggregate Scores</h2>
@@ -424,12 +434,14 @@
       <div class="category-label">Operational Health</div>
       <div class="score-grid">
         {% for name, score in operational_scores.items() %}
+        {% set meta = get_metric_meta(name) %}
         <div class="score-card">
-          <div class="metric-name">{{ name }}</div>
-          <div class="metric-value {{ color_class(score) }}">{{ "%.2f"|format(score) }}</div>
-          {% if score <= 1.0 and score >= 0.0 %}
+          <div class="metric-name">{{ meta.display_name }}</div>
+          {% if meta.description %}<div class="metric-description">{{ meta.description }}</div>{% endif %}
+          <div class="metric-value {{ color_class(score, name) }}">{% if meta.display_format == "currency" %}${{ "%.2f"|format(score) }}{% elif meta.display_format == "count" %}{{ "%.1f"|format(score) }}{% elif meta.display_format == "percent" %}{{ "%.0f"|format(score * 100) }}%{% else %}{{ "%.2f"|format(score) }}{% endif %}</div>
+          {% if meta.display_format not in ("currency", "count") and score <= 1.0 and score >= 0.0 %}
           <div class="metric-bar">
-            <div class="metric-bar-fill bg-{{ color_name(score) }}" style="width: {{ (score * 100)|int }}%"></div>
+            <div class="metric-bar-fill bg-{{ color_name(score, name) }}" style="width: {{ (score * 100)|int }}%"></div>
           </div>
           {% endif %}
         </div>
@@ -443,25 +455,32 @@
       <div class="category-label">Retrieval Quality</div>
       <div class="score-grid">
         {% for name, score in retrieval_scores.items() %}
+        {% set meta = get_metric_meta(name) %}
         <div class="score-card">
-          <div class="metric-name">{{ name }}{% if name in experimental_metrics %} <span class="metric-tag">[experimental]</span>{% endif %}</div>
-          <div class="metric-value {{ color_class(score) }}">{{ "%.2f"|format(score) }}</div>
+          <div class="metric-name">{{ meta.display_name }}{% if name in experimental_metrics %} <span class="metric-tag">[experimental]</span>{% endif %}</div>
+          {% if meta.description %}<div class="metric-description">{{ meta.description }}</div>{% endif %}
+          <div class="metric-value {{ color_class(score, name) }}">{{ "%.2f"|format(score) }}</div>
           {% if score <= 1.0 and score >= 0.0 %}
           <div class="metric-bar">
-            <div class="metric-bar-fill bg-{{ color_name(score) }}" style="width: {{ (score * 100)|int }}%"></div>
+            <div class="metric-bar-fill bg-{{ color_name(score, name) }}" style="width: {{ (score * 100)|int }}%"></div>
           </div>
           {% endif %}
         </div>
         {% endfor %}
       </div>
     </div>
+    {% else %}
+    <div class="category-section">
+      <div class="category-label">Retrieval Quality</div>
+      <p class="empty-state">Retrieval metrics require LLM judge &mdash; run without --no-llm to enable.</p>
+    </div>
     {% endif %}
   </section>
 
   {# --- Recurring Failures --- #}
-  {% if recurring_failures %}
   <section>
     <h2>Recurring Failures</h2>
+    {% if recurring_failures %}
     <table class="failures-table">
       <thead>
         <tr>
@@ -482,30 +501,34 @@
         {% endfor %}
       </tbody>
     </table>
+    {% else %}
+    <p class="empty-state">No recurring failures detected across sessions.</p>
+    {% endif %}
   </section>
-  {% endif %}
 
   {# --- Worst 5 Sessions --- #}
-  {% if worst_sessions %}
   <section class="worst-sessions">
-    <h2>Worst {{ worst_sessions | length }} Sessions</h2>
+    <h2>Worst {{ worst_sessions | length if worst_sessions else 0 }} Sessions</h2>
+    {% if worst_sessions %}
     {% for entry in worst_sessions %}
-    <a class="worst-session-row" href="#session-{{ entry.session_id }}">
+    <button class="worst-session-row" type="button" data-target="session-{{ entry.session_id }}" aria-label="Jump to session {{ entry.session_id }}">
       <span class="session-id">{{ entry.session_id }}</span>
-      <span class="session-score {{ color_class(entry.avg_score) }}">{{ "%.2f"|format(entry.avg_score) }}</span>
-    </a>
+      <span class="session-score {{ color_class(entry.avg_score, "") }}">{{ "%.2f"|format(entry.avg_score) }}</span>
+    </button>
     {% endfor %}
+    {% else %}
+    <p class="empty-state">No session ranking available (requires retrieval metrics).</p>
+    {% endif %}
   </section>
-  {% endif %}
 
   {# --- Per-Session Drill-Down --- #}
-  {% if report.sample_results %}
   <section class="drilldown-section">
     <h2>Per-Session Drill-Down</h2>
+    {% if report.sample_results %}
     {% for sample_result in report.sample_results %}
     {% set sample = sample_result.sample %}
     {% set session_id = sample.session.session_id %}
-    <details id="session-{{ session_id }}">
+    <details id="session-{{ session_id }}" aria-expanded="false">
       <summary>
         <span>{{ session_id }}</span>
         <span class="score-chips">
@@ -514,7 +537,7 @@
           {% set session_score = metric_result.sample_scores[session_id] %}
           <span class="score-chip">
             <span class="chip-name">{{ metric_result.name }}</span>
-            <span class="chip-value {{ color_class(session_score) }}">{{ "%.2f"|format(session_score) }}</span>
+            <span class="chip-value {{ color_class(session_score, metric_result.name) }}">{{ "%.2f"|format(session_score) }}</span>
           </span>
           {% endif %}
           {% endfor %}
@@ -589,8 +612,11 @@
       </div>
     </details>
     {% endfor %}
+    {% else %}
+    <p class="empty-state">No per-session data available.</p>
+    {% endif %}
   </section>
-  {% endif %}
+  </main>
 
   <footer>
     Generated by RAKI &mdash; Retrieval Assessment for Knowledge Impact
@@ -598,17 +624,23 @@
 </div>
 
 <script>
-/* Toggle all sessions open/closed */
+/* Navigate to session details when worst-session button is clicked */
 (function() {
-  document.querySelectorAll('.worst-session-row').forEach(function(row) {
-    row.addEventListener('click', function(event) {
-      event.preventDefault();
-      var targetId = this.getAttribute('href').substring(1);
+  document.querySelectorAll('.worst-session-row').forEach(function(btn) {
+    btn.addEventListener('click', function(event) {
+      var targetId = this.getAttribute('data-target');
       var target = document.getElementById(targetId);
       if (target) {
         target.setAttribute('open', '');
+        target.setAttribute('aria-expanded', 'true');
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+    });
+  });
+  /* Update aria-expanded on details toggle */
+  document.querySelectorAll('details').forEach(function(detail) {
+    detail.addEventListener('toggle', function() {
+      this.setAttribute('aria-expanded', this.open ? 'true' : 'false');
     });
   });
 })();
