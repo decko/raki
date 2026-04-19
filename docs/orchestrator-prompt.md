@@ -8,29 +8,34 @@ You never write implementation code yourself. You manage the loop, track state, 
 - Repo: decko/raki (GitHub, public)
 - Local path: ~/dev/raki
 - Package: raki
-- Spec: ~/dev/pulp/agent-project/docs/superpowers/specs/2026-04-17-raki-design.md
-- Plan: ~/dev/pulp/agent-project/docs/superpowers/plans/2026-04-17-raki-implementation.md
-- Milestone 1 (Phase 1 — MVP): Issues #2, #3, #4, #5, #6, #7, #8
-- Milestone 2 (Phase 2 — Ragas): Issues #9, #10, #11, #12
+- Specs: ~/dev/raki/docs/specs/ (per-milestone specs)
+- Plan: ~/dev/pulp/agent-project/docs/superpowers/plans/2026-04-17-raki-implementation.md (Phase 1+2 original plan)
+- Milestone 1 (Phase 1 — MVP): Issues #2-#8 (ALL CLOSED)
+- Milestone 2 (Phase 2 — Ragas): Issues #9-#12 (ALL CLOSED)
+- Milestone 3 (v0.2.1 — Critical Fixes): Issues #29, #30, #31
+- Milestone 4 (v0.3.0 — Report & CLI Polish): Issues #25, #26, #27, #28, #32, #33, #34
+- Milestone 5 (v0.4.0 — Security & Data Completeness): Issues #35, #36, #37
 - Tooling: Python 3.14, uv, ruff, ty (no mypy), pytest
-- Base branch: main (Task 1 / Issue #1 already done)
+- Base branch: main
 
 ## Issue-to-Task Mapping
 
-| Issue | Task | Short Name | Milestone |
-|-------|------|-----------|-----------|
-| #1 | 1 | scaffolding | Phase 1 (CLOSED) |
-| #2 | 2 | core-model | Phase 1 |
-| #3 | 3a | adapter-protocol | Phase 1 |
-| #4 | 3b | adapter-alcove | Phase 1 |
-| #5 | 4 | metrics-operational | Phase 1 |
-| #6 | 5 | manifest | Phase 1 |
-| #7 | 6 | reports | Phase 1 |
-| #8 | 7 | cli-wiring | Phase 1 |
-| #9 | 8 | ground-truth | Phase 2 |
-| #10 | 9a | ragas-core | Phase 2 |
-| #11 | 9b | ragas-experimental | Phase 2 |
-| #12 | 10 | html-report | Phase 2 |
+| Issue | Short Name | Milestone | Spec |
+|-------|-----------|-----------|------|
+| #1-#12 | Phase 1+2 | CLOSED | (original plan) |
+| #29 | except-syntax-fix | v0.2.1 | docs/specs/v0.2.1-critical-fixes.md |
+| #30 | ragas-singleturn | v0.2.1 | docs/specs/v0.2.1-critical-fixes.md |
+| #31 | json-stdout-fix | v0.2.1 | docs/specs/v0.2.1-critical-fixes.md |
+| #25 | html-colors | v0.3.0 | docs/specs/v0.3.0-report-cli-polish.md (superseded by #33) |
+| #26 | html-sessions-count | v0.3.0 | docs/specs/v0.3.0-report-cli-polish.md (superseded by #33) |
+| #27 | soda-nonetype | v0.3.0 | docs/specs/v0.3.0-report-cli-polish.md |
+| #28 | html-display-names | v0.3.0 | docs/specs/v0.3.0-report-cli-polish.md (superseded by #33) |
+| #32 | sample-results | v0.3.0 | docs/specs/v0.3.0-report-cli-polish.md |
+| #33 | html-comprehensive | v0.3.0 | docs/specs/v0.3.0-report-cli-polish.md |
+| #34 | cli-fixes | v0.3.0 | docs/specs/v0.3.0-report-cli-polish.md |
+| #35 | security-hardening | v0.4.0 | docs/specs/v0.4.0-security-data-completeness.md |
+| #36 | ragas-fixes | v0.4.0 | docs/specs/v0.4.0-security-data-completeness.md |
+| #37 | adapter-completeness | v0.4.0 | docs/specs/v0.4.0-security-data-completeness.md |
 
 ## Architecture: Agentic Swarm with Model Routing
 
@@ -178,7 +183,9 @@ Working directory: <WORKTREE_PATH>
 
 Read these files BEFORE writing any code:
 - <WORKTREE_PATH>/AGENTS.md (project conventions — follow strictly)
-- ~/dev/pulp/agent-project/docs/superpowers/plans/2026-04-17-raki-implementation.md (search for 'Task <TASK_ID>:' — read ONLY that task section)
+- The spec file listed in the issue-to-task mapping table for this issue (read the relevant task section only)
+- For issues #1-#12 (Phase 1+2): ~/dev/pulp/agent-project/docs/superpowers/plans/2026-04-17-raki-implementation.md
+- For issues #29+: the spec under <WORKTREE_PATH>/docs/specs/ for the issue's milestone
 
 IMPORTANT:
 - Python 3.14, use modern syntax (X | Y unions, not Optional)
