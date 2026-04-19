@@ -44,12 +44,13 @@ class SessionSchemaAdapter:
         _validate_path(meta_path, source)
         meta_raw: dict[str, Any] = json.loads(_read_bounded(meta_path))
         session_id = str(meta_raw.get("ticket", source.name))
+        phases_dict = meta_raw.get("phases") or {}
         meta = SessionMeta(
             session_id=session_id,
             ticket=str(meta_raw.get("ticket")),
             started_at=meta_raw["started_at"],
             total_cost_usd=meta_raw.get("total_cost"),
-            total_phases=len(meta_raw.get("phases", {})),
+            total_phases=len(phases_dict),
             rework_cycles=meta_raw.get("rework_cycles", 0),
         )
         phases = self._load_phases(source, meta_raw)
@@ -75,7 +76,8 @@ class SessionSchemaAdapter:
         for file_path in matched_files:
             _validate_path(file_path, source)
             suffix_match = re.search(r"\.(\d+)$", file_path.name)
-            phase_meta = meta_raw.get("phases", {}).get(phase_name, {})
+            phases_dict = meta_raw.get("phases") or {}
+            phase_meta = phases_dict.get(phase_name) or {}
             if suffix_match:
                 generation = int(suffix_match.group(1))
             else:
@@ -109,7 +111,7 @@ class SessionSchemaAdapter:
                 raw = json.loads(_read_bounded(file_path))
             except json.JSONDecodeError:
                 continue
-            for finding_raw in raw.get("findings", []):
+            for finding_raw in raw.get("findings") or []:
                 try:
                     findings.append(
                         ReviewFinding(

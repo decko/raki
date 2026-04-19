@@ -407,3 +407,88 @@ def test_session_schema_skips_malformed_event_line(tmp_path):
     # Only the valid event should be loaded; malformed ones should be skipped
     assert len(sample.events) == 1
     assert sample.events[0].kind == "phase_started"
+
+
+# --- NoneType edge-case tests (issue #27) ---
+
+
+def test_session_schema_handles_null_phases_in_meta(tmp_path):
+    """meta.json with "phases": null should load gracefully with empty phases."""
+    meta = {
+        "ticket": "170",
+        "summary": "session with null phases",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": None,
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.session_id == "170"
+    assert sample.session.total_phases == 0
+    assert len(sample.phases) == 0
+
+
+def test_session_schema_handles_missing_phases_key_in_meta(tmp_path):
+    """meta.json with no 'phases' key at all should load gracefully."""
+    meta = {
+        "ticket": "172",
+        "summary": "session with missing phases key",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 3.0,
+        "rework_cycles": 1,
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.session_id == "172"
+    assert sample.session.total_phases == 0
+    assert len(sample.phases) == 0
+
+
+def test_session_schema_handles_null_findings_in_review(tmp_path):
+    """review.json with "findings": null should be skipped gracefully."""
+    meta = {
+        "ticket": "181",
+        "summary": "session with null findings",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 2.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    review_data = {"findings": None}
+    (tmp_path / "review.json").write_text(json.dumps(review_data))
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.session_id == "181"
+    assert len(sample.findings) == 0
+
+
+def test_session_schema_handles_null_phase_metadata(tmp_path):
+    """Phase entry in meta.json phases dict is null instead of a dict."""
+    meta = {
+        "ticket": "185",
+        "summary": "session with null phase metadata",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 4.0,
+        "rework_cycles": 0,
+        "phases": {"triage": None},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    # Create a triage phase file so the adapter tries to load it
+    triage_data = {"summary": "triage output"}
+    (tmp_path / "triage.json").write_text(json.dumps(triage_data))
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.session_id == "185"
+    assert len(sample.phases) == 1
+    assert sample.phases[0].name == "triage"
+    # With null phase metadata, defaults should be used
+    assert sample.phases[0].generation == 1
+    assert sample.phases[0].status == "completed"
