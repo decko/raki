@@ -517,3 +517,344 @@ class TestMetricConfigJudgeLogPath:
         log_path = tmp_path / "judge.jsonl"
         config = MetricConfig(judge_log_path=log_path)
         assert config.judge_log_path == log_path
+
+
+# ---------------------------------------------------------------------------
+# Faithfulness mock helpers (legacy dataclass API)
+# ---------------------------------------------------------------------------
+
+
+def _install_faithfulness_mock(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_metric_class: MagicMock,
+) -> None:
+    """Insert a fake ``ragas.metrics._faithfulness`` module into sys.modules.
+
+    Faithfulness is a legacy @dataclass metric that uses single_turn_ascore()
+    and returns a plain float, not a MetricResult.
+    """
+    import sys
+
+    fake_faithfulness_mod = MagicMock()
+    setattr(fake_faithfulness_mod, "Faithfulness", mock_metric_class)
+    fake_dataset_schema = MagicMock()
+    fake_dataset_schema.SingleTurnSample = MagicMock()
+    monkeypatch.setitem(sys.modules, "ragas", MagicMock())
+    monkeypatch.setitem(sys.modules, "ragas.metrics", MagicMock())
+    monkeypatch.setitem(sys.modules, "ragas.metrics._faithfulness", fake_faithfulness_mod)
+    monkeypatch.setitem(sys.modules, "ragas.dataset_schema", fake_dataset_schema)
+
+
+def _install_relevancy_mock(
+    monkeypatch: pytest.MonkeyPatch,
+    mock_metric_class: MagicMock,
+) -> None:
+    """Insert a fake ``ragas.metrics._answer_relevance`` module into sys.modules.
+
+    AnswerRelevancy is a legacy @dataclass metric that uses single_turn_ascore()
+    and returns a plain float, not a MetricResult.
+    """
+    import sys
+
+    fake_relevancy_mod = MagicMock()
+    setattr(fake_relevancy_mod, "AnswerRelevancy", mock_metric_class)
+    fake_dataset_schema = MagicMock()
+    fake_dataset_schema.SingleTurnSample = MagicMock()
+    fake_embeddings = MagicMock()
+    fake_embeddings.embedding_factory = MagicMock(return_value=MagicMock())
+    monkeypatch.setitem(sys.modules, "ragas", MagicMock())
+    monkeypatch.setitem(sys.modules, "ragas.metrics", MagicMock())
+    monkeypatch.setitem(sys.modules, "ragas.metrics._answer_relevance", fake_relevancy_mod)
+    monkeypatch.setitem(sys.modules, "ragas.dataset_schema", fake_dataset_schema)
+    monkeypatch.setitem(sys.modules, "ragas.embeddings", fake_embeddings)
+
+
+# ---------------------------------------------------------------------------
+# Faithfulness metric tests — mock ragas so tests run without it installed
+# ---------------------------------------------------------------------------
+
+
+class TestFaithfulnessMetric:
+    def test_skips_without_samples(self):
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        metric = FaithfulnessMetric()
+        sample = _make_sample_with_knowledge(knowledge_context=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+        result = metric.compute(dataset, config)
+        assert result.score == 0.0
+        assert result.details.get("skipped") == "no samples"
+
+    def test_experimental_flag(self):
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        metric = FaithfulnessMetric()
+        assert metric.experimental is True
+
+    def test_protocol_properties(self):
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        metric = FaithfulnessMetric()
+        assert metric.name == "faithfulness"
+        assert metric.requires_ground_truth is False
+        assert metric.requires_llm is True
+        assert metric.higher_is_better is True
+        assert metric.display_format == "score"
+        assert metric.display_name == "Faithfulness"
+
+    def test_computes_with_mocked_ragas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.single_turn_ascore = AsyncMock(return_value=0.9)
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_faithfulness_mock(monkeypatch, mock_faithfulness_class)
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+
+        log_path = tmp_path / "judge.jsonl"
+        config = MetricConfig(judge_log_path=log_path)
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.name == "faithfulness"
+        assert result.score == pytest.approx(0.9)
+        assert result.details["samples_scored"] == 1
+        assert result.details["experimental"] is True
+        assert "NL answers" in result.details["caveat"]
+        assert "1" in result.sample_scores
+
+        log_lines = log_path.read_text().strip().split("\n")
+        assert len(log_lines) == 1
+        log_entry = json.loads(log_lines[0])
+        assert log_entry["metric"] == "faithfulness"
+        assert log_entry["score"] == 0.9
+
+    def test_does_not_require_ground_truth(self, monkeypatch: pytest.MonkeyPatch):
+        """Faithfulness scores all samples, not just those with ground truth."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.single_turn_ascore = AsyncMock(return_value=0.8)
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_faithfulness_mock(monkeypatch, mock_faithfulness_class)
+
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.8)
+        assert result.details["samples_scored"] == 1
+
+    def test_handles_ascore_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.single_turn_ascore = AsyncMock(
+            side_effect=RuntimeError("LLM unavailable")
+        )
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_faithfulness_mock(monkeypatch, mock_faithfulness_class)
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+
+        log_path = tmp_path / "judge.jsonl"
+        config = MetricConfig(judge_log_path=log_path)
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == 0.0
+        assert result.details["samples_scored"] == 0
+
+        log_entry = json.loads(log_path.read_text().strip())
+        assert log_entry["score"] == -1.0
+        assert "LLM unavailable" in log_entry["reason"]
+
+
+# ---------------------------------------------------------------------------
+# AnswerRelevancy metric tests — mock ragas so tests run without it installed
+# ---------------------------------------------------------------------------
+
+
+class TestAnswerRelevancyMetric:
+    def test_skips_without_samples(self):
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        metric = AnswerRelevancyMetric()
+        sample = _make_sample_with_knowledge(knowledge_context=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+        result = metric.compute(dataset, config)
+        assert result.score == 0.0
+        assert result.details.get("skipped") == "no samples"
+
+    def test_experimental_flag(self):
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        metric = AnswerRelevancyMetric()
+        assert metric.experimental is True
+
+    def test_protocol_properties(self):
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        metric = AnswerRelevancyMetric()
+        assert metric.name == "answer_relevancy"
+        assert metric.requires_ground_truth is False
+        assert metric.requires_llm is True
+        assert metric.higher_is_better is True
+        assert metric.display_format == "score"
+        assert metric.display_name == "Answer relevancy"
+
+    def test_computes_with_mocked_ragas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.single_turn_ascore = AsyncMock(return_value=0.78)
+
+        mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
+        _install_relevancy_mock(monkeypatch, mock_relevancy_class)
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+
+        log_path = tmp_path / "judge.jsonl"
+        config = MetricConfig(judge_log_path=log_path)
+
+        with (
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_embeddings",
+                return_value=MagicMock(),
+            ),
+        ):
+            metric = AnswerRelevancyMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.name == "answer_relevancy"
+        assert result.score == pytest.approx(0.78)
+        assert result.details["samples_scored"] == 1
+        assert result.details["experimental"] is True
+        assert "NL answers" in result.details["caveat"]
+        assert "1" in result.sample_scores
+
+        log_lines = log_path.read_text().strip().split("\n")
+        assert len(log_lines) == 1
+        log_entry = json.loads(log_lines[0])
+        assert log_entry["metric"] == "answer_relevancy"
+        assert log_entry["score"] == 0.78
+
+    def test_handles_ascore_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.single_turn_ascore = AsyncMock(
+            side_effect=RuntimeError("Embeddings failed")
+        )
+
+        mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
+        _install_relevancy_mock(monkeypatch, mock_relevancy_class)
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+
+        log_path = tmp_path / "judge.jsonl"
+        config = MetricConfig(judge_log_path=log_path)
+
+        with (
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_embeddings",
+                return_value=MagicMock(),
+            ),
+        ):
+            metric = AnswerRelevancyMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == 0.0
+        assert result.details["samples_scored"] == 0
+
+        log_entry = json.loads(log_path.read_text().strip())
+        assert log_entry["score"] == -1.0
+
+
+# ---------------------------------------------------------------------------
+# Integration tests (slow, requires LLM) — marked for selective running
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+class TestFaithfulnessIntegration:
+    def test_faithfulness_returns_score_between_0_and_1(self):
+        """Requires Ragas + LLM credentials. Scores a simple sample."""
+        pytest.importorskip("ragas")
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        ground_truth = GroundTruth(
+            question="How to validate input?",
+            reference_answer="Use pydantic models with Field validators",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        metric = FaithfulnessMetric()
+        result = metric.compute(dataset, config)
+
+        assert 0.0 <= result.score <= 1.0
+        assert result.details["samples_scored"] >= 1
+
+
+@pytest.mark.slow
+class TestAnswerRelevancyIntegration:
+    def test_relevancy_returns_score_between_0_and_1(self):
+        """Requires Ragas + LLM + Embeddings credentials. Scores a simple sample."""
+        pytest.importorskip("ragas")
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        metric = AnswerRelevancyMetric()
+        result = metric.compute(dataset, config)
+
+        assert 0.0 <= result.score <= 1.0
+        assert result.details["samples_scored"] >= 1

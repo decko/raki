@@ -5,6 +5,8 @@ from pathlib import Path
 import click
 from rich.console import Console
 
+from raki.adapters.redact import redact_sensitive
+
 console = Console()
 
 
@@ -84,6 +86,12 @@ def main():
     default=4,
     help="Max parallel LLM calls",
 )
+@click.option(
+    "--judge-model",
+    "judge_model",
+    default="claude-sonnet-4-6",
+    help="LLM model for judge metrics (default: claude-sonnet-4-6)",
+)
 @click.option("--tenant", default=None, help="Set tenant_id on the report")
 @click.option(
     "--include-sessions",
@@ -101,6 +109,7 @@ def run(
     adapter_format: str | None,
     metric_names: str | None,
     parallel_count: int,
+    judge_model: str,
     tenant: str | None,
     include_sessions: bool,
     json_stdout: bool,
@@ -110,7 +119,6 @@ def run(
     _warn_unimplemented_options(
         adapter=adapter_format,
         metrics=metric_names,
-        parallel=parallel_count if parallel_count != 4 else None,
         tenant=tenant,
     )
     manifest_file = _resolve_manifest(manifest_path, quiet=quiet)
@@ -120,7 +128,7 @@ def run(
 
         manifest = load_manifest(manifest_file)
     except Exception as exc:
-        console.print(f"[red]Error loading manifest: {exc}[/red]")
+        console.print(f"[red]Error loading manifest: {redact_sensitive(str(exc))}[/red]")
         raise SystemExit(2) from exc
 
     from raki.adapters import DatasetLoader
@@ -135,7 +143,7 @@ def run(
 
     if verbose:
         for error in loader.errors:
-            console.print(f"  [red]Error: {error.path} -- {error.error}[/red]")
+            console.print(f"  [red]Error: {error.path} -- {redact_sensitive(error.error)}[/red]")
         for skipped_path in loader.skipped:
             console.print(f"  [dim]Skipped: {skipped_path}[/dim]")
 
@@ -147,8 +155,30 @@ def run(
 
     from raki.metrics import MetricsEngine
     from raki.metrics.operational import ALL_OPERATIONAL
+    from raki.metrics.protocol import Metric, MetricConfig
 
-    engine = MetricsEngine(ALL_OPERATIONAL)
+    config = MetricConfig(
+        llm_model=judge_model,
+        batch_size=parallel_count,
+    )
+
+    all_metrics: list[Metric] = list(ALL_OPERATIONAL)
+    if not no_llm:
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+        from raki.metrics.ragas.recall import ContextRecallMetric
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        all_metrics.extend(
+            [
+                ContextPrecisionMetric(),
+                ContextRecallMetric(),
+                FaithfulnessMetric(),
+                AnswerRelevancyMetric(),
+            ]
+        )
+
+    engine = MetricsEngine(all_metrics, config=config)
     report = engine.run(dataset, skip_llm=no_llm)
 
     if not quiet:
@@ -176,11 +206,11 @@ def run(
     if json_stdout:
         import json as json_mod
 
-        from raki.report.json_report import _strip_session_data
+        from raki.report.json_report import strip_session_data
 
         data = report.model_dump(mode="json")
         if not include_sessions:
-            _strip_session_data(data)
+            strip_session_data(data)
         click.echo(json_mod.dumps(data, indent=2, default=str))
 
     if not quiet:
@@ -212,7 +242,7 @@ def validate(manifest_path: str | None, verbose: bool) -> None:
 
         manifest = load_manifest(manifest_file)
     except Exception as exc:
-        console.print(f"[red]Error loading manifest: {exc}[/red]")
+        console.print(f"[red]Error loading manifest: {redact_sensitive(str(exc))}[/red]")
         raise SystemExit(2) from exc
     console.print(f"[green]\u2713[/green] Manifest loaded: {manifest_file}")
     console.print(f"[green]\u2713[/green] Sessions path: {manifest.sessions.path}")
@@ -236,7 +266,7 @@ def validate(manifest_path: str | None, verbose: bool) -> None:
     if loader.errors:
         console.print(f"[red]\u2717[/red] {len(loader.errors)} sessions failed to load")
         for error in loader.errors:
-            console.print(f"    {error.path.name}: {error.error}")
+            console.print(f"    {error.path.name}: {redact_sensitive(error.error)}")
 
     console.print(
         f"\nReady to evaluate [bold]{len(dataset.samples)}[/bold] sessions"

@@ -20,11 +20,11 @@ def write_json_report(report: EvalReport, output: Path, include_sessions: bool =
     output.parent.mkdir(parents=True, exist_ok=True)
     data = report.model_dump(mode="json")
     if not include_sessions:
-        _strip_session_data(data)
+        strip_session_data(data)
     output.write_text(json.dumps(data, indent=2, default=str))
 
 
-def _strip_session_data(data: dict) -> None:
+def strip_session_data(data: dict) -> None:
     """Remove large raw data fields from sample results to keep reports compact."""
     for sample_result in data.get("sample_results", []):
         sample = sample_result.get("sample", {})

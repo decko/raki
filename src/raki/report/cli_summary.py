@@ -9,6 +9,12 @@ OPERATIONAL_METRICS = {
     "rework_cycles",
     "review_severity_distribution",
     "cost_efficiency",
+    "knowledge_retrieval_miss_rate",
+}
+
+EXPERIMENTAL_METRICS = {
+    "faithfulness",
+    "answer_relevancy",
 }
 
 
@@ -102,12 +108,17 @@ def print_summary(
     if retrieval:
         output_console.print("[bold]Retrieval Quality[/bold]")
         for name, score in retrieval.items():
-            output_console.print(format_metric_line(name, score))
+            tag = " [yellow]\\[experimental][/yellow]" if name in EXPERIMENTAL_METRICS else ""
+            output_console.print(format_metric_line(name, score) + tag)
         if session_count < 50:
             output_console.print(
                 f"[dim]  \u26a0 Small sample size (n={session_count}) \u2014 "
                 "scores are directional, not definitive[/dim]"
             )
+        output_console.print(
+            "[dim]  \u26a0 Scores produced by same-provider LLM judge "
+            "\u2014 calibration caveat applies[/dim]"
+        )
         output_console.print()
 
     if skipped_count > 0 or error_count > 0:
