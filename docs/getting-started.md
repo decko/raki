@@ -70,6 +70,20 @@ Key metrics to watch:
 - **Rework cycles** (0.2) -- sessions needed an average of 0.2 review-rework iterations. Lower is better; values above 1.0 mean most sessions require at least one rework round.
 - **Severity score** (0.39) -- weighted severity of review findings, where 1.0 means no findings at all. Higher is better; low values indicate reviewers are catching serious issues.
 
+## Re-rendering Reports
+
+RAKI saves evaluation results as JSON. You can re-render the CLI summary or generate an HTML report from a saved JSON file at any time:
+
+```bash
+# Re-render CLI summary from a saved report
+uv run raki report --input results/raki-report-20260410T120000.json
+
+# Generate an HTML report from the same JSON
+uv run raki report --input results/raki-report-20260410T120000.json --html results/report.html
+```
+
+If the JSON report was generated without `--include-sessions`, RAKI will show aggregate scores only and warn that per-session drill-down is unavailable.
+
 ## Next Steps
 
 - [Results Interpretation Reference](interpretation-reference.md) -- thresholds, patterns, and what to do about low scores

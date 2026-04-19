@@ -1,5 +1,9 @@
-"""Tests for CLI commands: raki run, raki validate, raki adapters."""
+"""Tests for CLI commands: raki run, raki validate, raki adapters, raki report."""
 
+import importlib.util
+import json
+
+import pytest
 from click.testing import CliRunner
 
 from raki.cli import main
@@ -465,3 +469,185 @@ class TestCliSummaryMetricDescription:
         assert result.exit_code == 0
         # Metric descriptions should appear in parentheses
         assert "% sessions passing verify" in result.output
+
+
+def _write_report_json(path, *, include_sessions: bool = False) -> None:
+    """Write a minimal EvalReport JSON file for testing the report command."""
+    from raki.model.report import EvalReport
+
+    report = EvalReport(
+        run_id="test-report-001",
+        aggregate_scores={
+            "first_pass_verify_rate": 0.85,
+            "rework_cycles": 0.3,
+            "cost_efficiency": 7.50,
+        },
+    )
+    data = report.model_dump(mode="json")
+    if include_sessions:
+        # Add a sample_result with non-stripped session data to simulate --include-sessions
+        data["sample_results"] = [
+            {
+                "sample": {
+                    "session": {
+                        "session_id": "session-101",
+                        "started_at": "2026-04-10T00:00:00Z",
+                        "total_phases": 3,
+                        "rework_cycles": 0,
+                        "total_cost_usd": 7.50,
+                    },
+                    "phases": [
+                        {
+                            "name": "implement",
+                            "generation": 1,
+                            "status": "completed",
+                            "output": "full implementation output here",
+                        },
+                        {
+                            "name": "verify",
+                            "generation": 1,
+                            "status": "completed",
+                            "output": "PASS",
+                        },
+                    ],
+                    "findings": [],
+                    "events": [],
+                },
+                "scores": [
+                    {"name": "first_pass_verify_rate", "score": 1.0},
+                ],
+            }
+        ]
+    else:
+        # Simulate a stripped report (the default output of raki run)
+        data["sample_results"] = [
+            {
+                "sample": {
+                    "session": {
+                        "session_id": "session-101",
+                        "started_at": "2026-04-10T00:00:00Z",
+                        "total_phases": 3,
+                        "rework_cycles": 0,
+                        "total_cost_usd": 7.50,
+                    },
+                    "phases": [
+                        {
+                            "name": "implement",
+                            "generation": 1,
+                            "status": "completed",
+                            "output": "<stripped>",
+                        },
+                        {
+                            "name": "verify",
+                            "generation": 1,
+                            "status": "completed",
+                            "output": "<stripped>",
+                        },
+                    ],
+                    "findings": [],
+                    "events": [],
+                },
+                "scores": [
+                    {"name": "first_pass_verify_rate", "score": 1.0},
+                ],
+            }
+        ]
+    path.write_text(json.dumps(data, indent=2, default=str))
+
+
+class TestCliReport:
+    def test_report_command_shows_in_help(self):
+        """The report command should appear in --help output."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "report" in result.output
+
+    def test_report_renders_cli_summary(self, tmp_path):
+        """raki report --input renders CLI summary to terminal."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        assert result.exit_code == 0
+        assert "Operational Health" in result.output
+
+    def test_report_shows_aggregate_scores(self, tmp_path):
+        """raki report should display aggregate metric scores."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        assert result.exit_code == 0
+        assert "0.85" in result.output
+
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("jinja2"),
+        reason="jinja2 not installed",
+    )
+    def test_report_generates_html(self, tmp_path):
+        """raki report --input --html generates an HTML file."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        html_path = tmp_path / "output.html"
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["report", "--input", str(report_json), "--html", str(html_path)]
+        )
+        assert result.exit_code == 0
+        assert html_path.exists()
+        content = html_path.read_text()
+        assert "<html" in content.lower()
+
+    def test_report_warns_when_session_data_stripped(self, tmp_path):
+        """Warning shown when session data is stripped (default reports)."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=False)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        assert result.exit_code == 0
+        assert "--include-sessions" in result.output
+
+    def test_report_no_warning_when_session_data_present(self, tmp_path):
+        """No warning shown when session data is present."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        assert result.exit_code == 0
+        assert "--include-sessions" not in result.output
+
+    def test_report_exit_code_2_for_missing_input(self, tmp_path):
+        """Exit code 2 when input file does not exist."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--input", str(tmp_path / "nonexistent.json")])
+        assert result.exit_code == 2
+
+    def test_report_short_input_flag(self, tmp_path):
+        """raki report -i works as shorthand for --input."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "-i", str(report_json)])
+        assert result.exit_code == 0
+        assert "Operational Health" in result.output
+
+    def test_report_html_default_alongside_json(self, tmp_path):
+        """When --html is not given, no HTML file is generated."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        assert result.exit_code == 0
+        html_files = list(tmp_path.glob("*.html"))
+        assert len(html_files) == 0
+
+    def test_report_displays_metric_display_names(self, tmp_path):
+        """raki report should show human-readable display names from metadata."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        assert result.exit_code == 0
+        # Should use display names from METRIC_METADATA, not raw metric keys
+        assert "Verify rate" in result.output
