@@ -2,6 +2,10 @@
 
 Evaluate agentic RAG quality from session transcripts.
 
+## Report Preview
+
+![RAKI HTML Report](docs/images/report-screenshot.png)
+
 ## Install
 
 ```bash
