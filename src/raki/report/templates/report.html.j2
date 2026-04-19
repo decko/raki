@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAKI Evaluation Report &mdash; {{ report.run_id }}</title>
+<style>
+  :root {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-tertiary: #252540;
+    --bg-card: #1e1e35;
+    --text-primary: #e0e0e8;
+    --text-secondary: #a0a0b8;
+    --text-muted: #6a6a80;
+    --border-color: #2e2e48;
+    --accent: #6c63ff;
+    --green: #4caf50;
+    --yellow: #ffc107;
+    --red: #f44336;
+    --white-metric: #b0b0c8;
+    --severity-critical: #f44336;
+    --severity-major: #ff9800;
+    --severity-minor: #8bc34a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    padding: 2rem;
+  }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  header {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  header h1 {
+    font-size: 1.8rem;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+  }
+
+  header .meta {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+  }
+
+  header .meta span {
+    margin-right: 1.5rem;
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    margin: 1.5rem 0 1rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+  }
+
+  h3 {
+    font-size: 1.1rem;
+    margin: 1rem 0 0.5rem;
+    color: var(--text-primary);
+  }
+
+  /* Score cards */
+  .score-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .score-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .score-card .metric-name {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.4rem;
+  }
+
+  .score-card .metric-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .score-card .metric-bar {
+    margin-top: 0.6rem;
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .score-card .metric-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
+  .score-card .metric-tag {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.4rem;
+  }
+
+  /* Color classes */
+  .color-green { color: var(--green); }
+  .color-yellow { color: var(--yellow); }
+  .color-red { color: var(--red); }
+  .color-white { color: var(--white-metric); }
+  .bg-green { background-color: var(--green); }
+  .bg-yellow { background-color: var(--yellow); }
+  .bg-red { background-color: var(--red); }
+  .bg-white { background-color: var(--white-metric); }
+
+  /* Category sections */
+  .category-section {
+    margin-bottom: 2rem;
+  }
+
+  .category-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 0.75rem;
+  }
+
+  /* Recurring failures table */
+  .failures-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+  }
+
+  .failures-table th,
+  .failures-table td {
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .failures-table th {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .failures-table td {
+    color: var(--text-primary);
+  }
+
+  .severity-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+
+  .severity-critical { background: rgba(244, 67, 54, 0.2); color: var(--severity-critical); }
+  .severity-major { background: rgba(255, 152, 0, 0.2); color: var(--severity-major); }
+  .severity-minor { background: rgba(139, 195, 58, 0.2); color: var(--severity-minor); }
+
+  /* Worst sessions */
+  .worst-sessions {
+    margin-bottom: 2rem;
+  }
+
+  .worst-session-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: background-color 0.15s;
+  }
+
+  .worst-session-row:hover {
+    background: var(--bg-tertiary);
+  }
+
+  .worst-session-row .session-id {
+    font-weight: 600;
+  }
+
+  .worst-session-row .session-score {
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+
+  /* Drill-down */
+  .drilldown-section {
+    margin-bottom: 2rem;
+  }
+
+  details {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+  }
+
+  summary {
+    padding: 0.8rem 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    color: var(--text-primary);
+    user-select: none;
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker { display: none; }
+
+  summary::before {
+    content: "\25b6";
+    display: inline-block;
+    margin-right: 0.7rem;
+    font-size: 0.7rem;
+    transition: transform 0.2s;
+  }
+
+  details[open] > summary::before {
+    transform: rotate(90deg);
+  }
+
+  .detail-content {
+    padding: 0 1.2rem 1rem;
+  }
+
+  .detail-content .session-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+  }
+
+  .detail-content .session-meta .meta-item {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .detail-content .session-meta .meta-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+  }
+
+  .phase-list {
+    margin: 0.5rem 0;
+  }
+
+  .phase-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.35rem 0;
+    font-size: 0.9rem;
+  }
+
+  .phase-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .phase-status-completed { background: var(--green); }
+  .phase-status-failed { background: var(--red); }
+  .phase-status-skipped { background: var(--text-muted); }
+
+  .findings-list {
+    margin: 0.5rem 0;
+  }
+
+  .finding-item {
+    padding: 0.5rem 0.8rem;
+    border-left: 3px solid var(--border-color);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+  }
+
+  .finding-item.finding-critical { border-left-color: var(--severity-critical); }
+  .finding-item.finding-major { border-left-color: var(--severity-major); }
+  .finding-item.finding-minor { border-left-color: var(--severity-minor); }
+
+  .finding-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .finding-issue {
+    color: var(--text-primary);
+  }
+
+  .finding-location {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  .finding-suggestion {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-top: 0.2rem;
+    font-style: italic;
+  }
+
+  /* Score chips for drill-down */
+  .score-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+  }
+
+  .score-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.6rem;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    font-size: 0.8rem;
+  }
+
+  .score-chip .chip-name {
+    color: var(--text-secondary);
+  }
+
+  .score-chip .chip-value {
+    font-weight: 600;
+  }
+
+  /* Faithfulness breakdown */
+  .faithfulness-detail {
+    margin: 0.5rem 0;
+    padding: 0.5rem 0.8rem;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+  }
+
+  .faithfulness-detail .claims-label {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-align: center;
+  }
+
+  /* Empty state */
+  .empty-state {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 1rem 0;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>RAKI Evaluation Report</h1>
+    <div class="meta">
+      <span><strong>Run:</strong> {{ report.run_id }}</span>
+      <span><strong>Timestamp:</strong> {{ report.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>
+      <span><strong>Sessions:</strong> {{ report.sample_results | length }}</span>
+    </div>
+  </header>
+
+  {# --- Aggregate Scores --- #}
+  <section>
+    <h2>Aggregate Scores</h2>
+
+    {% if operational_scores %}
+    <div class="category-section">
+      <div class="category-label">Operational Health</div>
+      <div class="score-grid">
+        {% for name, score in operational_scores.items() %}
+        <div class="score-card">
+          <div class="metric-name">{{ name }}</div>
+          <div class="metric-value {{ color_class(score) }}">{{ "%.2f"|format(score) }}</div>
+          {% if score <= 1.0 and score >= 0.0 %}
+          <div class="metric-bar">
+            <div class="metric-bar-fill bg-{{ color_name(score) }}" style="width: {{ (score * 100)|int }}%"></div>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if retrieval_scores %}
+    <div class="category-section">
+      <div class="category-label">Retrieval Quality</div>
+      <div class="score-grid">
+        {% for name, score in retrieval_scores.items() %}
+        <div class="score-card">
+          <div class="metric-name">{{ name }}{% if name in experimental_metrics %} <span class="metric-tag">[experimental]</span>{% endif %}</div>
+          <div class="metric-value {{ color_class(score) }}">{{ "%.2f"|format(score) }}</div>
+          {% if score <= 1.0 and score >= 0.0 %}
+          <div class="metric-bar">
+            <div class="metric-bar-fill bg-{{ color_name(score) }}" style="width: {{ (score * 100)|int }}%"></div>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </section>
+
+  {# --- Recurring Failures --- #}
+  {% if recurring_failures %}
+  <section>
+    <h2>Recurring Failures</h2>
+    <table class="failures-table">
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Severity</th>
+          <th>Count</th>
+          <th>Sessions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for failure in recurring_failures %}
+        <tr>
+          <td>{{ failure.issue }}</td>
+          <td><span class="severity-badge severity-{{ failure.severity }}">{{ failure.severity }}</span></td>
+          <td>{{ failure.count }}</td>
+          <td>{{ failure.sessions | join(", ") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {# --- Worst 5 Sessions --- #}
+  {% if worst_sessions %}
+  <section class="worst-sessions">
+    <h2>Worst {{ worst_sessions | length }} Sessions</h2>
+    {% for entry in worst_sessions %}
+    <a class="worst-session-row" href="#session-{{ entry.session_id }}">
+      <span class="session-id">{{ entry.session_id }}</span>
+      <span class="session-score {{ color_class(entry.avg_score) }}">{{ "%.2f"|format(entry.avg_score) }}</span>
+    </a>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {# --- Per-Session Drill-Down --- #}
+  {% if report.sample_results %}
+  <section class="drilldown-section">
+    <h2>Per-Session Drill-Down</h2>
+    {% for sample_result in report.sample_results %}
+    {% set sample = sample_result.sample %}
+    {% set session_id = sample.session.session_id %}
+    <details id="session-{{ session_id }}">
+      <summary>
+        <span>{{ session_id }}</span>
+        <span class="score-chips">
+          {% for metric_result in sample_result.scores %}
+          {% if session_id in metric_result.sample_scores %}
+          {% set session_score = metric_result.sample_scores[session_id] %}
+          <span class="score-chip">
+            <span class="chip-name">{{ metric_result.name }}</span>
+            <span class="chip-value {{ color_class(session_score) }}">{{ "%.2f"|format(session_score) }}</span>
+          </span>
+          {% endif %}
+          {% endfor %}
+        </span>
+      </summary>
+      <div class="detail-content">
+        <div class="session-meta">
+          <div class="meta-item">
+            <span class="meta-label">Rework Cycles</span>
+            <span>{{ sample.session.rework_cycles }}</span>
+          </div>
+          {% if sample.session.total_cost_usd is not none %}
+          <div class="meta-item">
+            <span class="meta-label">Cost</span>
+            <span>${{ "%.2f"|format(sample.session.total_cost_usd) }}</span>
+          </div>
+          {% endif %}
+          <div class="meta-item">
+            <span class="meta-label">Phases</span>
+            <span>{{ sample.phases | length }}</span>
+          </div>
+        </div>
+
+        {# Phases #}
+        <h3>Phases</h3>
+        <div class="phase-list">
+          {% for phase in sample.phases %}
+          <div class="phase-item">
+            <span class="phase-status phase-status-{{ phase.status }}"></span>
+            <span>{{ phase.name }} (gen {{ phase.generation }})</span>
+            <span style="color: var(--text-muted);">&mdash; {{ phase.status }}</span>
+          </div>
+          {% endfor %}
+        </div>
+
+        {# Findings #}
+        {% if sample.findings %}
+        <h3>Findings</h3>
+        <div class="findings-list">
+          {% for finding in sample.findings %}
+          <div class="finding-item finding-{{ finding.severity }}">
+            <div class="finding-header">
+              <span class="severity-badge severity-{{ finding.severity }}">{{ finding.severity }}</span>
+              <span class="finding-issue">{{ finding.issue }}</span>
+            </div>
+            {% if finding.file %}
+            <div class="finding-location">{{ finding.file }}{% if finding.line %}:{{ finding.line }}{% endif %}</div>
+            {% endif %}
+            {% if finding.suggestion %}
+            <div class="finding-suggestion">{{ finding.suggestion }}</div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {# Faithfulness breakdown #}
+        {% for metric_result in sample_result.scores %}
+        {% if metric_result.name == "faithfulness" and metric_result.details %}
+        <div class="faithfulness-detail">
+          <span class="claims-label">Faithfulness Claims:</span>
+          {% if "claims_verified" in metric_result.details and "claims_total" in metric_result.details %}
+          {{ metric_result.details["claims_verified"] }} / {{ metric_result.details["claims_total"] }} claims verified
+          {% else %}
+          {% for detail_key, detail_val in metric_result.details.items() %}
+          {{ detail_key }}: {{ detail_val }}{% if not loop.last %}, {% endif %}
+          {% endfor %}
+          {% endif %}
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+    </details>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <footer>
+    Generated by RAKI &mdash; Retrieval Assessment for Knowledge Impact
+  </footer>
+</div>
+
+<script>
+/* Toggle all sessions open/closed */
+(function() {
+  document.querySelectorAll('.worst-session-row').forEach(function(row) {
+    row.addEventListener('click', function(event) {
+      event.preventDefault();
+      var targetId = this.getAttribute('href').substring(1);
+      var target = document.getElementById(targetId);
+      if (target) {
+        target.setAttribute('open', '');
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

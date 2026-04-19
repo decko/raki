@@ -203,6 +203,19 @@ def run(
     json_file = output_path / timestamp_filename(report)
     write_json_report(report, json_file, include_sessions=include_sessions)
 
+    try:
+        from raki.report.html_report import html_timestamp_filename, write_html_report
+
+        html_file = output_path / html_timestamp_filename(report)
+        write_html_report(report, html_file, include_sessions=include_sessions)
+    except ImportError:
+        html_file = None
+        if not quiet:
+            console.print(
+                "[yellow]Note: jinja2 not installed — skipping HTML report. "
+                "Install with: uv pip install raki[html][/yellow]"
+            )
+
     if json_stdout:
         import json as json_mod
 
@@ -214,7 +227,10 @@ def run(
         click.echo(json_mod.dumps(data, indent=2, default=str))
 
     if not quiet:
-        console.print(f"\nReport written:\n  JSON -> {json_file}")
+        report_msg = f"\nReport written:\n  JSON -> {json_file}"
+        if html_file is not None:
+            report_msg += f"\n  HTML -> {html_file}"
+        console.print(report_msg)
 
     if threshold is not None:
         from raki.report.cli_summary import OPERATIONAL_METRICS
