@@ -1,0 +1,1 @@
+{"ticket_key": "WEB-44", "complexity": "high", "approach": "Build a SQL query builder that translates user-specified filters into parameterized queries. Support AND/OR composition, column type validation, and pagination.", "automatable": true}

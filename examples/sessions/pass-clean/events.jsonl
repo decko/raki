@@ -1,0 +1,8 @@
+{"timestamp":"2026-04-10T09:00:00-03:00","phase":"triage","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-10T09:00:45-03:00","phase":"triage","kind":"phase_completed","data":{"cost":0.6,"duration_ms":45000,"tokens_in":4200,"tokens_out":980}}
+{"timestamp":"2026-04-10T09:00:45-03:00","phase":"implement","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-10T09:05:25-03:00","phase":"implement","kind":"phase_completed","data":{"cost":3.2,"duration_ms":280000,"tokens_in":12000,"tokens_out":3800}}
+{"timestamp":"2026-04-10T09:05:25-03:00","phase":"verify","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-10T09:07:55-03:00","phase":"verify","kind":"phase_completed","data":{"cost":1.8,"duration_ms":150000,"summary":"PASS","tokens_in":8500,"tokens_out":2100}}
+{"timestamp":"2026-04-10T09:07:55-03:00","phase":"review","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-10T09:11:35-03:00","phase":"review","kind":"phase_completed","data":{"cost":2.7,"duration_ms":220000,"tokens_in":9800,"tokens_out":3200}}
