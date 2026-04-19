@@ -1,0 +1,1355 @@
+{
+  "run_id": "eval-b6cd29be",
+  "timestamp": "2026-04-19T12:51:23.509655Z",
+  "config": {
+    "llm_model": "claude-sonnet-4-6",
+    "metrics": [
+      "first_pass_verify_rate",
+      "rework_cycles",
+      "review_severity_distribution",
+      "cost_efficiency",
+      "knowledge_retrieval_miss_rate"
+    ],
+    "skip_llm": true
+  },
+  "aggregate_scores": {
+    "first_pass_verify_rate": 0.75,
+    "rework_cycles": 0.16666666666666666,
+    "review_severity_distribution": 0.3939393939393939,
+    "cost_efficiency": 10.9325,
+    "knowledge_retrieval_miss_rate": 1.0
+  },
+  "sample_results": [
+    {
+      "sample": {
+        "session": {
+          "session_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+          "tenant_id": null,
+          "ticket": null,
+          "started_at": "2026-04-15T09:30:15.200000Z",
+          "total_cost_usd": 0.195,
+          "total_phases": 1,
+          "rework_cycles": 0,
+          "knowledge_version": null,
+          "model_id": "claude-sonnet-4-20250514"
+        },
+        "phases": [
+          {
+            "name": "session",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 0.195,
+            "duration_ms": 28500,
+            "tokens_in": 50100,
+            "tokens_out": 2250,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "I'll implement the health check endpoint for the web API. Let me start by reading the existing router configuration.\nNow I'll add the health check endpoint.\nLet me run the tests to verify the health check endpoint works.\nThe health check endpoint has been added successfully. It responds at `/api/v1/health` with a 200 OK status and includes uptime and version information in the response body. All 3 tests pass.",
+            "output_structured": null,
+            "tool_calls": [
+              {
+                "name": "Read",
+                "arguments": {
+                  "file_path": "src/routes/index.ts"
+                },
+                "result_summary": null,
+                "duration_ms": null,
+                "token_cost": null
+              },
+              {
+                "name": "Edit",
+                "arguments": {
+                  "file_path": "src/routes/index.ts",
+                  "old_string": "export default router;",
+                  "new_string": "router.get('/api/v1/health', healthController);\nexport default router;"
+                },
+                "result_summary": null,
+                "duration_ms": null,
+                "token_cost": null
+              },
+              {
+                "name": "Bash",
+                "arguments": {
+                  "command": "npm test -- --testPathPattern=health",
+                  "description": "Run health check tests"
+                },
+                "result_summary": null,
+                "duration_ms": null,
+                "token_cost": null
+              }
+            ],
+            "files_modified": []
+          }
+        ],
+        "findings": [],
+        "events": [],
+        "ground_truth": null
+      },
+      "scores": [
+        {
+          "name": "rework_cycles",
+          "score": 0.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "cost_efficiency",
+          "score": 0.195,
+          "details": {},
+          "sample_scores": {}
+        }
+      ]
+    },
+    {
+      "sample": {
+        "session": {
+          "session_id": "WEB-44",
+          "tenant_id": null,
+          "ticket": "WEB-44",
+          "started_at": "2026-04-12T14:00:00-03:00",
+          "total_cost_usd": 15.6,
+          "total_phases": 4,
+          "rework_cycles": 0,
+          "knowledge_version": null,
+          "model_id": "claude-sonnet-4-20250514"
+        },
+        "phases": [
+          {
+            "name": "triage",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 0.5,
+            "duration_ms": 38000,
+            "tokens_in": 3800,
+            "tokens_out": 850,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-44\", \"complexity\": \"high\", \"approach\": \"Build a SQL query builder that translates user-specified filters into parameterized queries. Support AND/OR composition, column type validation, and pagination.\", \"automatable\": true}",
+            "output_structured": {
+              "ticket_key": "WEB-44",
+              "complexity": "high",
+              "approach": "Build a SQL query builder that translates user-specified filters into parameterized queries. Support AND/OR composition, column type validation, and pagination.",
+              "automatable": true
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "implement",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 4.8,
+            "duration_ms": 390000,
+            "tokens_in": 16000,
+            "tokens_out": 4800,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-44\", \"commits\": [{\"hash\": \"c3d4e5f\", \"message\": \"feat(reports): add dynamic SQL query builder\"}, {\"hash\": \"g6h7i8j\", \"message\": \"test(reports): add query builder tests\"}], \"files_changed\": [{\"action\": \"added\", \"path\": \"src/reports/query-builder.ts\"}, {\"action\": \"added\", \"path\": \"tests/reports/query-builder.test.ts\"}, {\"action\": \"modified\", \"path\": \"src/reports/controller.ts\"}], \"tests_passed\": true}",
+            "output_structured": {
+              "ticket_key": "WEB-44",
+              "commits": [
+                {
+                  "hash": "c3d4e5f",
+                  "message": "feat(reports): add dynamic SQL query builder"
+                },
+                {
+                  "hash": "g6h7i8j",
+                  "message": "test(reports): add query builder tests"
+                }
+              ],
+              "files_changed": [
+                {
+                  "action": "added",
+                  "path": "src/reports/query-builder.ts"
+                },
+                {
+                  "action": "added",
+                  "path": "tests/reports/query-builder.test.ts"
+                },
+                {
+                  "action": "modified",
+                  "path": "src/reports/controller.ts"
+                }
+              ],
+              "tests_passed": true
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "verify",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 2.3,
+            "duration_ms": 180000,
+            "tokens_in": 9200,
+            "tokens_out": 2400,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-44\", \"verdict\": \"PASS\", \"command_results\": [{\"command\": \"npm test -- --testPathPattern=query-builder\", \"exit_code\": 0, \"passed\": true}], \"criteria_results\": [{\"criterion\": \"Query builder produces parameterized SQL\", \"passed\": true, \"evidence\": \"All generated queries use $1, $2 placeholders instead of string interpolation\"}, {\"criterion\": \"Filter composition supports AND/OR\", \"passed\": true, \"evidence\": \"Test covers nested AND/OR groups with correct parenthesization\"}]}",
+            "output_structured": {
+              "ticket_key": "WEB-44",
+              "verdict": "PASS",
+              "command_results": [
+                {
+                  "command": "npm test -- --testPathPattern=query-builder",
+                  "exit_code": 0,
+                  "passed": true
+                }
+              ],
+              "criteria_results": [
+                {
+                  "criterion": "Query builder produces parameterized SQL",
+                  "passed": true,
+                  "evidence": "All generated queries use $1, $2 placeholders instead of string interpolation"
+                },
+                {
+                  "criterion": "Filter composition supports AND/OR",
+                  "passed": true,
+                  "evidence": "Test covers nested AND/OR groups with correct parenthesization"
+                }
+              ]
+            },
+            "tool_calls": [],
+            "files_modified": []
+          }
+        ],
+        "findings": [
+          {
+            "reviewer": "security-specialist",
+            "severity": "critical",
+            "file": "src/reports/query-builder.ts",
+            "line": 45,
+            "issue": "Column names are interpolated directly into SQL without allowlist validation, enabling SQL injection via crafted filter column names",
+            "suggestion": "Validate column names against an explicit allowlist derived from the table schema before interpolation"
+          },
+          {
+            "reviewer": "security-specialist",
+            "severity": "critical",
+            "file": "src/reports/query-builder.ts",
+            "line": 78,
+            "issue": "ORDER BY clause accepts arbitrary expressions, allowing blind SQL injection through sort parameters",
+            "suggestion": "Restrict ORDER BY to allowlisted column names and directions (ASC/DESC) only"
+          },
+          {
+            "reviewer": "api-specialist",
+            "severity": "major",
+            "file": "src/reports/controller.ts",
+            "line": 112,
+            "issue": "No pagination limit cap allows clients to request unbounded result sets, risking OOM on large tables",
+            "suggestion": "Enforce a maximum page size (e.g. 1000 rows) regardless of client request"
+          },
+          {
+            "reviewer": "api-specialist",
+            "severity": "minor",
+            "file": "tests/reports/query-builder.test.ts",
+            "line": 89,
+            "issue": "Test does not cover SQL injection vectors in column names",
+            "suggestion": "Add test cases with column names containing SQL metacharacters (semicolons, quotes, comments)"
+          }
+        ],
+        "events": [
+          {
+            "timestamp": "2026-04-12T14:00:00-03:00",
+            "phase": "triage",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-12T14:00:38-03:00",
+            "phase": "triage",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 0.5,
+              "duration_ms": 38000
+            }
+          },
+          {
+            "timestamp": "2026-04-12T14:00:38-03:00",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-12T14:07:08-03:00",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 4.8,
+              "duration_ms": 390000
+            }
+          },
+          {
+            "timestamp": "2026-04-12T14:07:08-03:00",
+            "phase": "verify",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-12T14:10:08-03:00",
+            "phase": "verify",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 2.3,
+              "duration_ms": 180000,
+              "summary": "PASS"
+            }
+          },
+          {
+            "timestamp": "2026-04-12T14:10:08-03:00",
+            "phase": "review",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-12T14:17:08-03:00",
+            "phase": "review",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 8.0,
+              "duration_ms": 420000
+            }
+          }
+        ],
+        "ground_truth": null
+      },
+      "scores": [
+        {
+          "name": "first_pass_verify_rate",
+          "score": 1.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "rework_cycles",
+          "score": 0.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "cost_efficiency",
+          "score": 15.6,
+          "details": {},
+          "sample_scores": {}
+        }
+      ]
+    },
+    {
+      "sample": {
+        "session": {
+          "session_id": "WEB-46",
+          "tenant_id": null,
+          "ticket": "WEB-46",
+          "started_at": "2026-04-14T08:30:00-03:00",
+          "total_cost_usd": 14.2,
+          "total_phases": 4,
+          "rework_cycles": 0,
+          "knowledge_version": null,
+          "model_id": "claude-sonnet-4-20250514"
+        },
+        "phases": [
+          {
+            "name": "triage",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 0.8,
+            "duration_ms": 58000,
+            "tokens_in": 5000,
+            "tokens_out": 1200,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-46\", \"complexity\": \"high\", \"approach\": \"Add WebSocket server using ws library, implement channel-based pub/sub for notifications, authenticate connections via JWT token in handshake query params.\", \"automatable\": true}",
+            "output_structured": {
+              "ticket_key": "WEB-46",
+              "complexity": "high",
+              "approach": "Add WebSocket server using ws library, implement channel-based pub/sub for notifications, authenticate connections via JWT token in handshake query params.",
+              "automatable": true
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "implement",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 4.5,
+            "duration_ms": 350000,
+            "tokens_in": 15500,
+            "tokens_out": 4600,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-46\", \"commits\": [{\"hash\": \"e5f6g7h\", \"message\": \"feat(ws): add WebSocket notification server\"}, {\"hash\": \"i8j9k0l\", \"message\": \"test(ws): add connection and pub/sub tests\"}], \"files_changed\": [{\"action\": \"added\", \"path\": \"src/ws/server.ts\"}, {\"action\": \"added\", \"path\": \"src/ws/channels.ts\"}, {\"action\": \"added\", \"path\": \"tests/ws/server.test.ts\"}, {\"action\": \"modified\", \"path\": \"src/index.ts\"}], \"tests_passed\": true}",
+            "output_structured": {
+              "ticket_key": "WEB-46",
+              "commits": [
+                {
+                  "hash": "e5f6g7h",
+                  "message": "feat(ws): add WebSocket notification server"
+                },
+                {
+                  "hash": "i8j9k0l",
+                  "message": "test(ws): add connection and pub/sub tests"
+                }
+              ],
+              "files_changed": [
+                {
+                  "action": "added",
+                  "path": "src/ws/server.ts"
+                },
+                {
+                  "action": "added",
+                  "path": "src/ws/channels.ts"
+                },
+                {
+                  "action": "added",
+                  "path": "tests/ws/server.test.ts"
+                },
+                {
+                  "action": "modified",
+                  "path": "src/index.ts"
+                }
+              ],
+              "tests_passed": true
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "verify",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 2.1,
+            "duration_ms": 170000,
+            "tokens_in": 8800,
+            "tokens_out": 2200,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-46\", \"verdict\": \"PASS\", \"command_results\": [{\"command\": \"npm test -- --testPathPattern=ws\", \"exit_code\": 0, \"passed\": true}, {\"command\": \"npm run lint\", \"exit_code\": 0, \"passed\": true}], \"criteria_results\": [{\"criterion\": \"WebSocket connections authenticate via JWT\", \"passed\": true, \"evidence\": \"Test verifies connection rejected with invalid token\"}, {\"criterion\": \"Pub/sub delivers messages to subscribed channels\", \"passed\": true, \"evidence\": \"Integration test confirms message delivery across 3 channels\"}]}",
+            "output_structured": {
+              "ticket_key": "WEB-46",
+              "verdict": "PASS",
+              "command_results": [
+                {
+                  "command": "npm test -- --testPathPattern=ws",
+                  "exit_code": 0,
+                  "passed": true
+                },
+                {
+                  "command": "npm run lint",
+                  "exit_code": 0,
+                  "passed": true
+                }
+              ],
+              "criteria_results": [
+                {
+                  "criterion": "WebSocket connections authenticate via JWT",
+                  "passed": true,
+                  "evidence": "Test verifies connection rejected with invalid token"
+                },
+                {
+                  "criterion": "Pub/sub delivers messages to subscribed channels",
+                  "passed": true,
+                  "evidence": "Integration test confirms message delivery across 3 channels"
+                }
+              ]
+            },
+            "tool_calls": [],
+            "files_modified": []
+          }
+        ],
+        "findings": [
+          {
+            "reviewer": "api-specialist",
+            "severity": "minor",
+            "file": "src/ws/server.ts",
+            "line": 52,
+            "issue": "Heartbeat interval of 60s is too long for mobile clients that may lose connectivity",
+            "suggestion": "Reduce heartbeat interval to 30s and add configurable timeout"
+          },
+          {
+            "reviewer": "infra-specialist",
+            "severity": "major",
+            "file": "src/ws/channels.ts",
+            "line": 18,
+            "issue": "In-memory channel subscriptions will not survive process restarts in multi-instance deployments",
+            "suggestion": "Consider using Redis pub/sub as backing store for channel subscriptions"
+          },
+          {
+            "reviewer": "infra-specialist",
+            "severity": "minor",
+            "file": "src/ws/server.ts",
+            "line": 95,
+            "issue": "No connection limit per IP address could allow resource exhaustion",
+            "suggestion": "Add per-IP connection limit with configurable threshold"
+          }
+        ],
+        "events": [
+          {
+            "timestamp": "2026-04-14T08:30:00-03:00",
+            "phase": "triage",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:30:58-03:00",
+            "phase": "triage",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 0.8,
+              "duration_ms": 58000
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:30:58-03:00",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:36:48-03:00",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 4.5,
+              "duration_ms": 350000
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:36:48-03:00",
+            "phase": "verify",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:39:38-03:00",
+            "phase": "verify",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 2.1,
+              "duration_ms": 170000,
+              "summary": "PASS"
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:39:38-03:00",
+            "phase": "review",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:39:38-03:00",
+            "phase": "review",
+            "kind": "reviewer_started",
+            "data": {
+              "reviewer": "api-specialist"
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:39:38-03:00",
+            "phase": "review",
+            "kind": "reviewer_started",
+            "data": {
+              "reviewer": "infra-specialist"
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:42:50-03:00",
+            "phase": "review",
+            "kind": "reviewer_completed",
+            "data": {
+              "reviewer": "api-specialist",
+              "findings_count": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:43:15-03:00",
+            "phase": "review",
+            "kind": "reviewer_completed",
+            "data": {
+              "reviewer": "infra-specialist",
+              "findings_count": 2
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:43:15-03:00",
+            "phase": "review",
+            "kind": "review_merged",
+            "data": {
+              "findings_count": 3,
+              "verdict": "approve"
+            }
+          },
+          {
+            "timestamp": "2026-04-14T08:45:58-03:00",
+            "phase": "review",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 6.8,
+              "duration_ms": 380000
+            }
+          }
+        ],
+        "ground_truth": null
+      },
+      "scores": [
+        {
+          "name": "first_pass_verify_rate",
+          "score": 1.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "rework_cycles",
+          "score": 0.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "cost_efficiency",
+          "score": 14.2,
+          "details": {},
+          "sample_scores": {}
+        }
+      ]
+    },
+    {
+      "sample": {
+        "session": {
+          "session_id": "WEB-45",
+          "tenant_id": null,
+          "ticket": "WEB-45",
+          "started_at": "2026-04-13T11:00:00-03:00",
+          "total_cost_usd": 4.9,
+          "total_phases": 2,
+          "rework_cycles": 0,
+          "knowledge_version": null,
+          "model_id": "claude-sonnet-4-20250514"
+        },
+        "phases": [
+          {
+            "name": "triage",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 0.9,
+            "duration_ms": 65000,
+            "tokens_in": 5500,
+            "tokens_out": 1400,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-45\", \"complexity\": \"high\", \"approach\": \"Add tenant_id column to core tables, create row-level security policies, and update all queries to include tenant context from the authenticated user.\", \"automatable\": false}",
+            "output_structured": {
+              "ticket_key": "WEB-45",
+              "complexity": "high",
+              "approach": "Add tenant_id column to core tables, create row-level security policies, and update all queries to include tenant context from the authenticated user.",
+              "automatable": false
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "implement",
+            "generation": 1,
+            "status": "failed",
+            "cost_usd": 4.0,
+            "duration_ms": 480000,
+            "tokens_in": 20000,
+            "tokens_out": 6000,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-45\", \"commits\": [{\"hash\": \"d4e5f6g\", \"message\": \"feat(db): add multi-tenant migration script\"}], \"files_changed\": [{\"action\": \"added\", \"path\": \"migrations/20260413_multi_tenant.sql\"}, {\"action\": \"modified\", \"path\": \"src/db/connection.ts\"}], \"tests_passed\": false}",
+            "output_structured": {
+              "ticket_key": "WEB-45",
+              "commits": [
+                {
+                  "hash": "d4e5f6g",
+                  "message": "feat(db): add multi-tenant migration script"
+                }
+              ],
+              "files_changed": [
+                {
+                  "action": "added",
+                  "path": "migrations/20260413_multi_tenant.sql"
+                },
+                {
+                  "action": "modified",
+                  "path": "src/db/connection.ts"
+                }
+              ],
+              "tests_passed": false
+            },
+            "tool_calls": [],
+            "files_modified": []
+          }
+        ],
+        "findings": [],
+        "events": [
+          {
+            "timestamp": "2026-04-13T11:00:00-03:00",
+            "phase": "triage",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-13T11:01:05-03:00",
+            "phase": "triage",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 0.9,
+              "duration_ms": 65000,
+              "tokens_in": 5500,
+              "tokens_out": 1400
+            }
+          },
+          {
+            "timestamp": "2026-04-13T11:01:05-03:00",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-13T11:09:05-03:00",
+            "phase": "implement",
+            "kind": "phase_failed",
+            "data": {
+              "error": "Migration script failed: column tenant_id already exists on users table. Conflicting migration 20260401_add_tenant detected.",
+              "exit_code": 1
+            }
+          }
+        ],
+        "ground_truth": null
+      },
+      "scores": [
+        {
+          "name": "rework_cycles",
+          "score": 0.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "cost_efficiency",
+          "score": 4.9,
+          "details": {},
+          "sample_scores": {}
+        }
+      ]
+    },
+    {
+      "sample": {
+        "session": {
+          "session_id": "WEB-42",
+          "tenant_id": null,
+          "ticket": "WEB-42",
+          "started_at": "2026-04-10T09:00:00-03:00",
+          "total_cost_usd": 8.3,
+          "total_phases": 4,
+          "rework_cycles": 0,
+          "knowledge_version": null,
+          "model_id": "claude-sonnet-4-20250514"
+        },
+        "phases": [
+          {
+            "name": "triage",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 0.6,
+            "duration_ms": 45000,
+            "tokens_in": 4200,
+            "tokens_out": 980,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-42\", \"complexity\": \"medium\", \"approach\": \"Add JWT-based authentication middleware that validates Bearer ***REDACTED*** and populates request context with user identity. Integrate with existing Express router.\", \"automatable\": true}",
+            "output_structured": {
+              "ticket_key": "WEB-42",
+              "complexity": "medium",
+              "approach": "Add JWT-based authentication middleware that validates Bearer ***REDACTED*** and populates request context with user identity. Integrate with existing Express router.",
+              "automatable": true
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "implement",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 3.2,
+            "duration_ms": 280000,
+            "tokens_in": 12000,
+            "tokens_out": 3800,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-42\", \"commits\": [{\"hash\": \"a1b2c3d\", \"message\": \"feat(auth): add JWT validation middleware\"}, {\"hash\": \"e4f5g6h\", \"message\": \"test(auth): add middleware unit tests\"}], \"files_changed\": [{\"action\": \"added\", \"path\": \"src/middleware/auth.ts\"}, {\"action\": \"added\", \"path\": \"tests/middleware/auth.test.ts\"}, {\"action\": \"modified\", \"path\": \"src/routes/index.ts\"}], \"tests_passed\": true}",
+            "output_structured": {
+              "ticket_key": "WEB-42",
+              "commits": [
+                {
+                  "hash": "a1b2c3d",
+                  "message": "feat(auth): add JWT validation middleware"
+                },
+                {
+                  "hash": "e4f5g6h",
+                  "message": "test(auth): add middleware unit tests"
+                }
+              ],
+              "files_changed": [
+                {
+                  "action": "added",
+                  "path": "src/middleware/auth.ts"
+                },
+                {
+                  "action": "added",
+                  "path": "tests/middleware/auth.test.ts"
+                },
+                {
+                  "action": "modified",
+                  "path": "src/routes/index.ts"
+                }
+              ],
+              "tests_passed": true
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "verify",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 1.8,
+            "duration_ms": 150000,
+            "tokens_in": 8500,
+            "tokens_out": 2100,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-42\", \"verdict\": \"PASS\", \"command_results\": [{\"command\": \"npm test -- --coverage\", \"exit_code\": 0, \"passed\": true}, {\"command\": \"npm run lint\", \"exit_code\": 0, \"passed\": true}], \"criteria_results\": [{\"criterion\": \"JWT tokens are validated on protected routes\", \"passed\": true, \"evidence\": \"Integration test verifies 401 for missing/invalid tokens\"}, {\"criterion\": \"Valid tokens populate req.user context\", \"passed\": true, \"evidence\": \"Unit test asserts user identity extraction from JWT payload\"}]}",
+            "output_structured": {
+              "ticket_key": "WEB-42",
+              "verdict": "PASS",
+              "command_results": [
+                {
+                  "command": "npm test -- --coverage",
+                  "exit_code": 0,
+                  "passed": true
+                },
+                {
+                  "command": "npm run lint",
+                  "exit_code": 0,
+                  "passed": true
+                }
+              ],
+              "criteria_results": [
+                {
+                  "criterion": "JWT tokens are validated on protected routes",
+                  "passed": true,
+                  "evidence": "Integration test verifies 401 for missing/invalid tokens"
+                },
+                {
+                  "criterion": "Valid tokens populate req.user context",
+                  "passed": true,
+                  "evidence": "Unit test asserts user identity extraction from JWT payload"
+                }
+              ]
+            },
+            "tool_calls": [],
+            "files_modified": []
+          }
+        ],
+        "findings": [
+          {
+            "reviewer": "security-specialist",
+            "severity": "minor",
+            "file": "src/middleware/auth.ts",
+            "line": 28,
+            "issue": "Token expiry error message could leak clock skew information",
+            "suggestion": "Use a generic 'Token expired' message without including the expiry timestamp"
+          }
+        ],
+        "events": [
+          {
+            "timestamp": "2026-04-10T09:00:00-03:00",
+            "phase": "triage",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-10T09:00:45-03:00",
+            "phase": "triage",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 0.6,
+              "duration_ms": 45000,
+              "tokens_in": 4200,
+              "tokens_out": 980
+            }
+          },
+          {
+            "timestamp": "2026-04-10T09:00:45-03:00",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-10T09:05:25-03:00",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 3.2,
+              "duration_ms": 280000,
+              "tokens_in": 12000,
+              "tokens_out": 3800
+            }
+          },
+          {
+            "timestamp": "2026-04-10T09:05:25-03:00",
+            "phase": "verify",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-10T09:07:55-03:00",
+            "phase": "verify",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 1.8,
+              "duration_ms": 150000,
+              "summary": "PASS",
+              "tokens_in": 8500,
+              "tokens_out": 2100
+            }
+          },
+          {
+            "timestamp": "2026-04-10T09:07:55-03:00",
+            "phase": "review",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-10T09:11:35-03:00",
+            "phase": "review",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 2.7,
+              "duration_ms": 220000,
+              "tokens_in": 9800,
+              "tokens_out": 3200
+            }
+          }
+        ],
+        "ground_truth": null
+      },
+      "scores": [
+        {
+          "name": "first_pass_verify_rate",
+          "score": 1.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "rework_cycles",
+          "score": 0.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "cost_efficiency",
+          "score": 8.3,
+          "details": {},
+          "sample_scores": {}
+        }
+      ]
+    },
+    {
+      "sample": {
+        "session": {
+          "session_id": "WEB-43",
+          "tenant_id": null,
+          "ticket": "WEB-43",
+          "started_at": "2026-04-11T10:00:00-03:00",
+          "total_cost_usd": 22.4,
+          "total_phases": 4,
+          "rework_cycles": 1,
+          "knowledge_version": null,
+          "model_id": "claude-sonnet-4-20250514"
+        },
+        "phases": [
+          {
+            "name": "triage",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 0.7,
+            "duration_ms": 52000,
+            "tokens_in": 4800,
+            "tokens_out": 1100,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-43\", \"complexity\": \"high\", \"approach\": \"Implement sliding window rate limiting using Redis. Add per-endpoint configuration, return standard 429 responses with Retry-After headers.\", \"automatable\": true}",
+            "output_structured": {
+              "ticket_key": "WEB-43",
+              "complexity": "high",
+              "approach": "Implement sliding window rate limiting using Redis. Add per-endpoint configuration, return standard 429 responses with Retry-After headers.",
+              "automatable": true
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "implement",
+            "generation": 2,
+            "status": "completed",
+            "cost_usd": 7.8,
+            "duration_ms": 520000,
+            "tokens_in": 18000,
+            "tokens_out": 5200,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-43\", \"commits\": [{\"hash\": \"b2c3d4e\", \"message\": \"feat(api): add sliding window rate limiter\"}, {\"hash\": \"f7g8h9i\", \"message\": \"fix(api): use atomic Redis MULTI for window reset\"}], \"files_changed\": [{\"action\": \"modified\", \"path\": \"src/middleware/rate-limit.ts\"}, {\"action\": \"modified\", \"path\": \"tests/middleware/rate-limit.test.ts\"}, {\"action\": \"modified\", \"path\": \"src/config/defaults.ts\"}], \"tests_passed\": true}",
+            "output_structured": {
+              "ticket_key": "WEB-43",
+              "commits": [
+                {
+                  "hash": "b2c3d4e",
+                  "message": "feat(api): add sliding window rate limiter"
+                },
+                {
+                  "hash": "f7g8h9i",
+                  "message": "fix(api): use atomic Redis MULTI for window reset"
+                }
+              ],
+              "files_changed": [
+                {
+                  "action": "modified",
+                  "path": "src/middleware/rate-limit.ts"
+                },
+                {
+                  "action": "modified",
+                  "path": "tests/middleware/rate-limit.test.ts"
+                },
+                {
+                  "action": "modified",
+                  "path": "src/config/defaults.ts"
+                }
+              ],
+              "tests_passed": true
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "implement",
+            "generation": 1,
+            "status": "completed",
+            "cost_usd": 7.8,
+            "duration_ms": 520000,
+            "tokens_in": 18000,
+            "tokens_out": 5200,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-43\", \"commits\": [{\"hash\": \"b2c3d4e\", \"message\": \"feat(api): add sliding window rate limiter\"}], \"files_changed\": [{\"action\": \"added\", \"path\": \"src/middleware/rate-limit.ts\"}, {\"action\": \"added\", \"path\": \"tests/middleware/rate-limit.test.ts\"}, {\"action\": \"modified\", \"path\": \"src/config/defaults.ts\"}], \"tests_passed\": false}",
+            "output_structured": {
+              "ticket_key": "WEB-43",
+              "commits": [
+                {
+                  "hash": "b2c3d4e",
+                  "message": "feat(api): add sliding window rate limiter"
+                }
+              ],
+              "files_changed": [
+                {
+                  "action": "added",
+                  "path": "src/middleware/rate-limit.ts"
+                },
+                {
+                  "action": "added",
+                  "path": "tests/middleware/rate-limit.test.ts"
+                },
+                {
+                  "action": "modified",
+                  "path": "src/config/defaults.ts"
+                }
+              ],
+              "tests_passed": false
+            },
+            "tool_calls": [],
+            "files_modified": []
+          },
+          {
+            "name": "verify",
+            "generation": 2,
+            "status": "completed",
+            "cost_usd": 4.2,
+            "duration_ms": 310000,
+            "tokens_in": 11000,
+            "tokens_out": 2800,
+            "knowledge_context": null,
+            "instruction_context": null,
+            "output": "{\"ticket_key\": \"WEB-43\", \"verdict\": \"PASS\", \"command_results\": [{\"command\": \"npm test -- --testPathPattern=rate-limit\", \"exit_code\": 0, \"passed\": true}], \"criteria_results\": [{\"criterion\": \"Rate limiting returns 429 after threshold exceeded\", \"passed\": true, \"evidence\": \"Integration test verifies 429 response with Retry-After header\"}, {\"criterion\": \"Sliding window resets correctly\", \"passed\": true, \"evidence\": \"Test asserts counter resets after window expiry using fake timers\"}]}",
+            "output_structured": {
+              "ticket_key": "WEB-43",
+              "verdict": "PASS",
+              "command_results": [
+                {
+                  "command": "npm test -- --testPathPattern=rate-limit",
+                  "exit_code": 0,
+                  "passed": true
+                }
+              ],
+              "criteria_results": [
+                {
+                  "criterion": "Rate limiting returns 429 after threshold exceeded",
+                  "passed": true,
+                  "evidence": "Integration test verifies 429 response with Retry-After header"
+                },
+                {
+                  "criterion": "Sliding window resets correctly",
+                  "passed": true,
+                  "evidence": "Test asserts counter resets after window expiry using fake timers"
+                }
+              ]
+            },
+            "tool_calls": [],
+            "files_modified": []
+          }
+        ],
+        "findings": [
+          {
+            "reviewer": "api-specialist",
+            "severity": "critical",
+            "file": "src/middleware/rate-limit.ts",
+            "line": 67,
+            "issue": "Race condition in sliding window: read and decrement are not atomic, allowing burst requests to bypass the limit under concurrent load",
+            "suggestion": "Use Redis MULTI/EXEC transaction or Lua script to make the check-and-decrement atomic"
+          },
+          {
+            "reviewer": "api-specialist",
+            "severity": "major",
+            "file": "src/config/defaults.ts",
+            "line": 15,
+            "issue": "Default rate limit of 10000 requests/minute is too permissive for public endpoints",
+            "suggestion": "Set default to 100 requests/minute with per-endpoint override capability"
+          },
+          {
+            "reviewer": "python-specialist",
+            "severity": "minor",
+            "file": "tests/middleware/rate-limit.test.ts",
+            "line": 34,
+            "issue": "Test uses real timers which makes the sliding window test flaky",
+            "suggestion": "Use Jest fake timers to control time advancement deterministically"
+          }
+        ],
+        "events": [
+          {
+            "timestamp": "2026-04-11T10:00:00-03:00",
+            "phase": "triage",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:00:52-03:00",
+            "phase": "triage",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 0.7,
+              "duration_ms": 52000,
+              "tokens_in": 4800,
+              "tokens_out": 1100
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:00:52-03:00",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:06:52-03:00",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 3.9,
+              "duration_ms": 360000,
+              "tokens_in": 14000,
+              "tokens_out": 4000
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:06:52-03:00",
+            "phase": "verify",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:09:22-03:00",
+            "phase": "verify",
+            "kind": "phase_failed",
+            "data": {
+              "error": "Rate limit test exceeded timeout: sliding window counter not resetting",
+              "exit_code": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:09:22-03:00",
+            "phase": "review",
+            "kind": "phase_started",
+            "data": {
+              "generation": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:09:22-03:00",
+            "phase": "review",
+            "kind": "reviewer_started",
+            "data": {
+              "reviewer": "api-specialist"
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:11:40-03:00",
+            "phase": "review",
+            "kind": "reviewer_completed",
+            "data": {
+              "reviewer": "api-specialist",
+              "findings_count": 2
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:11:40-03:00",
+            "phase": "review",
+            "kind": "reviewer_started",
+            "data": {
+              "reviewer": "python-specialist"
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:13:55-03:00",
+            "phase": "review",
+            "kind": "reviewer_completed",
+            "data": {
+              "reviewer": "python-specialist",
+              "findings_count": 1
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:13:55-03:00",
+            "phase": "review",
+            "kind": "review_merged",
+            "data": {
+              "findings_count": 3,
+              "verdict": "rework"
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:13:55-03:00",
+            "phase": "review",
+            "kind": "review_rework_routed",
+            "data": {
+              "rework_cycle": 1,
+              "routing_to": "implement"
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:13:55-03:00",
+            "phase": "implement",
+            "kind": "rework_feedback_injected",
+            "data": {
+              "findings_count": 3,
+              "from_phase": "review"
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:13:55-03:00",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {
+              "generation": 2
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:19:35-03:00",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 3.9,
+              "duration_ms": 340000,
+              "tokens_in": 18000,
+              "tokens_out": 5200
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:19:35-03:00",
+            "phase": "verify",
+            "kind": "phase_started",
+            "data": {
+              "generation": 2
+            }
+          },
+          {
+            "timestamp": "2026-04-11T10:24:45-03:00",
+            "phase": "verify",
+            "kind": "phase_completed",
+            "data": {
+              "cost": 2.1,
+              "duration_ms": 310000,
+              "summary": "PASS",
+              "tokens_in": 11000,
+              "tokens_out": 2800
+            }
+          }
+        ],
+        "ground_truth": null
+      },
+      "scores": [
+        {
+          "name": "first_pass_verify_rate",
+          "score": 0.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "rework_cycles",
+          "score": 1.0,
+          "details": {},
+          "sample_scores": {}
+        },
+        {
+          "name": "cost_efficiency",
+          "score": 22.4,
+          "details": {},
+          "sample_scores": {}
+        }
+      ]
+    }
+  ],
+  "manifest_hash": null
+}
