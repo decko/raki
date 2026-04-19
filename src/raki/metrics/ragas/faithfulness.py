@@ -34,6 +34,7 @@ class FaithfulnessMetric:
     higher_is_better: bool = True
     display_format: str = "score"
     display_name: str = "Faithfulness"
+    description: str = "Whether the response is faithful to retrieved contexts"
     experimental: bool = True
 
     def compute(

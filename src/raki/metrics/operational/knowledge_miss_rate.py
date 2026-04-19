@@ -27,6 +27,7 @@ class KnowledgeRetrievalMissRate:
     higher_is_better: bool = False
     display_format: str = "score"
     display_name: str = "Knowledge miss rate"
+    description: str = "Ratio of rework findings caused by missing knowledge retrieval"
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         retrieval_gaps = 0

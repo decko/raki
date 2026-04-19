@@ -34,6 +34,7 @@ class AnswerRelevancyMetric:
     higher_is_better: bool = True
     display_format: str = "score"
     display_name: str = "Answer relevancy"
+    description: str = "Relevance of the generated response to the question"
     experimental: bool = True
 
     def compute(

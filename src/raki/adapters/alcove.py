@@ -11,6 +11,8 @@ DETECT_READ_SIZE = 4096  # Only read first 4KB for format detection
 
 class AlcoveAdapter:
     name: str = "alcove"
+    description: str = "Single-file JSON transcript with session_id and transcript array"
+    detection_hint: str = "*.json file containing session_id + transcript"
 
     def detect(self, source: Path) -> bool:
         """Detect Alcove format via substring search of first 4KB."""

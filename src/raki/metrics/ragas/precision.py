@@ -27,6 +27,7 @@ class ContextPrecisionMetric:
     higher_is_better: bool = True
     display_format: str = "score"
     display_name: str = "Context precision"
+    description: str = "Relevance of retrieved contexts to the question"
 
     def compute(
         self,

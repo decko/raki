@@ -160,6 +160,42 @@ class TestCliRunThreshold:
         assert "threshold" in result.output.lower()
         assert "no-llm" in result.output.lower() or "no_llm" in result.output.lower()
 
+    def test_threshold_exit_code_1_when_below(self, manifest_with_session, tmp_path, monkeypatch):
+        """--threshold 0.99 with low retrieval scores should produce exit code 1."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+
+        # Patch MetricsEngine.run to return a report with low retrieval scores
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={
+                "first_pass_verify_rate": 1.0,
+                "context_precision": 0.50,
+                "context_recall": 0.40,
+            },
+        )
+
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest),
+                    "--no-llm",
+                    "--threshold",
+                    "0.99",
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+            assert result.exit_code == 1
+
 
 class TestCliRunJson:
     def test_json_stdout_flag(self, manifest_with_session):
@@ -353,3 +389,79 @@ class TestCliParallelWiring:
         )
         assert result.exit_code == 0
         assert "Warning: --parallel" not in result.output
+
+
+class TestCliValidateQuiet:
+    def test_validate_quiet_suppresses_auto_discovery(self, tmp_path, monkeypatch):
+        """validate --quiet should suppress auto-discovery messages."""
+        monkeypatch.chdir(tmp_path)
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest = tmp_path / "raki.yaml"
+        manifest.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-q"])
+        assert result.exit_code == 0
+        assert "Auto-discovered" not in result.output
+
+
+class TestCliAdaptersDescriptions:
+    def test_adapters_shows_description(self):
+        """adapters command should show a description for each adapter."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["adapters"])
+        assert result.exit_code == 0
+        # Should include adapter descriptions, not just names
+        assert "meta.json" in result.output or "events.jsonl" in result.output
+        assert "session_id" in result.output or "transcript" in result.output
+
+    def test_adapters_shows_format(self):
+        """adapters command should show format type for each adapter."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["adapters"])
+        assert result.exit_code == 0
+        assert "directory" in result.output.lower() or "file" in result.output.lower()
+
+
+class TestCliSummaryDisplayName:
+    def test_summary_uses_display_name(self, manifest_with_session):
+        """CLI summary should show display_name instead of raw metric names."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "--no-llm"],
+        )
+        assert result.exit_code == 0
+        # Should show human-readable display names, not raw snake_case
+        assert "Verify rate" in result.output
+        assert "Rework cycles" in result.output
+        assert "Cost / session" in result.output
+
+    def test_summary_does_not_show_raw_names(self, manifest_with_session):
+        """CLI summary should not show raw snake_case metric names."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "--no-llm"],
+        )
+        assert result.exit_code == 0
+        # Raw snake_case names should not appear in the summary lines
+        assert "first_pass_verify_rate" not in result.output
+        assert "rework_cycles" not in result.output
+        assert "cost_efficiency" not in result.output
+
+
+class TestCliSummaryMetricDescription:
+    def test_summary_shows_metric_description(self, manifest_with_session):
+        """CLI summary should show metric description in parentheses after score."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "--no-llm"],
+        )
+        assert result.exit_code == 0
+        # Metric descriptions should appear in parentheses
+        assert "% sessions passing verify" in result.output

@@ -10,6 +10,7 @@ class ReviewSeverityDistribution:
     higher_is_better: bool = True
     display_format: str = "score"
     display_name: str = "Severity score"
+    description: str = "Weighted severity of review findings (1.0 = no findings)"
 
     WEIGHTS: dict[str, int] = {"critical": 3, "major": 2, "minor": 1}
 

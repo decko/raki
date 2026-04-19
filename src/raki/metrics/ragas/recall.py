@@ -27,6 +27,7 @@ class ContextRecallMetric:
     higher_is_better: bool = True
     display_format: str = "score"
     display_name: str = "Context recall"
+    description: str = "Coverage of needed information in retrieved contexts"
 
     def compute(
         self,
