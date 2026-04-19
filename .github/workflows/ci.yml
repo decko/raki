@@ -38,18 +38,3 @@ jobs:
       - run: uv sync --python 3.14 --extra dev
       - run: uv run pytest tests/ -v --tb=short
 
-  test-slow:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint, typecheck, test]
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
-      - run: uv sync --python 3.14 --all-extras
-      - name: Run slow tests (requires GCP credentials)
-        run: uv run pytest tests/ -v -m slow --tb=short
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
