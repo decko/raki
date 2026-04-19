@@ -149,7 +149,7 @@ Assigned-by: <developer-or-orchestrator>
 ## Gotchas
 
 1. **ty is strict** -- Protocol attributes must be satisfied by class variables, not instance attributes.
-2. **Ragas 0.4 API** -- imports from `ragas.metrics.collections`; `ascore()` takes `SingleTurnSample`, not kwargs.
+2. **Ragas 0.4 API** -- imports from `ragas.metrics.collections`; `ascore()` takes keyword args (`user_input`, `retrieved_contexts`, `response`, `reference`), not `SingleTurnSample`.
 3. **Large session files** -- some session formats can be 50MB+; `detect()` must read only the first 4KB.
 4. **ReviewFinding.severity** -- `Literal["critical", "major", "minor"]`, not bare `str`.
 5. **Operational metrics** -- return raw values (cost in $, cycles as count), not 0-1 normalized.

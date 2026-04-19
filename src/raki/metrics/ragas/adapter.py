@@ -1,7 +1,7 @@
 """Adapter from EvalDataset to Ragas-compatible row format.
 
-Maps EvalSample fields to Ragas 0.4 SingleTurnSample field names without
-importing ragas — this module has no ragas dependency.
+Maps EvalSample fields to Ragas 0.4 collections API ascore() keyword arg
+names without importing ragas -- this module has no ragas dependency.
 """
 
 from dataclasses import dataclass
@@ -12,13 +12,13 @@ from raki.model.phases import PhaseResult
 
 @dataclass
 class RagasRow:
-    """Internal representation matching Ragas 0.4 SingleTurnSample fields."""
+    """Internal representation matching Ragas 0.4 collections API ascore() kwargs."""
 
     session_id: str
-    user_input: str  # maps to SingleTurnSample.user_input
-    retrieved_contexts: list[str]  # maps to SingleTurnSample.retrieved_contexts
-    response: str  # maps to SingleTurnSample.response
-    reference: str | None  # maps to SingleTurnSample.reference (was ground_truths in v0.3)
+    user_input: str  # maps to ascore() kwarg user_input
+    retrieved_contexts: list[str]  # maps to ascore() kwarg retrieved_contexts
+    response: str  # maps to ascore() kwarg response
+    reference: str | None  # maps to ascore() kwarg reference (was ground_truths in v0.3)
 
 
 def to_ragas_rows(dataset: EvalDataset) -> list[RagasRow]:

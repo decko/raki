@@ -359,6 +359,42 @@ class TestContextPrecisionMetric:
 
         assert result.score == pytest.approx(0.75)
 
+    def test_ascore_called_with_correct_kwargs(self, monkeypatch: pytest.MonkeyPatch):
+        """Verify ascore() receives user_input, retrieved_contexts, reference as kwargs."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.90
+        mock_result.reason = None
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_precision_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_precision_class, "ContextPrecisionWithReference")
+
+        ground_truth = GroundTruth(
+            question="How to validate?",
+            reference_answer="Use pydantic",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.precision.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextPrecisionMetric()
+            metric.compute(dataset, config)
+
+        mock_metric_instance.ascore.assert_called_once()
+        call_kwargs = mock_metric_instance.ascore.call_args.kwargs
+        assert call_kwargs["user_input"] == "How to validate?"
+        assert call_kwargs["retrieved_contexts"] == ["entry 1", "entry 2"]
+        assert call_kwargs["reference"] == "Use pydantic"
+
     def test_logs_errors_on_ascore_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         from raki.metrics.ragas.precision import ContextPrecisionMetric
 
@@ -472,6 +508,42 @@ class TestContextRecallMetric:
 
         assert result.score == pytest.approx(0.88)
 
+    def test_ascore_called_with_correct_kwargs(self, monkeypatch: pytest.MonkeyPatch):
+        """Verify ascore() receives user_input, retrieved_contexts, reference as kwargs."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.91
+        mock_result.reason = None
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_recall_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_recall_class, "ContextRecall")
+
+        ground_truth = GroundTruth(
+            question="How to validate?",
+            reference_answer="Use pydantic",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.recall.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextRecallMetric()
+            metric.compute(dataset, config)
+
+        mock_metric_instance.ascore.assert_called_once()
+        call_kwargs = mock_metric_instance.ascore.call_args.kwargs
+        assert call_kwargs["user_input"] == "How to validate?"
+        assert call_kwargs["retrieved_contexts"] == ["entry 1", "entry 2"]
+        assert call_kwargs["reference"] == "Use pydantic"
+
 
 # ---------------------------------------------------------------------------
 # Async safety tests — verify _run_async works in different contexts
@@ -520,53 +592,9 @@ class TestMetricConfigJudgeLogPath:
 
 
 # ---------------------------------------------------------------------------
-# Faithfulness mock helpers (legacy dataclass API)
+# No legacy mock helpers -- all 4 metrics now use the collections API
+# via _install_ragas_mock() above.
 # ---------------------------------------------------------------------------
-
-
-def _install_faithfulness_mock(
-    monkeypatch: pytest.MonkeyPatch,
-    mock_metric_class: MagicMock,
-) -> None:
-    """Insert a fake ``ragas.metrics._faithfulness`` module into sys.modules.
-
-    Faithfulness is a legacy @dataclass metric that uses single_turn_ascore()
-    and returns a plain float, not a MetricResult.
-    """
-    import sys
-
-    fake_faithfulness_mod = MagicMock()
-    setattr(fake_faithfulness_mod, "Faithfulness", mock_metric_class)
-    fake_dataset_schema = MagicMock()
-    fake_dataset_schema.SingleTurnSample = MagicMock()
-    monkeypatch.setitem(sys.modules, "ragas", MagicMock())
-    monkeypatch.setitem(sys.modules, "ragas.metrics", MagicMock())
-    monkeypatch.setitem(sys.modules, "ragas.metrics._faithfulness", fake_faithfulness_mod)
-    monkeypatch.setitem(sys.modules, "ragas.dataset_schema", fake_dataset_schema)
-
-
-def _install_relevancy_mock(
-    monkeypatch: pytest.MonkeyPatch,
-    mock_metric_class: MagicMock,
-) -> None:
-    """Insert a fake ``ragas.metrics._answer_relevance`` module into sys.modules.
-
-    AnswerRelevancy is a legacy @dataclass metric that uses single_turn_ascore()
-    and returns a plain float, not a MetricResult.
-    """
-    import sys
-
-    fake_relevancy_mod = MagicMock()
-    setattr(fake_relevancy_mod, "AnswerRelevancy", mock_metric_class)
-    fake_dataset_schema = MagicMock()
-    fake_dataset_schema.SingleTurnSample = MagicMock()
-    fake_embeddings = MagicMock()
-    fake_embeddings.embedding_factory = MagicMock(return_value=MagicMock())
-    monkeypatch.setitem(sys.modules, "ragas", MagicMock())
-    monkeypatch.setitem(sys.modules, "ragas.metrics", MagicMock())
-    monkeypatch.setitem(sys.modules, "ragas.metrics._answer_relevance", fake_relevancy_mod)
-    monkeypatch.setitem(sys.modules, "ragas.dataset_schema", fake_dataset_schema)
-    monkeypatch.setitem(sys.modules, "ragas.embeddings", fake_embeddings)
 
 
 # ---------------------------------------------------------------------------
@@ -604,15 +632,20 @@ class TestFaithfulnessMetric:
         assert metric.display_name == "Faithfulness"
 
     def test_computes_with_mocked_ragas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Faithfulness uses collections API ascore() with keyword args."""
         from raki.metrics.ragas.faithfulness import FaithfulnessMetric
 
         monkeypatch.chdir(tmp_path)
 
+        mock_result = MagicMock()
+        mock_result.value = 0.9
+        mock_result.reason = "Faithful response"
+
         mock_metric_instance = MagicMock()
-        mock_metric_instance.single_turn_ascore = AsyncMock(return_value=0.9)
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
 
         mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
-        _install_faithfulness_mock(monkeypatch, mock_faithfulness_class)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
 
         sample = _make_sample_with_knowledge()
         dataset = EvalDataset(samples=[sample])
@@ -640,15 +673,78 @@ class TestFaithfulnessMetric:
         assert log_entry["metric"] == "faithfulness"
         assert log_entry["score"] == 0.9
 
+    def test_ascore_called_with_correct_kwargs(self, monkeypatch: pytest.MonkeyPatch):
+        """Verify ascore() receives user_input, response, retrieved_contexts as kwargs."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.85
+        mock_result.reason = None
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        ground_truth = GroundTruth(
+            question="How to validate?",
+            reference_answer="Use pydantic",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            metric.compute(dataset, config)
+
+        mock_metric_instance.ascore.assert_called_once()
+        call_kwargs = mock_metric_instance.ascore.call_args.kwargs
+        assert call_kwargs["user_input"] == "How to validate?"
+        assert call_kwargs["response"] == "The answer based on knowledge"
+        assert call_kwargs["retrieved_contexts"] == ["entry 1", "entry 2"]
+
+    def test_handles_float_return_from_ascore(self, monkeypatch: pytest.MonkeyPatch):
+        """Faithfulness handles both MetricResult and plain float from ascore()."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=0.77)
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.77)
+
     def test_does_not_require_ground_truth(self, monkeypatch: pytest.MonkeyPatch):
         """Faithfulness scores all samples, not just those with ground truth."""
         from raki.metrics.ragas.faithfulness import FaithfulnessMetric
 
+        mock_result = MagicMock()
+        mock_result.value = 0.8
+        mock_result.reason = None
+
         mock_metric_instance = MagicMock()
-        mock_metric_instance.single_turn_ascore = AsyncMock(return_value=0.8)
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
 
         mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
-        _install_faithfulness_mock(monkeypatch, mock_faithfulness_class)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
 
         sample = _make_sample_with_knowledge(ground_truth=None)
         dataset = EvalDataset(samples=[sample])
@@ -670,12 +766,10 @@ class TestFaithfulnessMetric:
         monkeypatch.chdir(tmp_path)
 
         mock_metric_instance = MagicMock()
-        mock_metric_instance.single_turn_ascore = AsyncMock(
-            side_effect=RuntimeError("LLM unavailable")
-        )
+        mock_metric_instance.ascore = AsyncMock(side_effect=RuntimeError("LLM unavailable"))
 
         mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
-        _install_faithfulness_mock(monkeypatch, mock_faithfulness_class)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
 
         sample = _make_sample_with_knowledge()
         dataset = EvalDataset(samples=[sample])
@@ -733,15 +827,20 @@ class TestAnswerRelevancyMetric:
         assert metric.display_name == "Answer relevancy"
 
     def test_computes_with_mocked_ragas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """AnswerRelevancy uses collections API ascore() with keyword args."""
         from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
 
         monkeypatch.chdir(tmp_path)
 
+        mock_result = MagicMock()
+        mock_result.value = 0.78
+        mock_result.reason = "Relevant answer"
+
         mock_metric_instance = MagicMock()
-        mock_metric_instance.single_turn_ascore = AsyncMock(return_value=0.78)
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
 
         mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
-        _install_relevancy_mock(monkeypatch, mock_relevancy_class)
+        _install_ragas_mock(monkeypatch, mock_relevancy_class, "AnswerRelevancy")
 
         sample = _make_sample_with_knowledge()
         dataset = EvalDataset(samples=[sample])
@@ -775,18 +874,87 @@ class TestAnswerRelevancyMetric:
         assert log_entry["metric"] == "answer_relevancy"
         assert log_entry["score"] == 0.78
 
+    def test_ascore_called_with_correct_kwargs(self, monkeypatch: pytest.MonkeyPatch):
+        """Verify ascore() receives user_input and response as kwargs."""
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.82
+        mock_result.reason = None
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_relevancy_class, "AnswerRelevancy")
+
+        ground_truth = GroundTruth(
+            question="How to validate?",
+            reference_answer="Use pydantic",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with (
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_embeddings",
+                return_value=MagicMock(),
+            ),
+        ):
+            metric = AnswerRelevancyMetric()
+            metric.compute(dataset, config)
+
+        mock_metric_instance.ascore.assert_called_once()
+        call_kwargs = mock_metric_instance.ascore.call_args.kwargs
+        assert call_kwargs["user_input"] == "How to validate?"
+        assert call_kwargs["response"] == "The answer based on knowledge"
+        assert "retrieved_contexts" not in call_kwargs
+
+    def test_handles_float_return_from_ascore(self, monkeypatch: pytest.MonkeyPatch):
+        """AnswerRelevancy handles both MetricResult and plain float from ascore()."""
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=0.65)
+
+        mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_relevancy_class, "AnswerRelevancy")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with (
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_embeddings",
+                return_value=MagicMock(),
+            ),
+        ):
+            metric = AnswerRelevancyMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.65)
+
     def test_handles_ascore_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
 
         monkeypatch.chdir(tmp_path)
 
         mock_metric_instance = MagicMock()
-        mock_metric_instance.single_turn_ascore = AsyncMock(
-            side_effect=RuntimeError("Embeddings failed")
-        )
+        mock_metric_instance.ascore = AsyncMock(side_effect=RuntimeError("Embeddings failed"))
 
         mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
-        _install_relevancy_mock(monkeypatch, mock_relevancy_class)
+        _install_ragas_mock(monkeypatch, mock_relevancy_class, "AnswerRelevancy")
 
         sample = _make_sample_with_knowledge()
         dataset = EvalDataset(samples=[sample])
