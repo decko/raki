@@ -1,0 +1,8 @@
+# RAKI manifest for Alcove-format sessions.
+# Alcove sessions are single JSON files containing the full transcript
+# with tool calls, token usage, and cost data — as opposed to the
+# session-schema format which uses a directory of separate phase files.
+
+sessions:
+  path: sessions/          # Directory containing alcove-session.json files
+  format: alcove            # Explicitly select the Alcove adapter (skip auto-detection)

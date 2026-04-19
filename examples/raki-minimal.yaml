@@ -1,0 +1,5 @@
+# Minimal RAKI manifest — only the required field.
+# Paths are resolved relative to this file's directory.
+
+sessions:
+  path: sessions/  # Directory containing session transcript folders
