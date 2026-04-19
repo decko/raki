@@ -12,9 +12,10 @@ You never write implementation code yourself. You manage the loop, track state, 
 - Plan: ~/dev/pulp/agent-project/docs/superpowers/plans/2026-04-17-raki-implementation.md (Phase 1+2 original plan)
 - Milestone 1 (Phase 1 — MVP): Issues #2-#8 (ALL CLOSED)
 - Milestone 2 (Phase 2 — Ragas): Issues #9-#12 (ALL CLOSED)
-- Milestone 3 (v0.2.1 — Critical Fixes): Issues #29, #30, #31
-- Milestone 4 (v0.3.0 — Report & CLI Polish): Issues #25, #26, #27, #28, #32, #33, #34
-- Milestone 5 (v0.4.0 — Security & Data Completeness): Issues #35, #36, #37
+- Milestone 3 (v0.2.1 — Critical Fixes): Issues #29, #30, #31 (ALL CLOSED)
+- Milestone 4 (v0.3.0 — Report & CLI Polish): Issues #25-#28, #32, #33, #34 (ALL CLOSED)
+- Milestone 5 (v0.4.0 — Security & Data Completeness): Issues #35, #36, #37 (ALL CLOSED)
+- Milestone 6 (Documentation): Issues #49, #50, #51, #52, #53, #54, #55, #56, #57
 - Tooling: Python 3.14, uv, ruff, ty (no mypy), pytest
 - Base branch: main
 
@@ -36,6 +37,15 @@ You never write implementation code yourself. You manage the loop, track state, 
 | #35 | security-hardening | v0.4.0 | docs/specs/v0.4.0-security-data-completeness.md |
 | #36 | ragas-fixes | v0.4.0 | docs/specs/v0.4.0-security-data-completeness.md |
 | #37 | adapter-completeness | v0.4.0 | docs/specs/v0.4.0-security-data-completeness.md |
+| #49 | example-sessions | Documentation | docs/specs/docs-milestone.md |
+| #50 | example-ground-truth | Documentation | docs/specs/docs-milestone.md |
+| #51 | example-manifests | Documentation | docs/specs/docs-milestone.md |
+| #52 | example-reports | Documentation | docs/specs/docs-milestone.md |
+| #53 | getting-started | Documentation | docs/specs/docs-milestone.md |
+| #54 | interpretation-ref | Documentation | docs/specs/docs-milestone.md |
+| #55 | curation-guide | Documentation | docs/specs/docs-milestone.md |
+| #56 | adapter-guide | Documentation | docs/specs/docs-milestone.md |
+| #57 | project-housekeeping | Documentation | docs/specs/docs-milestone.md |
 
 ## Architecture: Agentic Swarm with Model Routing
 
