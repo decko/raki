@@ -27,20 +27,22 @@ def create_ragas_llm(config: MetricConfig):
     return llm_factory(
         config.llm_model,
         client=client,
+        temperature=config.temperature,
     )
 
 
 def create_ragas_embeddings():
     """Create embeddings for answer_relevancy metric.
 
-    Uses the legacy Ragas embedding_factory which returns BaseRagasEmbeddings,
-    compatible with the AnswerRelevancy @dataclass metric.
+    Uses VertexAIEmbeddings from langchain-google-vertexai for consistency
+    with the Vertex AI LLM setup. The previous embedding_factory() defaulted
+    to OpenAI, which was inconsistent with the Anthropic/Vertex AI LLM config.
 
-    Defers ragas imports so this module can be imported without ragas installed.
+    Defers imports so this module can be imported without dependencies installed.
     """
-    from ragas.embeddings import embedding_factory  # ty: ignore[unresolved-import]
+    from langchain_google_vertexai import VertexAIEmbeddings  # ty: ignore[unresolved-import]
 
-    return embedding_factory()
+    return VertexAIEmbeddings(model_name="text-embedding-005")
 
 
 def _validate_judge_log_path(log_path: Path, project_root: Path | None = None) -> Path:

@@ -989,8 +989,127 @@ class TestAnswerRelevancyMetric:
 
 
 # ---------------------------------------------------------------------------
+# LLM setup tests — verify create_ragas_llm and create_ragas_embeddings
+# ---------------------------------------------------------------------------
+
+
+class TestCreateRagasLlm:
+    def test_passes_temperature_to_llm_factory(self, monkeypatch: pytest.MonkeyPatch):
+        """config.temperature must be forwarded to llm_factory()."""
+        import sys
+
+        mock_llm_factory = MagicMock(return_value=MagicMock())
+        mock_llms = MagicMock()
+        mock_llms.llm_factory = mock_llm_factory
+
+        mock_anthropic = MagicMock()
+        mock_client_instance = MagicMock()
+        mock_anthropic.AsyncAnthropicVertex = MagicMock(return_value=mock_client_instance)
+
+        monkeypatch.setitem(sys.modules, "anthropic", mock_anthropic)
+        monkeypatch.setitem(sys.modules, "ragas", MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.llms", mock_llms)
+
+        from raki.metrics.ragas.llm_setup import create_ragas_llm
+
+        config = MetricConfig(temperature=0.7)
+        create_ragas_llm(config)
+
+        mock_llm_factory.assert_called_once()
+        call_kwargs = mock_llm_factory.call_args
+        assert call_kwargs.kwargs["temperature"] == 0.7
+
+    def test_passes_zero_temperature_by_default(self, monkeypatch: pytest.MonkeyPatch):
+        """Default temperature=0.0 should also be forwarded."""
+        import sys
+
+        mock_llm_factory = MagicMock(return_value=MagicMock())
+        mock_llms = MagicMock()
+        mock_llms.llm_factory = mock_llm_factory
+
+        mock_anthropic = MagicMock()
+        mock_client_instance = MagicMock()
+        mock_anthropic.AsyncAnthropicVertex = MagicMock(return_value=mock_client_instance)
+
+        monkeypatch.setitem(sys.modules, "anthropic", mock_anthropic)
+        monkeypatch.setitem(sys.modules, "ragas", MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.llms", mock_llms)
+
+        from raki.metrics.ragas.llm_setup import create_ragas_llm
+
+        config = MetricConfig()  # default temperature=0.0
+        create_ragas_llm(config)
+
+        call_kwargs = mock_llm_factory.call_args
+        assert call_kwargs.kwargs["temperature"] == 0.0
+
+
+class TestCreateRagasEmbeddings:
+    def test_uses_vertex_ai_embeddings(self, monkeypatch: pytest.MonkeyPatch):
+        """create_ragas_embeddings() should use VertexAIEmbeddings, not OpenAI default."""
+        import sys
+
+        mock_vertex_instance = MagicMock()
+        mock_vertex_class = MagicMock(return_value=mock_vertex_instance)
+
+        mock_langchain_vertex = MagicMock()
+        mock_langchain_vertex.VertexAIEmbeddings = mock_vertex_class
+
+        monkeypatch.setitem(sys.modules, "langchain_google_vertexai", mock_langchain_vertex)
+
+        from raki.metrics.ragas.llm_setup import create_ragas_embeddings
+
+        result = create_ragas_embeddings()
+        mock_vertex_class.assert_called_once_with(model_name="text-embedding-005")
+        assert result is mock_vertex_instance
+
+    def test_does_not_use_openai_default(self, monkeypatch: pytest.MonkeyPatch):
+        """Verify we don't call the OpenAI-defaulting embedding_factory()."""
+        import sys
+
+        mock_embedding_factory = MagicMock()
+        mock_embeddings_module = MagicMock()
+        mock_embeddings_module.embedding_factory = mock_embedding_factory
+
+        mock_vertex_class = MagicMock(return_value=MagicMock())
+        mock_langchain_vertex = MagicMock()
+        mock_langchain_vertex.VertexAIEmbeddings = mock_vertex_class
+
+        monkeypatch.setitem(sys.modules, "ragas", MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.embeddings", mock_embeddings_module)
+        monkeypatch.setitem(sys.modules, "langchain_google_vertexai", mock_langchain_vertex)
+
+        from raki.metrics.ragas.llm_setup import create_ragas_embeddings
+
+        create_ragas_embeddings()
+        # embedding_factory (which defaults to OpenAI) should NOT be called
+        mock_embedding_factory.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Integration tests (slow, requires LLM) — marked for selective running
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+class TestLlmSetupIntegration:
+    def test_create_ragas_llm_returns_valid_object(self):
+        """Requires anthropic + Vertex AI credentials. Verifies LLM setup works."""
+        pytest.importorskip("ragas")
+        pytest.importorskip("anthropic")
+        from raki.metrics.ragas.llm_setup import create_ragas_llm
+
+        config = MetricConfig(temperature=0.0)
+        llm = create_ragas_llm(config)
+        assert llm is not None
+
+    def test_create_ragas_embeddings_returns_valid_object(self):
+        """Requires langchain-google-vertexai + credentials. Verifies embeddings setup."""
+        pytest.importorskip("langchain_google_vertexai")
+        from raki.metrics.ragas.llm_setup import create_ragas_embeddings
+
+        embeddings = create_ragas_embeddings()
+        assert embeddings is not None
 
 
 @pytest.mark.slow
