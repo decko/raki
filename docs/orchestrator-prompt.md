@@ -15,7 +15,8 @@ You never write implementation code yourself. You manage the loop, track state, 
 - Milestone 3 (v0.2.1 — Critical Fixes): Issues #29, #30, #31 (ALL CLOSED)
 - Milestone 4 (v0.3.0 — Report & CLI Polish): Issues #25-#28, #32, #33, #34 (ALL CLOSED)
 - Milestone 5 (v0.4.0 — Security & Data Completeness): Issues #35, #36, #37 (ALL CLOSED)
-- Milestone 6 (Documentation): Issues #49, #50, #51, #52, #53, #54, #55, #56, #57
+- Milestone 6 (Documentation): Issues #49, #50, #51, #52, #53, #54, #55, #56, #57 (ALL CLOSED)
+- Milestone 7 (v0.5.0 — Understand Your Results): Issues #68, #69, #70, #71
 - Tooling: Python 3.14, uv, ruff, ty (no mypy), pytest
 - Base branch: main
 
@@ -46,6 +47,10 @@ You never write implementation code yourself. You manage the loop, track state, 
 | #55 | curation-guide | Documentation | docs/specs/docs-milestone.md |
 | #56 | adapter-guide | Documentation | docs/specs/docs-milestone.md |
 | #57 | project-housekeeping | Documentation | docs/specs/docs-milestone.md |
+| #69 | raki-report | v0.5.0 | docs/specs/v0.5.0-understand-your-results.md |
+| #70 | score-cards | v0.5.0 | docs/specs/v0.5.0-understand-your-results.md |
+| #68 | drill-down | v0.5.0 | docs/specs/v0.5.0-understand-your-results.md |
+| #71 | report-diff | v0.5.0 | docs/specs/v0.5.0-understand-your-results.md |
 
 ## Architecture: Agentic Swarm with Model Routing
 
