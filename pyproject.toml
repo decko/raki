@@ -12,7 +12,7 @@ license = "Apache-2.0"
 dependencies = [
     "click>=8.0",
     "pydantic>=2.0,<3.0",
-    "rich>=13.0",
+    "rich>=13.7,<15",
     "pyyaml>=6.0",
 ]
 
