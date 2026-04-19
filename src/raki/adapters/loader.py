@@ -18,24 +18,46 @@ class DatasetLoader:
         self.errors: list[LoadError] = []
         self.skipped: list[Path] = []
 
-    def load_directory(self, root: Path) -> EvalDataset:
+    def load_directory(self, root: Path, *, recursive: bool = False) -> EvalDataset:
+        """Load sessions from a directory.
+
+        Args:
+            root: Root directory to scan for sessions.
+            recursive: When True, descend into subdirectories to find sessions.
+                Default is False for backward compatibility.
+
+        Returns:
+            EvalDataset containing all successfully loaded sessions.
+        """
         # Resolve to an absolute path to prevent trivial path traversal.
         # Full manifest-level validation is deferred to the CLI/manifest layer (Issues #6/#8).
         root = root.resolve()
         samples: list[EvalSample] = []
         self.errors = []
         self.skipped = []
-        for child in sorted(root.iterdir()):
-            adapter = self._detect_adapter(child)
-            if adapter is None:
-                self.skipped.append(child)
-                continue
-            try:
-                sample = adapter.load(child)
-                samples.append(sample)
-            except Exception as exc:
-                self.errors.append(LoadError(path=child, error=str(exc)))
+        self._scan_directory(root, samples, recursive=recursive)
         return EvalDataset(samples=samples)
+
+    def _scan_directory(
+        self,
+        directory: Path,
+        samples: list[EvalSample],
+        *,
+        recursive: bool,
+    ) -> None:
+        """Scan a directory for sessions, optionally recursing into subdirectories."""
+        for child in sorted(directory.iterdir()):
+            adapter = self._detect_adapter(child)
+            if adapter is not None:
+                try:
+                    sample = adapter.load(child)
+                    samples.append(sample)
+                except Exception as exc:
+                    self.errors.append(LoadError(path=child, error=str(exc)))
+            elif recursive and child.is_dir() and not child.is_symlink():
+                self._scan_directory(child, samples, recursive=True)
+            else:
+                self.skipped.append(child)
 
     def load_session(self, path: Path, adapter_name: str | None = None) -> EvalSample:
         path = path.resolve()

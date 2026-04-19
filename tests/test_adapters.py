@@ -586,3 +586,546 @@ def test_redact_multiline_jwt_across_content_blocks():
     result = redact_sensitive(text)
     assert "eyJhbGciOiJIUzI1NiJ9" not in result
     assert "***REDACTED***" in result
+
+
+# --- Task 10: adapter data completeness tests ---
+
+
+def test_session_schema_extracts_model_id_from_meta(tmp_path):
+    """model_id in meta.json should be populated on SessionMeta."""
+    meta = {
+        "ticket": "200",
+        "summary": "model id test",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+        "model_id": "claude-sonnet-4-20250514",
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.model_id == "claude-sonnet-4-20250514"
+
+
+def test_session_schema_extracts_model_id_from_events(tmp_path):
+    """model_id should be extracted from events.jsonl when not in meta.json."""
+    meta = {
+        "ticket": "201",
+        "summary": "model from events",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    events = [
+        {
+            "timestamp": "2026-04-10T08:00:00Z",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {"generation": 1, "model": "claude-opus-4-20250514"},
+        },
+        {
+            "timestamp": "2026-04-10T08:05:00Z",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {"cost": 3.5},
+        },
+    ]
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(event) for event in events))
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.model_id == "claude-opus-4-20250514"
+
+
+def test_session_schema_meta_model_id_takes_precedence(tmp_path):
+    """model_id from meta.json should take precedence over events.jsonl."""
+    meta = {
+        "ticket": "202",
+        "summary": "precedence test",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+        "model_id": "claude-sonnet-4-20250514",
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    events = [
+        {
+            "timestamp": "2026-04-10T08:00:00Z",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {"generation": 1, "model": "claude-opus-4-20250514"},
+        },
+    ]
+    (tmp_path / "events.jsonl").write_text(json.dumps(events[0]))
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.model_id == "claude-sonnet-4-20250514"
+
+
+def test_session_schema_extracts_tokens_from_phase_meta(tmp_path):
+    """tokens_in/tokens_out from phase metadata should populate PhaseResult."""
+    meta = {
+        "ticket": "210",
+        "summary": "tokens test",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {
+            "implement": {
+                "status": "completed",
+                "cost": 3.5,
+                "generation": 1,
+                "tokens_in": 15000,
+                "tokens_out": 8000,
+            }
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    implement_data = {"summary": "implemented feature"}
+    (tmp_path / "implement.json").write_text(json.dumps(implement_data))
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = [phase for phase in sample.phases if phase.name == "implement"]
+    assert len(impl_phases) == 1
+    assert impl_phases[0].tokens_in == 15000
+    assert impl_phases[0].tokens_out == 8000
+
+
+def test_session_schema_extracts_tokens_from_events(tmp_path):
+    """tokens_in/tokens_out should be extracted from phase_completed events."""
+    meta = {
+        "ticket": "211",
+        "summary": "tokens from events",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {
+            "implement": {"status": "completed", "cost": 3.5, "generation": 1},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    events = [
+        {
+            "timestamp": "2026-04-10T08:00:00Z",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {"generation": 1},
+        },
+        {
+            "timestamp": "2026-04-10T08:05:00Z",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {"cost": 3.5, "tokens_in": 12000, "tokens_out": 6000},
+        },
+    ]
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(event) for event in events))
+    implement_data = {"summary": "implemented feature"}
+    (tmp_path / "implement.json").write_text(json.dumps(implement_data))
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = [phase for phase in sample.phases if phase.name == "implement"]
+    assert len(impl_phases) == 1
+    assert impl_phases[0].tokens_in == 12000
+    assert impl_phases[0].tokens_out == 6000
+
+
+def test_session_schema_phase_meta_tokens_take_precedence(tmp_path):
+    """Phase metadata tokens should take precedence over event tokens."""
+    meta = {
+        "ticket": "212",
+        "summary": "token precedence",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {
+            "implement": {
+                "status": "completed",
+                "cost": 3.5,
+                "generation": 1,
+                "tokens_in": 15000,
+                "tokens_out": 8000,
+            },
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    events = [
+        {
+            "timestamp": "2026-04-10T08:00:00Z",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {"generation": 1},
+        },
+        {
+            "timestamp": "2026-04-10T08:05:00Z",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {"cost": 3.5, "tokens_in": 12000, "tokens_out": 6000},
+        },
+    ]
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(event) for event in events))
+    implement_data = {"summary": "implemented feature"}
+    (tmp_path / "implement.json").write_text(json.dumps(implement_data))
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = [phase for phase in sample.phases if phase.name == "implement"]
+    assert len(impl_phases) == 1
+    assert impl_phases[0].tokens_in == 15000
+    assert impl_phases[0].tokens_out == 8000
+
+
+# --- Recursive DatasetLoader tests ---
+
+
+def test_dataset_loader_recursive_finds_nested_sessions(tmp_path):
+    """DatasetLoader in recursive mode should find sessions in subdirectories."""
+    # Create nested structure: root/project-a/session-1/
+    project_dir = tmp_path / "project-a"
+    project_dir.mkdir()
+    session_dir = project_dir / "session-1"
+    session_dir.mkdir()
+    meta = {
+        "ticket": "300",
+        "summary": "nested session",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (session_dir / "meta.json").write_text(json.dumps(meta))
+    (session_dir / "events.jsonl").write_text("")
+
+    registry = AdapterRegistry()
+    registry.register(SessionSchemaAdapter())
+    loader = DatasetLoader(registry)
+    dataset = loader.load_directory(tmp_path, recursive=True)
+    assert len(dataset.samples) == 1
+    assert dataset.samples[0].session.session_id == "300"
+
+
+def test_dataset_loader_non_recursive_skips_nested_sessions(tmp_path):
+    """DatasetLoader in non-recursive (default) mode should not descend into subdirs."""
+    project_dir = tmp_path / "project-a"
+    project_dir.mkdir()
+    session_dir = project_dir / "session-1"
+    session_dir.mkdir()
+    meta = {
+        "ticket": "301",
+        "summary": "nested session",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (session_dir / "meta.json").write_text(json.dumps(meta))
+    (session_dir / "events.jsonl").write_text("")
+
+    registry = AdapterRegistry()
+    registry.register(SessionSchemaAdapter())
+    loader = DatasetLoader(registry)
+    # Default: non-recursive
+    dataset = loader.load_directory(tmp_path)
+    assert len(dataset.samples) == 0
+
+
+def test_dataset_loader_recursive_finds_both_levels(tmp_path):
+    """Recursive mode should find sessions at root and nested levels."""
+    # Direct child session
+    direct_session = tmp_path / "session-direct"
+    direct_session.mkdir()
+    meta_direct = {
+        "ticket": "310",
+        "summary": "direct session",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (direct_session / "meta.json").write_text(json.dumps(meta_direct))
+    (direct_session / "events.jsonl").write_text("")
+
+    # Nested session
+    nested_dir = tmp_path / "project-a"
+    nested_dir.mkdir()
+    nested_session = nested_dir / "session-nested"
+    nested_session.mkdir()
+    meta_nested = {
+        "ticket": "311",
+        "summary": "nested session",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (nested_session / "meta.json").write_text(json.dumps(meta_nested))
+    (nested_session / "events.jsonl").write_text("")
+
+    registry = AdapterRegistry()
+    registry.register(SessionSchemaAdapter())
+    loader = DatasetLoader(registry)
+    dataset = loader.load_directory(tmp_path, recursive=True)
+    session_ids = {sample.session.session_id for sample in dataset.samples}
+    assert session_ids == {"310", "311"}
+
+
+def test_dataset_loader_recursive_deeply_nested(tmp_path):
+    """Recursive mode should find sessions multiple levels deep."""
+    deep_dir = tmp_path / "a" / "b" / "c"
+    deep_dir.mkdir(parents=True)
+    session_dir = deep_dir / "deep-session"
+    session_dir.mkdir()
+    meta = {
+        "ticket": "320",
+        "summary": "deep session",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (session_dir / "meta.json").write_text(json.dumps(meta))
+    (session_dir / "events.jsonl").write_text("")
+
+    registry = AdapterRegistry()
+    registry.register(SessionSchemaAdapter())
+    loader = DatasetLoader(registry)
+    dataset = loader.load_directory(tmp_path, recursive=True)
+    assert len(dataset.samples) == 1
+    assert dataset.samples[0].session.session_id == "320"
+
+
+# --- Generational file sorting tests ---
+
+
+def test_generational_sorting_base_file_is_latest(tmp_path):
+    """Base file (implement.json) should be assigned highest generation (latest)."""
+    meta = {
+        "ticket": "400",
+        "summary": "generational sorting",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 10.0,
+        "rework_cycles": 2,
+        "phases": {
+            "implement": {"status": "completed", "cost": 3.5, "generation": 3},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    # .1 = generation 1, .2 = generation 2, base = latest (generation 3 from meta)
+    (tmp_path / "implement.json.1").write_text(json.dumps({"gen": "first"}))
+    (tmp_path / "implement.json.2").write_text(json.dumps({"gen": "second"}))
+    (tmp_path / "implement.json").write_text(json.dumps({"gen": "latest"}))
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = [phase for phase in sample.phases if phase.name == "implement"]
+    assert len(impl_phases) == 3
+
+    # Sort by generation for predictable assertions
+    impl_phases.sort(key=lambda phase: phase.generation)
+    assert impl_phases[0].generation == 1
+    assert impl_phases[1].generation == 2
+    assert impl_phases[2].generation == 3
+
+
+def test_generational_sorting_single_base_file_gen_1(tmp_path):
+    """A single base file with no suffixed files should be generation 1."""
+    meta = {
+        "ticket": "401",
+        "summary": "single base file",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {
+            "implement": {"status": "completed", "cost": 3.5, "generation": 1},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    (tmp_path / "implement.json").write_text(json.dumps({"gen": "only"}))
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = [phase for phase in sample.phases if phase.name == "implement"]
+    assert len(impl_phases) == 1
+    assert impl_phases[0].generation == 1
+
+
+def test_generational_sorting_base_file_gen_from_meta(tmp_path):
+    """Base file generation should use the meta.json phases generation value."""
+    meta = {
+        "ticket": "402",
+        "summary": "gen from meta",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 1,
+        "phases": {
+            "implement": {"status": "completed", "cost": 3.5, "generation": 4},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    (tmp_path / "implement.json.1").write_text(json.dumps({"gen": "first"}))
+    (tmp_path / "implement.json").write_text(json.dumps({"gen": "latest"}))
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = sorted(
+        [phase for phase in sample.phases if phase.name == "implement"],
+        key=lambda phase: phase.generation,
+    )
+    assert len(impl_phases) == 2
+    assert impl_phases[0].generation == 1
+    assert impl_phases[1].generation == 4
+
+
+def test_generational_sorting_no_meta_generation_defaults(tmp_path):
+    """Without meta generation, base file with suffixed files gets max(suffixed) + 1."""
+    meta = {
+        "ticket": "403",
+        "summary": "no meta generation",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 1,
+        "phases": {
+            "implement": {"status": "completed", "cost": 3.5},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    (tmp_path / "implement.json.1").write_text(json.dumps({"gen": "first"}))
+    (tmp_path / "implement.json.2").write_text(json.dumps({"gen": "second"}))
+    (tmp_path / "implement.json").write_text(json.dumps({"gen": "latest"}))
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = sorted(
+        [phase for phase in sample.phases if phase.name == "implement"],
+        key=lambda phase: phase.generation,
+    )
+    assert len(impl_phases) == 3
+    assert impl_phases[0].generation == 1
+    assert impl_phases[1].generation == 2
+    # Base file should be latest: max(1, 2) + 1 = 3
+    assert impl_phases[2].generation == 3
+
+
+# --- Zero-token and missing-data edge-case tests (issue #37) ---
+
+
+def test_session_schema_zero_tokens_in_meta_wins_over_event(tmp_path):
+    """Phase metadata tokens_in=0 must win over event tokens_in=100 (not treated as falsy)."""
+    meta = {
+        "ticket": "500",
+        "summary": "zero token edge case",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {
+            "implement": {
+                "status": "completed",
+                "cost": 2.0,
+                "generation": 1,
+                "tokens_in": 0,
+                "tokens_out": 0,
+            },
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    events = [
+        {
+            "timestamp": "2026-04-10T08:00:00Z",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {"generation": 1},
+        },
+        {
+            "timestamp": "2026-04-10T08:05:00Z",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {"cost": 2.0, "tokens_in": 100, "tokens_out": 200},
+        },
+    ]
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events))
+    (tmp_path / "implement.json").write_text(json.dumps({"summary": "impl"}))
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = [p for p in sample.phases if p.name == "implement"]
+    assert len(impl_phases) == 1
+    # The metadata value (0) must be used, NOT the event value (100/200)
+    assert impl_phases[0].tokens_in == 0
+    assert impl_phases[0].tokens_out == 0
+
+
+def test_session_schema_no_model_id_from_either_source(tmp_path):
+    """When neither meta.json nor events provide a model_id, it should be None."""
+    meta = {
+        "ticket": "501",
+        "summary": "no model id anywhere",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 3.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    events = [
+        {
+            "timestamp": "2026-04-10T08:00:00Z",
+            "phase": "triage",
+            "kind": "phase_started",
+            "data": {"generation": 1},
+        },
+        {
+            "timestamp": "2026-04-10T08:01:00Z",
+            "phase": "triage",
+            "kind": "phase_completed",
+            "data": {"cost": 1.0},
+        },
+    ]
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events))
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.model_id is None
+
+
+def test_session_schema_no_token_counts_from_either_source(tmp_path):
+    """When neither phase meta nor events provide token counts, they should be None."""
+    meta = {
+        "ticket": "502",
+        "summary": "no tokens anywhere",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 4.0,
+        "rework_cycles": 0,
+        "phases": {
+            "implement": {"status": "completed", "cost": 2.0, "generation": 1},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    events = [
+        {
+            "timestamp": "2026-04-10T08:00:00Z",
+            "phase": "implement",
+            "kind": "phase_started",
+            "data": {"generation": 1},
+        },
+        {
+            "timestamp": "2026-04-10T08:05:00Z",
+            "phase": "implement",
+            "kind": "phase_completed",
+            "data": {"cost": 2.0},
+        },
+    ]
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(e) for e in events))
+    (tmp_path / "implement.json").write_text(json.dumps({"summary": "impl"}))
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    impl_phases = [p for p in sample.phases if p.name == "implement"]
+    assert len(impl_phases) == 1
+    assert impl_phases[0].tokens_in is None
+    assert impl_phases[0].tokens_out is None
