@@ -1,0 +1,24 @@
+# Full RAKI manifest — all available options with explanations.
+# Paths are resolved relative to this file's directory.
+
+sessions:
+  path: sessions/          # Directory containing session transcript folders
+  format: auto             # Format detection: "auto", "session-schema", or "alcove"
+  filter:
+    min_phases: 2          # Skip sessions with fewer than this many phases
+
+ground_truth:
+  path: ground-truth/curated.yaml  # Curated question-answer pairs for retrieval evaluation
+
+sources:                   # Reference documents used during retrieval
+  - path: sessions/        # Path to source documents (reusing sessions dir as example)
+    repo: web-api          # Repository or project name for provenance tracking
+    domains:               # Knowledge domains this source covers
+      - api
+      - auth
+
+synthetic:
+  enabled: false           # Whether to generate synthetic test cases via Ragas
+  output: synthetic-out/   # Directory for generated synthetic test data
+  count: 50                # Number of synthetic test cases to generate
+  seed: 42                 # Random seed for reproducible generation
