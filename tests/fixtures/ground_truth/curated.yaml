@@ -1,0 +1,25 @@
+- id: gt-test-001
+  question: "How should destructive git operations be handled?"
+  expected_contexts:
+    - "git command validation"
+    - "shell indirection detection"
+  reference_answer: >
+    Destructive git operations must be validated through
+    command validation and shell indirection detection.
+  domains: [git, guardrails]
+  source: test
+  difficulty: medium
+  knowledge_type: constraint
+  expected_phase: implement
+
+- id: gt-test-002
+  question: "What embedding dimension is required?"
+  expected_contexts:
+    - "768-dimensional vectors"
+  reference_answer: >
+    All embedding providers must produce 768-dimensional vectors.
+  domains: [embeddings, knowledge]
+  source: test
+  difficulty: easy
+  knowledge_type: fact
+  expected_phase: triage

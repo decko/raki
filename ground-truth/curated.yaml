@@ -1,0 +1,145 @@
+# Curated ground truth entries for RAKI evaluation.
+# Each entry covers a real gotcha, procedure, or fact from the project docs.
+
+- id: gt-001
+  question: "How should destructive git operations be handled in this project?"
+  expected_contexts:
+    - "no force-push"
+    - "no --no-verify"
+    - "no amending pushed commits"
+  reference_answer: >
+    Destructive git operations are prohibited. Never force-push, never use
+    --no-verify, and never amend pushed commits. Pre-commit hooks enforce
+    ruff check, ruff format, ty check, and email validation.
+  domains: [git, guardrails, safety]
+  difficulty: medium
+  knowledge_type: constraint
+  expected_phase: implement
+
+- id: gt-002
+  question: "What type checker does RAKI use and what strict-mode gotcha applies?"
+  expected_contexts:
+    - "ty for type checking"
+    - "Protocol attributes must be satisfied by class variables"
+  reference_answer: >
+    RAKI uses ty (not mypy) for type checking in strict mode. The key gotcha
+    is that Protocol attributes must be satisfied by class variables, not
+    instance attributes.
+  domains: [typing, tooling, conventions]
+  difficulty: medium
+  knowledge_type: fact
+  expected_phase: triage
+
+- id: gt-003
+  question: "How should YAML files be loaded safely?"
+  expected_contexts:
+    - "yaml.safe_load only"
+    - "never yaml.load"
+  reference_answer: >
+    Always use yaml.safe_load, never yaml.load. This prevents arbitrary
+    code execution from untrusted YAML content.
+  domains: [yaml, security, conventions]
+  difficulty: easy
+  knowledge_type: constraint
+  expected_phase: implement
+
+- id: gt-004
+  question: "How should mutable defaults be defined in Pydantic models?"
+  expected_contexts:
+    - "Field(default_factory=...)"
+    - "Pydantic 2"
+  reference_answer: >
+    Mutable defaults (lists, dicts, sets) must use
+    Field(default_factory=...) in Pydantic 2 models. Never use bare mutable
+    default values in field definitions.
+  domains: [models, pydantic, conventions]
+  difficulty: easy
+  knowledge_type: procedure
+  expected_phase: implement
+
+- id: gt-005
+  question: "How should operational and retrieval metrics be combined?"
+  expected_contexts:
+    - "no blended score"
+    - "separate categories"
+  reference_answer: >
+    Operational and retrieval metrics must never be combined into a single
+    blended score. They are reported as separate categories. Operational
+    metrics return raw values (cost in dollars, cycles as count), not
+    0-1 normalized values.
+  domains: [metrics, reporting, architecture]
+  difficulty: hard
+  knowledge_type: constraint
+  expected_phase: implement
+
+- id: gt-006
+  question: "What is the correct development methodology for RAKI?"
+  expected_contexts:
+    - "TDD"
+    - "write failing tests first"
+  reference_answer: >
+    RAKI follows strict TDD (Test-Driven Development). Write failing tests
+    first, then implement. No exceptions. Prefer small, reviewable changes
+    over large sweeps.
+  domains: [testing, methodology, conventions]
+  difficulty: easy
+  knowledge_type: procedure
+  expected_phase: triage
+
+- id: gt-007
+  question: "How must adapters handle sensitive data before populating EvalSample?"
+  expected_contexts:
+    - "redact_sensitive()"
+    - "all adapters must call redact_sensitive"
+  reference_answer: >
+    All adapters must call redact_sensitive() before populating EvalSample.
+    Reports strip raw session data by default; use --include-sessions to
+    opt in. No credentials may appear in code, config, or reports.
+  domains: [adapters, security, redaction]
+  difficulty: medium
+  knowledge_type: procedure
+  expected_phase: implement
+
+- id: gt-008
+  question: "What is the correct branch workflow for RAKI development?"
+  expected_contexts:
+    - "never commit to main directly"
+    - "worktree-based development"
+    - "task/<N>-<short-name>"
+  reference_answer: >
+    Never commit to main directly. All work happens on feature branches
+    using the naming convention task/<N>-<short-name>. Development uses
+    git worktrees under .worktrees/ with no more than 2 active worktrees
+    at once.
+  domains: [git, workflow, conventions]
+  difficulty: medium
+  knowledge_type: procedure
+  expected_phase: triage
+
+- id: gt-009
+  question: "How should constrained string fields be typed in RAKI models?"
+  expected_contexts:
+    - "Literal types"
+    - "not bare str"
+  reference_answer: >
+    Constrained string fields (e.g. severity levels, difficulty) must use
+    Literal types, not bare str. For example, ReviewFinding.severity uses
+    Literal["critical", "major", "minor"].
+  domains: [models, typing, conventions]
+  difficulty: easy
+  knowledge_type: constraint
+  expected_phase: implement
+
+- id: gt-010
+  question: "How does the adapter detection handle large session files?"
+  expected_contexts:
+    - "detect() must read only the first 4KB"
+    - "50MB+ session files"
+  reference_answer: >
+    Some session formats can be 50MB or larger. The detect() method in
+    adapters must read only the first 4KB of the file to determine the
+    format, avoiding loading the entire file into memory.
+  domains: [adapters, performance, detection]
+  difficulty: hard
+  knowledge_type: fact
+  expected_phase: implement
