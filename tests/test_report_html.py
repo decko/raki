@@ -7,6 +7,7 @@ import pytest
 
 pytest.importorskip("jinja2")
 
+from raki.model.dataset import EvalSample, SessionMeta
 from raki.model.phases import ReviewFinding
 from raki.model.report import EvalReport, MetricResult, SampleResult
 
@@ -818,8 +819,8 @@ class TestDisplayNames:
         assert "Cost / session" in content
 
     def test_metric_description_subtitle(self, tmp_path: Path) -> None:
-        """Score cards should show metric description as a subtitle."""
-        from raki.report.html_report import METRIC_METADATA, write_html_report
+        """Score cards should show plain-English subtitle from METRIC_METADATA."""
+        from raki.report.html_report import write_html_report
 
         report = EvalReport(
             run_id="eval-desc",
@@ -829,9 +830,8 @@ class TestDisplayNames:
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        # Should contain the description from METRIC_METADATA
-        meta = METRIC_METADATA["first_pass_verify_rate"]
-        assert meta["description"] in content
+        # Subtitle text (Jinja2 autoescape converts ' to &#39;)
+        assert "passes all checks on the first try" in content
 
 
 class TestAccessibility:
@@ -985,3 +985,487 @@ class TestPercentFormat:
         value_end = content.find("</div>", value_start)
         value_section = content[value_start:value_end]
         assert "85%" in value_section
+
+
+# --- Issue #70: Score cards redesign tests ---
+
+
+def _make_session_meta_helper(session_id: str) -> SessionMeta:
+    """Helper to create a SessionMeta for tests."""
+    return SessionMeta(
+        session_id=session_id,
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=1,
+        rework_cycles=0,
+    )
+
+
+class TestSummarySentenceInHtml:
+    """Summary sentence above score cards."""
+
+    def test_summary_sentence_present(self, tmp_path: Path) -> None:
+        """HTML report should include a summary sentence above the score cards."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "summary-sentence" in content
+
+    def test_summary_sentence_contains_verify_rate(self, tmp_path: Path) -> None:
+        """Summary sentence in HTML should contain the verify rate percentage."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # 0.67 = 67%
+        assert "67%" in content
+
+
+class TestHeroCard:
+    """Verify rate should render as a hero card (wider, larger)."""
+
+    def test_hero_card_class_present(self, tmp_path: Path) -> None:
+        """Verify rate card should have a hero-card CSS class."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-hero",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.91},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "hero-card" in content
+
+
+class TestPlainEnglishSubtitles:
+    """Every card has a plain-English subtitle."""
+
+    def test_verify_rate_subtitle(self, tmp_path: Path) -> None:
+        """Verify rate card should have the plain-English subtitle."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-subtitles",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.85},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "passes all checks on the first try" in content
+
+    def test_rework_cycles_subtitle(self, tmp_path: Path) -> None:
+        """Rework cycles card should have the plain-English subtitle."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-subtitles",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"rework_cycles": 1.0},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "redo its work after feedback" in content
+
+    def test_cost_subtitle(self, tmp_path: Path) -> None:
+        """Cost card should have the plain-English subtitle."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-subtitles",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"cost_efficiency": 10.0},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "costs in API fees" in content
+
+
+class TestDirectionBadges:
+    """Direction badges on directional metrics (higher/lower is better)."""
+
+    def test_verify_rate_shows_higher_is_better(self, tmp_path: Path) -> None:
+        """Verify rate should show 'higher is better' direction badge."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-direction",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.85},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "higher is better" in content.lower()
+
+    def test_rework_cycles_shows_lower_is_better(self, tmp_path: Path) -> None:
+        """Rework cycles should show 'lower is better' direction badge."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-direction",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"rework_cycles": 1.0},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "lower is better" in content.lower()
+
+    def test_verify_rate_shows_target_threshold(self, tmp_path: Path) -> None:
+        """Verify rate card should show target threshold of >85%."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-threshold",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.85},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "&gt;85%" in content or ">85%" in content
+
+
+class TestSeverityDistributionBar:
+    """Severity as stacked distribution bar with counts + traffic-light label."""
+
+    def test_severity_bar_present(self, tmp_path: Path) -> None:
+        """Severity section should show a distribution bar, not a single score."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "severity-distribution" in content or "severity-bar" in content
+
+    def test_severity_counts_shown(self, tmp_path: Path) -> None:
+        """Severity distribution should show counts for each severity level."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # _make_report_with_samples has 2 critical, 1 major, 1 minor findings
+        assert "critical" in content.lower()
+        assert "major" in content.lower()
+        assert "minor" in content.lower()
+
+    def test_severity_label_shown(self, tmp_path: Path) -> None:
+        """Severity distribution should show a traffic-light label."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        content_lower = content.lower()
+        assert "clean" in content_lower or "moderate" in content_lower or "severe" in content_lower
+
+
+class TestSeverityDistributionCompute:
+    """compute_severity_distribution helper tests."""
+
+    def test_clean_label_when_no_findings(self) -> None:
+        """No findings at all should produce 'Clean' label."""
+        from raki.report.html_report import SeverityDistribution, compute_severity_distribution
+
+        report = EvalReport(
+            run_id="clean",
+            aggregate_scores={"review_severity_distribution": 1.0},
+            sample_results=[
+                SampleResult(sample=make_sample("s1"), scores=[]),
+            ],
+        )
+        dist = compute_severity_distribution(report)
+        assert isinstance(dist, SeverityDistribution)
+        assert dist.label == "Clean"
+        assert dist.critical == 0
+        assert dist.major == 0
+        assert dist.minor == 0
+
+    def test_minor_label_with_only_major(self) -> None:
+        """0 critical + some major = 'Minor' label."""
+        from raki.report.html_report import compute_severity_distribution
+
+        findings = [
+            ReviewFinding(reviewer="r1", severity="major", issue="test issue"),
+        ]
+        report = EvalReport(
+            run_id="minor-label",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", findings=findings), scores=[]),
+            ],
+        )
+        dist = compute_severity_distribution(report)
+        assert dist.label == "Minor"
+        assert dist.critical == 0
+        assert dist.major == 1
+
+    def test_severe_label_when_weighted_above_threshold(self) -> None:
+        """When weighted score > 0.5, label should be 'Severe'."""
+        from raki.report.html_report import compute_severity_distribution
+
+        findings = [
+            ReviewFinding(reviewer="r1", severity="critical", issue="crit1"),
+            ReviewFinding(reviewer="r1", severity="critical", issue="crit2"),
+            ReviewFinding(reviewer="r1", severity="critical", issue="crit3"),
+        ]
+        report = EvalReport(
+            run_id="severe-label",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", findings=findings), scores=[]),
+            ],
+        )
+        dist = compute_severity_distribution(report)
+        assert dist.label == "Severe"
+
+    def test_moderate_label(self) -> None:
+        """When there are some critical but weighted <= 0.5, label should be 'Moderate'."""
+        from raki.report.html_report import compute_severity_distribution
+
+        findings = [
+            ReviewFinding(reviewer="r1", severity="critical", issue="crit1"),
+            ReviewFinding(reviewer="r1", severity="minor", issue="minor1"),
+            ReviewFinding(reviewer="r1", severity="minor", issue="minor2"),
+            ReviewFinding(reviewer="r1", severity="minor", issue="minor3"),
+            ReviewFinding(reviewer="r1", severity="minor", issue="minor4"),
+            ReviewFinding(reviewer="r1", severity="minor", issue="minor5"),
+        ]
+        report = EvalReport(
+            run_id="moderate-label",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", findings=findings), scores=[]),
+            ],
+        )
+        dist = compute_severity_distribution(report)
+        assert dist.label == "Moderate"
+
+
+class TestKnowledgeMissRateConditional:
+    """Knowledge Miss Rate hidden when no knowledge_context."""
+
+    def test_hidden_when_no_knowledge_context(self, tmp_path: Path) -> None:
+        """Knowledge Miss Rate should be hidden when no session has knowledge_context."""
+        from raki.report.html_report import write_html_report
+
+        sample = make_sample("s1")
+        report = EvalReport(
+            run_id="eval-no-knowledge",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={
+                "first_pass_verify_rate": 0.85,
+                "knowledge_retrieval_miss_rate": 0.15,
+            },
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "Knowledge Miss Rate omitted" in content or "knowledge_miss_footnote" in content
+
+    def test_shown_when_knowledge_context_present(self, tmp_path: Path) -> None:
+        """Knowledge Miss Rate should be shown when sessions have knowledge_context."""
+        from raki.model.phases import PhaseResult
+        from raki.report.html_report import write_html_report
+
+        meta = _make_session_meta_helper("s1")
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="done",
+                knowledge_context="some reference docs",
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        report = EvalReport(
+            run_id="eval-with-knowledge",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={
+                "first_pass_verify_rate": 0.85,
+                "knowledge_retrieval_miss_rate": 0.15,
+            },
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "Knowledge miss rate" in content or "Knowledge Miss Rate" in content
+
+
+class TestRetrievalQualityConditional:
+    """Retrieval Quality hidden in --no-llm mode."""
+
+    def test_no_llm_footnote_when_no_retrieval(self, tmp_path: Path) -> None:
+        """When has_retrieval=False, a footnote should appear instead of retrieval section."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-no-llm",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={
+                "first_pass_verify_rate": 0.85,
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, has_retrieval=False)
+        content = output.read_text()
+        assert "Retrieval metrics omitted" in content or "without --no-llm" in content
+
+
+class TestReworkCyclesColorThresholds:
+    """Rework Cycles colored by threshold (green <1.0, yellow 1.0-2.0, red >2.0)."""
+
+    def test_green_below_one(self, tmp_path: Path) -> None:
+        """Rework cycles below 1.0 should be green."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-rework-green",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"rework_cycles": 0.5},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        rework_idx = content.find("Rework")
+        assert rework_idx != -1
+        card_section = content[rework_idx : rework_idx + 500]
+        assert "color-green" in card_section or "rework-green" in card_section
+
+    def test_yellow_between_one_and_two(self, tmp_path: Path) -> None:
+        """Rework cycles between 1.0-2.0 should be yellow."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-rework-yellow",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"rework_cycles": 1.5},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        rework_idx = content.find("Rework")
+        assert rework_idx != -1
+        card_section = content[rework_idx : rework_idx + 500]
+        assert "color-yellow" in card_section or "rework-yellow" in card_section
+
+    def test_red_above_two(self, tmp_path: Path) -> None:
+        """Rework cycles above 2.0 should be red."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-rework-red",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"rework_cycles": 2.5},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        rework_idx = content.find("Rework")
+        assert rework_idx != -1
+        card_section = content[rework_idx : rework_idx + 500]
+        assert "color-red" in card_section or "rework-red" in card_section
+
+
+class TestCostRange:
+    """Cost shows min-max range."""
+
+    def test_cost_range_shown(self, tmp_path: Path) -> None:
+        """Cost card should show min-max range when samples exist."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "$8.00" in content or "8.00" in content
+        assert "$25.00" in content or "25.00" in content
+
+
+class TestComputeCostRange:
+    """compute_cost_range helper tests."""
+
+    def test_returns_min_max(self) -> None:
+        """compute_cost_range should return min and max from sample costs."""
+        from raki.report.html_report import compute_cost_range
+
+        report = _make_report_with_samples()
+        cost_min, cost_max = compute_cost_range(report)
+        assert cost_min == pytest.approx(8.0)
+        assert cost_max == pytest.approx(25.0)
+
+    def test_returns_none_when_no_costs(self) -> None:
+        """compute_cost_range should return None when no costs available."""
+        from raki.report.html_report import compute_cost_range
+
+        report = _make_minimal_report()
+        result = compute_cost_range(report)
+        assert result is None
+
+
+class TestHasKnowledgeContext:
+    """has_knowledge_context helper tests."""
+
+    def test_false_when_no_context(self) -> None:
+        """has_knowledge_context should return False when no phase has knowledge_context."""
+        from raki.report.html_report import has_knowledge_context
+
+        report = _make_report_with_samples()
+        assert has_knowledge_context(report) is False
+
+    def test_true_when_context_present(self) -> None:
+        """has_knowledge_context should return True when any phase has knowledge_context."""
+        from raki.model.phases import PhaseResult
+        from raki.report.html_report import has_knowledge_context
+
+        meta = _make_session_meta_helper("s1")
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="done",
+                knowledge_context="reference docs here",
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        report = EvalReport(
+            run_id="with-context",
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        assert has_knowledge_context(report) is True
+
+
+class TestMetricLinksToInterpretingDocs:
+    """Metric names link to docs/interpreting-results.md."""
+
+    def test_metric_name_is_link(self, tmp_path: Path) -> None:
+        """Metric names on score cards should be rendered as links."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="eval-links",
+            timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
+            aggregate_scores={"first_pass_verify_rate": 0.85},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "interpreting-results" in content
+        assert "<a " in content

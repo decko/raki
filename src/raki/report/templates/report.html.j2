@@ -74,6 +74,22 @@
     color: var(--text-primary);
   }
 
+  /* Summary sentence */
+  .summary-sentence {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+    color: var(--text-primary);
+    line-height: 1.6;
+  }
+
+  .summary-sentence strong {
+    color: var(--accent);
+  }
+
   /* Score cards */
   .score-grid {
     display: grid;
@@ -91,12 +107,39 @@
     flex-direction: column;
   }
 
+  .score-card.hero-card {
+    grid-column: span 2;
+    padding: 1.5rem 1.5rem;
+  }
+
+  .score-card.hero-card .metric-value {
+    font-size: 2.8rem;
+  }
+
   .score-card .metric-name {
     font-size: 0.85rem;
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .score-card .metric-name a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--text-muted);
+  }
+
+  .score-card .metric-name a:hover {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .score-card .metric-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
   }
 
   .score-card .metric-description {
@@ -132,6 +175,35 @@
     margin-top: 0.4rem;
   }
 
+  .score-card .metric-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .direction-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    text-transform: lowercase;
+  }
+
+  .threshold-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  .cost-range {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+  }
+
   /* Color classes */
   .color-green { color: var(--green); }
   .color-yellow { color: var(--yellow); }
@@ -154,6 +226,101 @@
     color: var(--accent);
     margin-bottom: 0.75rem;
   }
+
+  /* Severity distribution card */
+  .severity-distribution {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .severity-distribution .metric-name {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+  }
+
+  .severity-distribution .metric-name a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--text-muted);
+  }
+
+  .severity-distribution .metric-name a:hover {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .severity-distribution .metric-subtitle {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+
+  .severity-bar {
+    display: flex;
+    height: 24px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 0.5rem 0;
+    background: var(--bg-tertiary);
+  }
+
+  .severity-bar-segment {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #fff;
+    min-width: 0;
+    transition: width 0.3s ease;
+  }
+
+  .severity-bar-critical { background: var(--severity-critical); }
+  .severity-bar-major { background: var(--severity-major); }
+  .severity-bar-minor { background: var(--severity-minor); }
+
+  .severity-legend {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+  }
+
+  .severity-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .severity-legend-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  .severity-label-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: auto;
+  }
+
+  .severity-label-clean { background: rgba(76, 175, 80, 0.2); color: var(--green); }
+  .severity-label-minor { background: rgba(139, 195, 58, 0.2); color: var(--severity-minor); }
+  .severity-label-moderate { background: rgba(255, 152, 0, 0.2); color: var(--severity-major); }
+  .severity-label-severe { background: rgba(244, 67, 54, 0.2); color: var(--severity-critical); }
 
   /* Recurring failures table */
   .failures-table {
@@ -395,6 +562,15 @@
     color: var(--text-primary);
   }
 
+  /* Footnotes */
+  .footnote {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-style: italic;
+    padding: 0.5rem 0;
+    margin-top: 0.5rem;
+  }
+
   /* Footer */
   footer {
     margin-top: 3rem;
@@ -425,6 +601,11 @@
   </header>
 
   <main>
+  {# --- Summary Sentence --- #}
+  {% if summary_sentence %}
+  <div class="summary-sentence">{{ summary_sentence }}</div>
+  {% endif %}
+
   {# --- Aggregate Scores --- #}
   <section>
     <h2>Aggregate Scores</h2>
@@ -435,39 +616,111 @@
       <div class="score-grid">
         {% for name, score in operational_scores.items() %}
         {% set meta = get_metric_meta(name) %}
-        <div class="score-card">
-          <div class="metric-name">{{ meta.display_name }}</div>
-          {% if meta.description %}<div class="metric-description">{{ meta.description }}</div>{% endif %}
+        {# Skip knowledge_retrieval_miss_rate when no knowledge context #}
+        {% if name == "knowledge_retrieval_miss_rate" and not show_knowledge_miss %}
+        {% elif name == "review_severity_distribution" %}
+        {# Severity distribution is rendered separately below #}
+        {% else %}
+        <div class="score-card{% if name == 'first_pass_verify_rate' %} hero-card{% endif %}">
+          <div class="metric-name">
+            {% if meta.docs_anchor %}<a href="{{ docs_base_url }}#{{ meta.docs_anchor }}">{{ meta.display_name }}</a>{% else %}{{ meta.display_name }}{% endif %}
+          </div>
+          {% if meta.subtitle %}<div class="metric-subtitle">{{ meta.subtitle }}</div>{% endif %}
           <div class="metric-value {{ color_class(score, name) }}">{% if meta.display_format == "currency" %}${{ "%.2f"|format(score) }}{% elif meta.display_format == "count" %}{{ "%.1f"|format(score) }}{% elif meta.display_format == "percent" %}{{ "%.0f"|format(score * 100) }}%{% else %}{{ "%.2f"|format(score) }}{% endif %}</div>
+          {% if name == "cost_efficiency" and cost_range %}
+          <div class="cost-range">Range: ${{ "%.2f"|format(cost_range[0]) }} &ndash; ${{ "%.2f"|format(cost_range[1]) }}</div>
+          {% endif %}
           {% if meta.display_format not in ("currency", "count") and score <= 1.0 and score >= 0.0 %}
           <div class="metric-bar">
             <div class="metric-bar-fill bg-{{ color_name(score, name) }}" style="width: {{ (score * 100)|int }}%"></div>
           </div>
           {% endif %}
+          <div class="metric-footer">
+            {% if meta.direction %}<span class="direction-badge">{{ meta.direction }}</span>{% endif %}
+            {% if meta.threshold %}<span class="threshold-label">{{ meta.threshold }}</span>{% endif %}
+          </div>
         </div>
+        {% endif %}
         {% endfor %}
       </div>
+
+      {# --- Severity Distribution Bar --- #}
+      {% if severity_dist %}
+      <div class="severity-distribution">
+        <div class="metric-name">
+          <a href="{{ docs_base_url }}#review-findings">Review Findings</a>
+        </div>
+        <div class="metric-subtitle">How many issues reviewers found, broken down by severity</div>
+        {% if severity_dist.total > 0 %}
+        <div class="severity-bar">
+          {% if severity_dist.critical > 0 %}
+          <div class="severity-bar-segment severity-bar-critical" style="width: {{ severity_dist.critical_pct }}%">{{ severity_dist.critical }}</div>
+          {% endif %}
+          {% if severity_dist.major > 0 %}
+          <div class="severity-bar-segment severity-bar-major" style="width: {{ severity_dist.major_pct }}%">{{ severity_dist.major }}</div>
+          {% endif %}
+          {% if severity_dist.minor > 0 %}
+          <div class="severity-bar-segment severity-bar-minor" style="width: {{ severity_dist.minor_pct }}%">{{ severity_dist.minor }}</div>
+          {% endif %}
+        </div>
+        <div class="severity-legend">
+          {% if severity_dist.critical > 0 %}
+          <span class="severity-legend-item"><span class="severity-legend-dot" style="background: var(--severity-critical);"></span> {{ severity_dist.critical }} critical</span>
+          {% endif %}
+          {% if severity_dist.major > 0 %}
+          <span class="severity-legend-item"><span class="severity-legend-dot" style="background: var(--severity-major);"></span> {{ severity_dist.major }} major</span>
+          {% endif %}
+          {% if severity_dist.minor > 0 %}
+          <span class="severity-legend-item"><span class="severity-legend-dot" style="background: var(--severity-minor);"></span> {{ severity_dist.minor }} minor</span>
+          {% endif %}
+          <span class="severity-label-badge severity-label-{{ severity_dist.label|lower }}">{{ severity_dist.label }}</span>
+        </div>
+        {% else %}
+        <div class="severity-legend">
+          <span class="severity-label-badge severity-label-clean">Clean</span>
+          <span style="color: var(--text-muted); font-size: 0.85rem;">No review findings</span>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {# Knowledge Miss Rate omitted footnote #}
+      {% if not show_knowledge_miss and "knowledge_retrieval_miss_rate" in operational_scores %}
+      <p class="footnote knowledge_miss_footnote">Knowledge Miss Rate omitted &mdash; no retrieval context available in sessions.</p>
+      {% endif %}
     </div>
     {% endif %}
 
-    {% if retrieval_scores %}
+    {% if has_retrieval and retrieval_scores %}
     <div class="category-section">
       <div class="category-label">Retrieval Quality</div>
       <div class="score-grid">
         {% for name, score in retrieval_scores.items() %}
         {% set meta = get_metric_meta(name) %}
         <div class="score-card">
-          <div class="metric-name">{{ meta.display_name }}{% if name in experimental_metrics %} <span class="metric-tag">[experimental]</span>{% endif %}</div>
-          {% if meta.description %}<div class="metric-description">{{ meta.description }}</div>{% endif %}
+          <div class="metric-name">
+            {% if meta.docs_anchor %}<a href="{{ docs_base_url }}#{{ meta.docs_anchor }}">{{ meta.display_name }}</a>{% else %}{{ meta.display_name }}{% endif %}
+            {% if name in experimental_metrics %} <span class="metric-tag">[experimental]</span>{% endif %}
+          </div>
+          {% if meta.subtitle %}<div class="metric-subtitle">{{ meta.subtitle }}</div>{% endif %}
           <div class="metric-value {{ color_class(score, name) }}">{{ "%.2f"|format(score) }}</div>
           {% if score <= 1.0 and score >= 0.0 %}
           <div class="metric-bar">
             <div class="metric-bar-fill bg-{{ color_name(score, name) }}" style="width: {{ (score * 100)|int }}%"></div>
           </div>
           {% endif %}
+          <div class="metric-footer">
+            {% if meta.direction %}<span class="direction-badge">{{ meta.direction }}</span>{% endif %}
+            {% if meta.threshold %}<span class="threshold-label">{{ meta.threshold }}</span>{% endif %}
+          </div>
         </div>
         {% endfor %}
       </div>
+    </div>
+    {% elif not has_retrieval %}
+    <div class="category-section">
+      <div class="category-label">Retrieval Quality</div>
+      <p class="empty-state">Retrieval metrics omitted &mdash; run without --no-llm to enable LLM-backed evaluation.</p>
     </div>
     {% else %}
     <div class="category-section">
