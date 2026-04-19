@@ -5,8 +5,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from jinja2 import Environment, PackageLoader
-
 from raki.model.report import EvalReport
 from raki.report.cli_summary import EXPERIMENTAL_METRICS, OPERATIONAL_METRICS
 
@@ -129,8 +127,10 @@ def compute_worst_sessions(report: EvalReport, limit: int = 5) -> list[WorstSess
     return entries[:limit]
 
 
-def _build_jinja_env() -> Environment:
+def _build_jinja_env():  # type: ignore[no-any-return]
     """Create a Jinja2 environment loading templates from the package."""
+    from jinja2 import Environment, PackageLoader  # ty: ignore[unresolved-import]
+
     return Environment(
         loader=PackageLoader("raki.report", "templates"),
         autoescape=True,

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("jinja2")
+
 from raki.model.phases import ReviewFinding
 from raki.model.report import EvalReport, MetricResult, SampleResult
 
