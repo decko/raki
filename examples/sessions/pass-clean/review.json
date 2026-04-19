@@ -1,0 +1,1 @@
+{"ticket_key": "WEB-42", "verdict": "approve", "findings": [{"source": "security-specialist", "severity": "minor", "file": "src/middleware/auth.ts", "line": 28, "issue": "Token expiry error message could leak clock skew information", "suggestion": "Use a generic 'Token expired' message without including the expiry timestamp"}]}

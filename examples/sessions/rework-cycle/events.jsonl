@@ -1,0 +1,18 @@
+{"timestamp":"2026-04-11T10:00:00-03:00","phase":"triage","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-11T10:00:52-03:00","phase":"triage","kind":"phase_completed","data":{"cost":0.7,"duration_ms":52000,"tokens_in":4800,"tokens_out":1100}}
+{"timestamp":"2026-04-11T10:00:52-03:00","phase":"implement","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-11T10:06:52-03:00","phase":"implement","kind":"phase_completed","data":{"cost":3.9,"duration_ms":360000,"tokens_in":14000,"tokens_out":4000}}
+{"timestamp":"2026-04-11T10:06:52-03:00","phase":"verify","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-11T10:09:22-03:00","phase":"verify","kind":"phase_failed","data":{"error":"Rate limit test exceeded timeout: sliding window counter not resetting","exit_code":1}}
+{"timestamp":"2026-04-11T10:09:22-03:00","phase":"review","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-11T10:09:22-03:00","phase":"review","kind":"reviewer_started","data":{"reviewer":"api-specialist"}}
+{"timestamp":"2026-04-11T10:11:40-03:00","phase":"review","kind":"reviewer_completed","data":{"reviewer":"api-specialist","findings_count":2}}
+{"timestamp":"2026-04-11T10:11:40-03:00","phase":"review","kind":"reviewer_started","data":{"reviewer":"python-specialist"}}
+{"timestamp":"2026-04-11T10:13:55-03:00","phase":"review","kind":"reviewer_completed","data":{"reviewer":"python-specialist","findings_count":1}}
+{"timestamp":"2026-04-11T10:13:55-03:00","phase":"review","kind":"review_merged","data":{"findings_count":3,"verdict":"rework"}}
+{"timestamp":"2026-04-11T10:13:55-03:00","phase":"review","kind":"review_rework_routed","data":{"rework_cycle":1,"routing_to":"implement"}}
+{"timestamp":"2026-04-11T10:13:55-03:00","phase":"implement","kind":"rework_feedback_injected","data":{"findings_count":3,"from_phase":"review"}}
+{"timestamp":"2026-04-11T10:13:55-03:00","phase":"implement","kind":"phase_started","data":{"generation":2}}
+{"timestamp":"2026-04-11T10:19:35-03:00","phase":"implement","kind":"phase_completed","data":{"cost":3.9,"duration_ms":340000,"tokens_in":18000,"tokens_out":5200}}
+{"timestamp":"2026-04-11T10:19:35-03:00","phase":"verify","kind":"phase_started","data":{"generation":2}}
+{"timestamp":"2026-04-11T10:24:45-03:00","phase":"verify","kind":"phase_completed","data":{"cost":2.1,"duration_ms":310000,"summary":"PASS","tokens_in":11000,"tokens_out":2800}}

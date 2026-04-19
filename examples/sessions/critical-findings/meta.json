@@ -1,0 +1,15 @@
+{
+  "ticket": "WEB-44",
+  "summary": "Add SQL query builder for dynamic report filters",
+  "branch": "feature/WEB-44-query-builder",
+  "started_at": "2026-04-12T14:00:00-03:00",
+  "total_cost": 15.6,
+  "rework_cycles": 0,
+  "model_id": "claude-sonnet-4-20250514",
+  "phases": {
+    "triage": {"status": "completed", "cost": 0.5, "duration_ms": 38000, "generation": 1, "tokens_in": 3800, "tokens_out": 850},
+    "implement": {"status": "completed", "cost": 4.8, "duration_ms": 390000, "generation": 1, "tokens_in": 16000, "tokens_out": 4800},
+    "verify": {"status": "completed", "cost": 2.3, "duration_ms": 180000, "generation": 1, "tokens_in": 9200, "tokens_out": 2400},
+    "review": {"status": "completed", "cost": 8.0, "duration_ms": 420000, "generation": 1, "tokens_in": 22000, "tokens_out": 6500}
+  }
+}

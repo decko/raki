@@ -1,0 +1,1 @@
+{"ticket_key": "WEB-43", "complexity": "high", "approach": "Implement sliding window rate limiting using Redis. Add per-endpoint configuration, return standard 429 responses with Retry-After headers.", "automatable": true}

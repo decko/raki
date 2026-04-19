@@ -1,0 +1,1 @@
+{"ticket_key": "WEB-46", "complexity": "high", "approach": "Add WebSocket server using ws library, implement channel-based pub/sub for notifications, authenticate connections via JWT token in handshake query params.", "automatable": true}

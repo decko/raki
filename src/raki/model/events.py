@@ -13,5 +13,8 @@ class SessionEvent(BaseModel):
         "phase_failed",
         "review_merged",
         "review_rework_routed",
+        "rework_feedback_injected",
+        "reviewer_started",
+        "reviewer_completed",
     ]
     data: dict = Field(default_factory=dict)

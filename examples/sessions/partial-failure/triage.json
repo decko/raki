@@ -1,0 +1,1 @@
+{"ticket_key": "WEB-45", "complexity": "high", "approach": "Add tenant_id column to core tables, create row-level security policies, and update all queries to include tenant context from the authenticated user.", "automatable": false}

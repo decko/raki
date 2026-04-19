@@ -1,0 +1,15 @@
+{
+  "ticket": "WEB-43",
+  "summary": "Add rate limiting to public API endpoints",
+  "branch": "feature/WEB-43-rate-limiting",
+  "started_at": "2026-04-11T10:00:00-03:00",
+  "total_cost": 22.4,
+  "rework_cycles": 1,
+  "model_id": "claude-sonnet-4-20250514",
+  "phases": {
+    "triage": {"status": "completed", "cost": 0.7, "duration_ms": 52000, "generation": 1, "tokens_in": 4800, "tokens_out": 1100},
+    "implement": {"status": "completed", "cost": 7.8, "duration_ms": 520000, "generation": 2, "tokens_in": 18000, "tokens_out": 5200},
+    "verify": {"status": "completed", "cost": 4.2, "duration_ms": 310000, "generation": 2, "tokens_in": 11000, "tokens_out": 2800},
+    "review": {"status": "completed", "cost": 3.5, "duration_ms": 280000, "generation": 1, "tokens_in": 10500, "tokens_out": 3400}
+  }
+}
