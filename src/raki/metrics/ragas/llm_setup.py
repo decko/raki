@@ -43,16 +43,21 @@ def create_ragas_embeddings():
     return embedding_factory()
 
 
-def _validate_judge_log_path(log_path: Path) -> Path:
-    """Validate that the judge log path is under the current working directory.
+def _validate_judge_log_path(log_path: Path, project_root: Path | None = None) -> Path:
+    """Validate that the judge log path is under the project root.
 
     Follows the same path traversal guard pattern used by the session schema
     adapter and manifest loader.
+
+    Args:
+        log_path: Path to the judge log file.
+        project_root: Root directory to validate against. Falls back to
+            Path.cwd() if not provided (for backward compatibility).
     """
     resolved = log_path.resolve()
-    cwd = Path.cwd().resolve()
-    if not resolved.is_relative_to(cwd):
-        raise ValueError(f"judge_log_path escapes project root: {resolved} is not under {cwd}")
+    root = (project_root or Path.cwd()).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError(f"judge_log_path escapes project root: {resolved} is not under {root}")
     return resolved
 
 
@@ -63,8 +68,8 @@ class JudgeLogger:
     user_input, score, and optional reason.
     """
 
-    def __init__(self, log_path: Path):
-        self.log_path = _validate_judge_log_path(log_path)
+    def __init__(self, log_path: Path, project_root: Path | None = None):
+        self.log_path = _validate_judge_log_path(log_path, project_root)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(
@@ -75,7 +80,7 @@ class JudgeLogger:
         result_reason: str | None,
     ) -> None:
         """Append a judge call record to the JSONL log file."""
-        with self.log_path.open("a") as log_file:
+        with self.log_path.open("a", encoding="utf-8") as log_file:
             log_file.write(
                 json.dumps(
                     {

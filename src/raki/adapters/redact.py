@@ -6,9 +6,16 @@ PATTERNS = [
     re.compile(r'(?i)(token[=:]\s*)(?:[^\s"]+|"[^"]+")'),
     re.compile(r'(?i)(password[=:]\s*)(?:[^\s"]+|"[^"]+")'),
     re.compile(r'(?i)(api[_-]?key[=:]\s*)(?:[^\s"]+|"[^"]+")'),
-    re.compile(r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),  # JWT
+    # JWT -- including multi-line where header.payload.signature may span lines
+    re.compile(r"eyJ[A-Za-z0-9_-]+\s*\.\s*eyJ[A-Za-z0-9_-]+\s*\.\s*[A-Za-z0-9_-]+", re.DOTALL),
     re.compile(r"AKIA[0-9A-Z]{16}"),  # AWS access keys
     re.compile(r"(?:ghp|gho|ghs|ghr|glpat)_[A-Za-z0-9_]{20,}"),  # GitHub/GitLab tokens
+    # Specific env var patterns: AWS_SECRET_ACCESS_KEY, GITHUB_TOKEN, GH_TOKEN
+    re.compile(r'(?i)(AWS_SECRET_ACCESS_KEY[=:]\s*)(?:[^\s"]+|"[^"]+")'),
+    re.compile(r'(?i)(GITHUB_TOKEN[=:]\s*)(?:[^\s"]+|"[^"]+")'),
+    re.compile(r'(?i)(GH_TOKEN[=:]\s*)(?:[^\s"]+|"[^"]+")'),
+    # Generic *_SECRET*= env vars (e.g. MY_SECRET_KEY=..., DB_SECRET_TOKEN=...)
+    re.compile(r'(?i)([A-Z_]*SECRET[A-Z_]*[=:]\s*)(?:[^\s"]+|"[^"]+")'),
     re.compile(r'(?i)(secret[=:]\s*)(?:[^\s"]+|"[^"]+")'),  # Generic secret keyword
     re.compile(
         r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"

@@ -56,7 +56,7 @@ class AnswerRelevancyMetric:
 
         judge_logger: JudgeLogger | None = None
         if config.judge_log_path is not None:
-            judge_logger = JudgeLogger(config.judge_log_path)
+            judge_logger = JudgeLogger(config.judge_log_path, config.project_root)
 
         sample_scores: dict[str, float] = {}
         scores: list[float] = []

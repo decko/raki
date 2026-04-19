@@ -16,10 +16,12 @@ class AlcoveAdapter:
 
     def detect(self, source: Path) -> bool:
         """Detect Alcove format via substring search of first 4KB."""
+        if source.is_symlink():
+            return False
         if not source.is_file() or source.suffix != ".json":
             return False
         try:
-            with source.open(errors="replace") as file_handle:
+            with source.open(encoding="utf-8", errors="replace") as file_handle:
                 header = file_handle.read(DETECT_READ_SIZE)
             return '"session_id"' in header and '"transcript"' in header
         except OSError:

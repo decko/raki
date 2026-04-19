@@ -492,3 +492,97 @@ def test_session_schema_handles_null_phase_metadata(tmp_path):
     # With null phase metadata, defaults should be used
     assert sample.phases[0].generation == 1
     assert sample.phases[0].status == "completed"
+
+
+# --- Security hardening tests (issue #35) ---
+
+
+def test_session_schema_detect_rejects_symlink(tmp_path):
+    """SessionSchemaAdapter.detect() must reject symlinked directories."""
+    real_dir = tmp_path / "real-session"
+    real_dir.mkdir()
+    (real_dir / "meta.json").write_text('{"ticket": "1", "started_at": "2026-04-10T08:00:00Z"}')
+    (real_dir / "events.jsonl").write_text("")
+    link_dir = tmp_path / "link-session"
+    link_dir.symlink_to(real_dir)
+    adapter = SessionSchemaAdapter()
+    assert not adapter.detect(link_dir)
+
+
+def test_session_schema_load_rejects_symlink(tmp_path):
+    """SessionSchemaAdapter.load() must reject symlinked directories."""
+    real_dir = tmp_path / "real-session"
+    real_dir.mkdir()
+    (real_dir / "meta.json").write_text('{"ticket": "1", "started_at": "2026-04-10T08:00:00Z"}')
+    (real_dir / "events.jsonl").write_text("")
+    link_dir = tmp_path / "link-session"
+    link_dir.symlink_to(real_dir)
+    adapter = SessionSchemaAdapter()
+    with pytest.raises(ValueError, match="symlink"):
+        adapter.load(link_dir)
+
+
+def test_alcove_detect_rejects_symlink(tmp_path):
+    """AlcoveAdapter.detect() must reject symlinked files."""
+    real_file = tmp_path / "real.json"
+    real_file.write_text('{"session_id": "x", "transcript": []}')
+    link_file = tmp_path / "link.json"
+    link_file.symlink_to(real_file)
+    adapter = AlcoveAdapter()
+    assert not adapter.detect(link_file)
+
+
+def test_redact_aws_secret_access_key():
+    """AWS_SECRET_ACCESS_KEY=... should be redacted."""
+    text = "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+    result = redact_sensitive(text)
+    assert "wJalrXUtnFEMI" not in result
+    assert "***REDACTED***" in result
+
+
+def test_redact_github_token_env_var():
+    """GITHUB_TOKEN=... should be redacted."""
+    text = "GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    result = redact_sensitive(text)
+    assert "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" not in result
+    assert "***REDACTED***" in result
+
+
+def test_redact_gh_token_env_var():
+    """GH_TOKEN=... should be redacted."""
+    text = "GH_TOKEN=ghp_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+    result = redact_sensitive(text)
+    assert "ghp_yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy" not in result
+    assert "***REDACTED***" in result
+
+
+def test_redact_generic_secret_env_var():
+    """Generic *_SECRET*= env vars should be redacted (e.g. MY_SECRET_KEY=...)."""
+    text = "MY_SECRET_KEY=super-secret-value-123"
+    result = redact_sensitive(text)
+    assert "super-secret-value-123" not in result
+    assert "***REDACTED***" in result
+
+
+def test_redact_generic_secret_env_var_with_underscore():
+    """DB_SECRET_TOKEN=... should be redacted."""
+    text = "DB_SECRET_TOKEN=another-secret"
+    result = redact_sensitive(text)
+    assert "another-secret" not in result
+    assert "***REDACTED***" in result
+
+
+def test_redact_multiline_jwt():
+    """JWT split across multiple lines should be redacted."""
+    text = "header: eyJhbGciOiJIUzI1NiJ9.\neyJzdWIiOiJ1c2VyIn0.\nabcdef123456"
+    result = redact_sensitive(text)
+    assert "eyJhbGciOiJIUzI1NiJ9" not in result
+    assert "***REDACTED***" in result
+
+
+def test_redact_multiline_jwt_across_content_blocks():
+    """JWT header+payload split across content blocks with whitespace should be redacted."""
+    text = "eyJhbGciOiJIUzI1NiJ9\n.eyJzdWIiOiJ1c2VyIn0\n.abcdef123456"
+    result = redact_sensitive(text)
+    assert "eyJhbGciOiJIUzI1NiJ9" not in result
+    assert "***REDACTED***" in result
