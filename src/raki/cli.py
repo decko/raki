@@ -10,6 +10,11 @@ from raki.adapters.redact import redact_sensitive
 console = Console()
 
 
+def _stderr_console() -> Console:
+    """Return a Console that writes to stderr, for use when --json is active."""
+    return Console(stderr=True)
+
+
 def _build_registry():
     """Build the default adapter registry with all built-in adapters."""
     from raki.adapters import AdapterRegistry, AlcoveAdapter, SessionSchemaAdapter
@@ -20,12 +25,15 @@ def _build_registry():
     return registry
 
 
-def _resolve_manifest(manifest_path: str | None, quiet: bool = False) -> Path:
+def _resolve_manifest(
+    manifest_path: str | None, quiet: bool = False, con: Console | None = None
+) -> Path:
     """Resolve manifest path from explicit argument or auto-discovery.
 
     Args:
         manifest_path: Explicit path to manifest file, or None for auto-discovery.
         quiet: When True, suppress the auto-discovery message.
+        con: Console to use for output. Falls back to module-level ``console``.
 
     Returns:
         Resolved path to manifest file.
@@ -34,6 +42,7 @@ def _resolve_manifest(manifest_path: str | None, quiet: bool = False) -> Path:
         click.BadParameter: If the explicit path does not exist.
         click.UsageError: If no manifest is found via auto-discovery.
     """
+    out = con or console
     if manifest_path:
         path = Path(manifest_path)
         if not path.exists():
@@ -48,15 +57,16 @@ def _resolve_manifest(manifest_path: str | None, quiet: bool = False) -> Path:
             "No manifest found. Provide --manifest or create raki.yaml / eval-manifest.yaml"
         )
     if not quiet:
-        console.print(f"[dim]Auto-discovered manifest: {found}[/dim]")
+        out.print(f"[dim]Auto-discovered manifest: {found}[/dim]")
     return found
 
 
-def _warn_unimplemented_options(**options: object) -> None:
+def _warn_unimplemented_options(con: Console | None = None, **options: object) -> None:
     """Print a warning for each option that was provided but is not yet implemented."""
+    out = con or console
     for option_name, value in options.items():
         if value is not None:
-            console.print(f"[yellow]Warning: --{option_name} is not yet implemented[/yellow]")
+            out.print(f"[yellow]Warning: --{option_name} is not yet implemented[/yellow]")
 
 
 @click.group()
@@ -116,19 +126,22 @@ def run(
     verbose: bool,
 ) -> None:
     """Run evaluation against sessions."""
+    out = _stderr_console() if json_stdout else console
+
     _warn_unimplemented_options(
+        con=out,
         adapter=adapter_format,
         metrics=metric_names,
         tenant=tenant,
     )
-    manifest_file = _resolve_manifest(manifest_path, quiet=quiet)
+    manifest_file = _resolve_manifest(manifest_path, quiet=quiet, con=out)
 
     try:
         from raki.ground_truth.manifest import load_manifest
 
         manifest = load_manifest(manifest_file)
     except Exception as exc:
-        console.print(f"[red]Error loading manifest: {redact_sensitive(str(exc))}[/red]")
+        out.print(f"[red]Error loading manifest: {redact_sensitive(str(exc))}[/red]")
         raise SystemExit(2) from exc
 
     from raki.adapters import DatasetLoader
@@ -137,18 +150,18 @@ def run(
     loader = DatasetLoader(registry)
 
     if not quiet:
-        console.print(f"Loading sessions from [bold]{manifest.sessions.path}[/bold]...")
+        out.print(f"Loading sessions from [bold]{manifest.sessions.path}[/bold]...")
 
     dataset = loader.load_directory(manifest.sessions.path)
 
     if verbose:
         for error in loader.errors:
-            console.print(f"  [red]Error: {error.path} -- {redact_sensitive(error.error)}[/red]")
+            out.print(f"  [red]Error: {error.path} -- {redact_sensitive(error.error)}[/red]")
         for skipped_path in loader.skipped:
-            console.print(f"  [dim]Skipped: {skipped_path}[/dim]")
+            out.print(f"  [dim]Skipped: {skipped_path}[/dim]")
 
     if not quiet:
-        console.print(
+        out.print(
             f"Loaded [bold]{len(dataset.samples)}[/bold] sessions "
             f"({len(loader.skipped)} skipped, {len(loader.errors)} errors)"
         )
@@ -189,10 +202,11 @@ def run(
             session_count=len(dataset.samples),
             skipped_count=len(loader.skipped),
             error_count=len(loader.errors),
+            console=out,
         )
 
     if threshold is not None and no_llm:
-        console.print(
+        out.print(
             "[yellow]Warning: --threshold is set but --no-llm is active. "
             "Threshold applies to retrieval quality scores which require LLM metrics.[/yellow]"
         )
@@ -211,7 +225,7 @@ def run(
     except ImportError:
         html_file = None
         if not quiet:
-            console.print(
+            out.print(
                 "[yellow]Note: jinja2 not installed — skipping HTML report. "
                 "Install with: uv pip install raki[html][/yellow]"
             )
@@ -230,7 +244,7 @@ def run(
         report_msg = f"\nReport written:\n  JSON -> {json_file}"
         if html_file is not None:
             report_msg += f"\n  HTML -> {html_file}"
-        console.print(report_msg)
+        out.print(report_msg)
 
     if threshold is not None:
         from raki.report.cli_summary import OPERATIONAL_METRICS
