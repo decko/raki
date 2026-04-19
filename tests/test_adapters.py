@@ -341,3 +341,69 @@ def test_alcove_adapter_rejects_symlink(tmp_path):
     link_file.symlink_to(real_file)
     with pytest.raises(ValueError, match="symlink"):
         adapter.load(link_file)
+
+
+def test_session_schema_skips_malformed_finding_missing_issue(tmp_path):
+    """A finding missing the required 'issue' key should be skipped, not crash."""
+    meta = {
+        "ticket": "777",
+        "summary": "test malformed finding",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 1.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    # One valid finding and one missing the required 'issue' key
+    review_data = {
+        "findings": [
+            {"source": "reviewer-a", "severity": "minor", "issue": "valid finding"},
+            {"source": "reviewer-b", "severity": "major"},  # missing 'issue' key
+        ]
+    }
+    (tmp_path / "review.json").write_text(json.dumps(review_data))
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    # The valid finding should be kept; the malformed one should be skipped
+    assert len(sample.findings) == 1
+    assert sample.findings[0].issue == "valid finding"
+
+
+def test_session_schema_skips_malformed_event_line(tmp_path):
+    """An event line missing required keys should be skipped, not crash."""
+    meta = {
+        "ticket": "888",
+        "summary": "test malformed event",
+        "started_at": "2026-04-10T08:00:00Z",
+        "total_cost": 1.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    valid_event = json.dumps(
+        {
+            "timestamp": "2026-04-10T08:00:00Z",
+            "phase": "triage",
+            "kind": "phase_started",
+            "data": {},
+        }
+    )
+    # Missing 'timestamp' and 'kind' -- both required by SessionEvent
+    malformed_event = json.dumps({"phase": "triage", "data": {}})
+    # Invalid 'kind' value -- not in Literal
+    invalid_kind_event = json.dumps(
+        {
+            "timestamp": "2026-04-10T08:01:00Z",
+            "kind": "totally_invalid_kind",
+        }
+    )
+    events_content = "\n".join([valid_event, malformed_event, invalid_kind_event])
+    (tmp_path / "events.jsonl").write_text(events_content)
+
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    # Only the valid event should be loaded; malformed ones should be skipped
+    assert len(sample.events) == 1
+    assert sample.events[0].kind == "phase_started"
