@@ -1,7 +1,9 @@
 """Tests for CLI commands: raki run, raki validate, raki adapters, raki report."""
 
+import importlib.util
 import json
 
+import pytest
 from click.testing import CliRunner
 
 from raki.cli import main
@@ -579,6 +581,10 @@ class TestCliReport:
         assert result.exit_code == 0
         assert "0.85" in result.output
 
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("jinja2"),
+        reason="jinja2 not installed",
+    )
     def test_report_generates_html(self, tmp_path):
         """raki report --input --html generates an HTML file."""
         report_json = tmp_path / "report.json"
