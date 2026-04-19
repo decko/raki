@@ -33,6 +33,31 @@ def _validate_path(file_path: Path, session_dir: Path) -> None:
         )
 
 
+def _extract_model_id_from_events(events: list[SessionEvent]) -> str | None:
+    """Extract model_id from the first event that has a 'model' key in its data."""
+    for event in events:
+        model = event.data.get("model")
+        if model and isinstance(model, str):
+            return model
+    return None
+
+
+def _extract_token_counts_from_events(
+    events: list[SessionEvent], phase_name: str
+) -> dict[str, int | None]:
+    """Extract tokens_in/tokens_out from phase_completed events for a given phase.
+
+    Returns a dict with 'tokens_in' and 'tokens_out' keys, values may be None.
+    """
+    for event in events:
+        if event.phase == phase_name and event.kind == "phase_completed":
+            tokens_in = event.data.get("tokens_in")
+            tokens_out = event.data.get("tokens_out")
+            if tokens_in is not None or tokens_out is not None:
+                return {"tokens_in": tokens_in, "tokens_out": tokens_out}
+    return {"tokens_in": None, "tokens_out": None}
+
+
 class SessionSchemaAdapter:
     name: str = "session-schema"
     description: str = "Directory-based session format with structured phases"
@@ -51,6 +76,14 @@ class SessionSchemaAdapter:
         meta_raw: dict[str, Any] = json.loads(_read_bounded(meta_path))
         session_id = str(meta_raw.get("ticket", source.name))
         phases_dict = meta_raw.get("phases") or {}
+
+        events = self._load_events(source)
+
+        # Extract model_id: prefer meta.json, fall back to events
+        model_id = meta_raw.get("model_id")
+        if not model_id:
+            model_id = _extract_model_id_from_events(events)
+
         meta = SessionMeta(
             session_id=session_id,
             ticket=str(meta_raw.get("ticket")),
@@ -58,20 +91,29 @@ class SessionSchemaAdapter:
             total_cost_usd=meta_raw.get("total_cost"),
             total_phases=len(phases_dict),
             rework_cycles=meta_raw.get("rework_cycles", 0),
+            model_id=model_id,
         )
-        phases = self._load_phases(source, meta_raw)
+        phases = self._load_phases(source, meta_raw, events)
         findings = self._load_findings(source)
-        events = self._load_events(source)
         return EvalSample(session=meta, phases=phases, findings=findings, events=events)
 
-    def _load_phases(self, source: Path, meta_raw: dict[str, Any]) -> list[PhaseResult]:
+    def _load_phases(
+        self,
+        source: Path,
+        meta_raw: dict[str, Any],
+        events: list[SessionEvent],
+    ) -> list[PhaseResult]:
         phases: list[PhaseResult] = []
         for phase_name in PHASE_NAMES:
-            phases.extend(self._load_phase_files(source, phase_name, meta_raw))
+            phases.extend(self._load_phase_files(source, phase_name, meta_raw, events))
         return phases
 
     def _load_phase_files(
-        self, source: Path, phase_name: str, meta_raw: dict[str, Any]
+        self,
+        source: Path,
+        phase_name: str,
+        meta_raw: dict[str, Any],
+        events: list[SessionEvent],
     ) -> list[PhaseResult]:
         results: list[PhaseResult] = []
         pattern = re.compile(rf"^{re.escape(phase_name)}\.json(\.\d+)?$")
@@ -79,15 +121,41 @@ class SessionSchemaAdapter:
             [file_path for file_path in source.iterdir() if pattern.match(file_path.name)],
             key=lambda file_path: file_path.name,
         )
+
+        # Collect suffixed generation numbers to compute base file generation
+        suffixed_generations: list[int] = []
+        for file_path in matched_files:
+            suffix_match = re.search(r"\.(\d+)$", file_path.name)
+            if suffix_match:
+                suffixed_generations.append(int(suffix_match.group(1)))
+
+        phases_dict = meta_raw.get("phases") or {}
+        phase_meta = phases_dict.get(phase_name) or {}
+
+        # Extract token counts from events as fallback
+        event_tokens = _extract_token_counts_from_events(events, phase_name)
+
+        # Determine tokens_in/tokens_out: prefer phase metadata, fall back to events
+        meta_tokens_in = phase_meta.get("tokens_in")
+        tokens_in = meta_tokens_in if meta_tokens_in is not None else event_tokens["tokens_in"]
+        meta_tokens_out = phase_meta.get("tokens_out")
+        tokens_out = meta_tokens_out if meta_tokens_out is not None else event_tokens["tokens_out"]
+
         for file_path in matched_files:
             _validate_path(file_path, source)
             suffix_match = re.search(r"\.(\d+)$", file_path.name)
-            phases_dict = meta_raw.get("phases") or {}
-            phase_meta = phases_dict.get(phase_name) or {}
             if suffix_match:
                 generation = int(suffix_match.group(1))
             else:
-                generation = phase_meta.get("generation", 1)
+                # Base file = latest generation
+                # Use meta generation if available; otherwise max(suffixed) + 1 or 1
+                meta_generation = phase_meta.get("generation")
+                if meta_generation is not None:
+                    generation = meta_generation
+                elif suffixed_generations:
+                    generation = max(suffixed_generations) + 1
+                else:
+                    generation = 1
             try:
                 raw = json.loads(_read_bounded(file_path))
             except json.JSONDecodeError:
@@ -100,6 +168,8 @@ class SessionSchemaAdapter:
                     status=phase_meta.get("status", "completed"),
                     cost_usd=phase_meta.get("cost"),
                     duration_ms=phase_meta.get("duration_ms"),
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
                     output=output_text,
                     output_structured=redact_dict(raw),
                 )
