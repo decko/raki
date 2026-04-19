@@ -212,10 +212,9 @@ class TestToRagasRows:
 
 
 class TestJudgeLogger:
-    def test_logs_to_jsonl(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.chdir(tmp_path)
+    def test_logs_to_jsonl(self, tmp_path: Path):
         log_path = tmp_path / "subdir" / "judge_log.jsonl"
-        judge_logger = JudgeLogger(log_path)
+        judge_logger = JudgeLogger(log_path, project_root=tmp_path)
         judge_logger.log("context_precision", "How to validate?", 0.85, "Good precision")
         judge_logger.log("context_recall", "How to test?", 0.72, None)
 
@@ -232,23 +231,30 @@ class TestJudgeLogger:
         assert entry2["score"] == 0.72
         assert entry2["reason"] is None
 
-    def test_truncates_long_user_input(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.chdir(tmp_path)
+    def test_truncates_long_user_input(self, tmp_path: Path):
         log_path = tmp_path / "judge_log.jsonl"
-        judge_logger = JudgeLogger(log_path)
+        judge_logger = JudgeLogger(log_path, project_root=tmp_path)
         long_input = "x" * 500
         judge_logger.log("test_metric", long_input, 0.5, None)
 
         entry = json.loads(log_path.read_text().strip())
         assert len(entry["user_input"]) == 200
 
-    def test_rejects_path_outside_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        subdir = tmp_path / "project"
-        subdir.mkdir()
-        monkeypatch.chdir(subdir)
+    def test_rejects_path_outside_project_root(self, tmp_path: Path):
+        """_validate_judge_log_path should use project_root, not Path.cwd()."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
         outside_path = tmp_path / "outside" / "judge.jsonl"
         with pytest.raises(ValueError, match="escapes project root"):
-            JudgeLogger(outside_path)
+            JudgeLogger(outside_path, project_root=project_dir)
+
+    def test_accepts_path_inside_project_root(self, tmp_path: Path):
+        """Log path under project_root should be accepted without needing monkeypatch.chdir."""
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        log_path = project_dir / "logs" / "judge.jsonl"
+        judge_logger = JudgeLogger(log_path, project_root=project_dir)
+        assert judge_logger.log_path == log_path.resolve()
 
 
 # ---------------------------------------------------------------------------

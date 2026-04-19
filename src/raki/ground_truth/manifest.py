@@ -120,7 +120,7 @@ def load_manifest(path: Path, *, project_root: Path | None = None) -> EvalManife
         ValueError: If the YAML content is not a mapping, referenced paths
             do not exist, or paths escape the project root.
     """
-    raw = yaml.safe_load(path.read_text())
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
 
     if not isinstance(raw, dict):
         raise ValueError("Manifest must contain a YAML mapping")

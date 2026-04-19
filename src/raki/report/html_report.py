@@ -284,7 +284,7 @@ def write_html_report(
         color_name=color_name_fn,
     )
 
-    output.write_text(html_content)
+    output.write_text(html_content, encoding="utf-8")
 
 
 def html_timestamp_filename(report: EvalReport) -> str:

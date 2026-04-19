@@ -20,7 +20,7 @@ def _read_bounded(path: Path) -> str:
         raise ValueError(
             f"File {path} is {file_size} bytes, exceeding the {MAX_SESSION_FILE_SIZE} byte limit"
         )
-    return path.read_text()
+    return path.read_text(encoding="utf-8")
 
 
 def _validate_path(file_path: Path, session_dir: Path) -> None:
@@ -39,9 +39,13 @@ class SessionSchemaAdapter:
     detection_hint: str = "meta.json + events.jsonl"
 
     def detect(self, source: Path) -> bool:
+        if source.is_symlink():
+            return False
         return (source / "meta.json").exists() and (source / "events.jsonl").exists()
 
     def load(self, source: Path) -> EvalSample:
+        if source.is_symlink():
+            raise ValueError(f"Refusing to load symlink: {source}")
         meta_path = source / "meta.json"
         _validate_path(meta_path, source)
         meta_raw: dict[str, Any] = json.loads(_read_bounded(meta_path))

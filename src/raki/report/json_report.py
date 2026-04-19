@@ -5,6 +5,8 @@ from pathlib import Path
 
 from raki.model.report import EvalReport
 
+MAX_REPORT_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
 
 def write_json_report(report: EvalReport, output: Path, include_sessions: bool = False) -> None:
     """Write JSON report. By default strips large session data fields to keep reports compact.
@@ -21,7 +23,7 @@ def write_json_report(report: EvalReport, output: Path, include_sessions: bool =
     data = report.model_dump(mode="json")
     if not include_sessions:
         strip_session_data(data)
-    output.write_text(json.dumps(data, indent=2, default=str))
+    output.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
 
 def strip_session_data(data: dict) -> None:
@@ -42,8 +44,16 @@ def strip_session_data(data: dict) -> None:
 
 
 def load_json_report(path: Path) -> EvalReport:
-    """Load an EvalReport from a JSON file."""
-    raw = json.loads(path.read_text())
+    """Load an EvalReport from a JSON file, enforcing a 50MB size limit."""
+    if path.is_symlink():
+        raise ValueError(f"Refusing to load symlink: {path}")
+    file_size = path.stat().st_size
+    if file_size > MAX_REPORT_FILE_SIZE:
+        raise ValueError(
+            f"Report file {path} is {file_size} bytes, "
+            f"exceeding the {MAX_REPORT_FILE_SIZE} byte limit"
+        )
+    raw = json.loads(path.read_text(encoding="utf-8"))
     return EvalReport.model_validate(raw)
 
 

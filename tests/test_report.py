@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from raki.model.report import EvalReport, MetricResult, SampleResult
 from raki.report.cli_summary import color_for_score, format_metric_line, print_summary
 from raki.report.json_report import load_json_report, write_json_report
@@ -42,6 +44,35 @@ def _make_report_with_samples() -> EvalReport:
 
 
 # --- JSON round-trip tests ---
+
+
+class TestJsonReportSizeLimit:
+    def test_load_json_report_rejects_oversized_file(self, tmp_path: Path) -> None:
+        """load_json_report() should reject files exceeding 50MB."""
+        big_file = tmp_path / "big-report.json"
+        big_file.write_text('{"run_id": "x"}' + " " * (50 * 1024 * 1024))
+        with pytest.raises(ValueError, match="exceeding"):
+            load_json_report(big_file)
+
+    def test_load_json_report_accepts_normal_file(self, tmp_path: Path) -> None:
+        """load_json_report() should accept files under the 50MB limit."""
+        report = _make_report()
+        output_path = tmp_path / "normal.json"
+        write_json_report(report, output_path)
+        loaded = load_json_report(output_path)
+        assert loaded.run_id == report.run_id
+
+
+class TestJsonReportSymlinkCheck:
+    def test_load_json_report_rejects_symlink(self, tmp_path: Path) -> None:
+        """load_json_report() should reject symlinked files."""
+        report = _make_report()
+        real_file = tmp_path / "real-report.json"
+        write_json_report(report, real_file)
+        link_file = tmp_path / "link-report.json"
+        link_file.symlink_to(real_file)
+        with pytest.raises(ValueError, match="symlink"):
+            load_json_report(link_file)
 
 
 class TestJsonReportRoundTrip:

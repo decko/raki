@@ -22,7 +22,7 @@ def load_ground_truth(path: Path) -> list[GroundTruth]:
         A list of validated GroundTruth instances.  Returns an empty list
         when the file is empty or does not contain a YAML list.
     """
-    raw = yaml.safe_load(path.read_text())
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         return []
     entries: list[GroundTruth] = []

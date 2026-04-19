@@ -173,6 +173,7 @@ def run(
     config = MetricConfig(
         llm_model=judge_model,
         batch_size=parallel_count,
+        project_root=manifest_file.parent.resolve(),
     )
 
     all_metrics: list[Metric] = list(ALL_OPERATIONAL)

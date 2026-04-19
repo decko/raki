@@ -13,6 +13,7 @@ class MetricConfig(BaseModel):
     temperature: float = 0.0
     batch_size: int = 4
     judge_log_path: Path | None = None  # path to judge_log.jsonl for audit logging
+    project_root: Path | None = None  # root directory for path validation
 
 
 @runtime_checkable
