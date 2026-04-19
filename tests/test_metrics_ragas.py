@@ -823,6 +823,7 @@ class TestAnswerRelevancyMetric:
 class TestFaithfulnessIntegration:
     def test_faithfulness_returns_score_between_0_and_1(self):
         """Requires Ragas + LLM credentials. Scores a simple sample."""
+        pytest.importorskip("ragas")
         from raki.metrics.ragas.faithfulness import FaithfulnessMetric
 
         ground_truth = GroundTruth(
@@ -845,6 +846,7 @@ class TestFaithfulnessIntegration:
 class TestAnswerRelevancyIntegration:
     def test_relevancy_returns_score_between_0_and_1(self):
         """Requires Ragas + LLM + Embeddings credentials. Scores a simple sample."""
+        pytest.importorskip("ragas")
         from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
 
         sample = _make_sample_with_knowledge()
