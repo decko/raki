@@ -1,7 +1,7 @@
-"""Answer relevancy metric using Ragas 0.4 legacy AnswerRelevancy @dataclass.
+"""Answer relevancy metric using Ragas 0.4 collections API.
 
 Measures how relevant the generated response is to the user's question.
-Requires both an LLM and embeddings.
+Requires both an LLM (for generation) and embeddings (for similarity scoring).
 
 EXPERIMENTAL: This metric was designed for natural language answers, not code.
 Scores may be noisy for agentic code-generation sessions.
@@ -24,8 +24,7 @@ logger = logging.getLogger(__name__)
 class AnswerRelevancyMetric:
     """Ragas-backed answer relevancy metric satisfying the Metric protocol.
 
-    Uses the legacy AnswerRelevancy @dataclass API with single_turn_ascore().
-    Requires embeddings via embedding_factory for cosine similarity scoring.
+    Uses the public Ragas 0.4 collections API with ascore() keyword args.
     Marked as experimental -- designed for NL answers, not code.
     """
 
@@ -46,16 +45,13 @@ class AnswerRelevancyMetric:
         if not rows:
             return MetricResult(name=self.name, score=0.0, details={"skipped": "no samples"})
 
-        from ragas.dataset_schema import SingleTurnSample  # ty: ignore[unresolved-import]
-        from ragas.metrics._answer_relevance import (  # ty: ignore[unresolved-import]
+        from ragas.metrics.collections import (  # ty: ignore[unresolved-import]
             AnswerRelevancy as RagasAnswerRelevancy,
         )
 
         llm = create_ragas_llm(config)
         embeddings = create_ragas_embeddings()
-        ragas_metric = RagasAnswerRelevancy()
-        ragas_metric.llm = llm
-        ragas_metric.embeddings = embeddings
+        ragas_metric = RagasAnswerRelevancy(llm=llm, embeddings=embeddings)
 
         judge_logger: JudgeLogger | None = None
         if config.judge_log_path is not None:
@@ -70,15 +66,16 @@ class AnswerRelevancyMetric:
             async def score_one(row):
                 async with semaphore:
                     try:
-                        sample = SingleTurnSample(
+                        result = await ragas_metric.ascore(
                             user_input=row.user_input,
                             response=row.response,
                         )
-                        score = await ragas_metric.single_turn_ascore(sample)
+                        score = result if isinstance(result, float) else result.value
                         scores.append(score)
                         sample_scores[row.session_id] = score
+                        reason = None if isinstance(result, float) else result.reason
                         if judge_logger:
-                            judge_logger.log(self.name, row.user_input, score, None)
+                            judge_logger.log(self.name, row.user_input, score, reason)
                     except Exception as exc:
                         safe_error = redact_sensitive(f"ERROR: {exc}")
                         logger.warning(

@@ -1,4 +1,4 @@
-"""Faithfulness metric using Ragas 0.4 legacy Faithfulness @dataclass.
+"""Faithfulness metric using Ragas 0.4 collections API.
 
 Measures whether the generated response is faithful to the retrieved contexts
 (i.e., not hallucinating beyond what the contexts provide).
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class FaithfulnessMetric:
     """Ragas-backed faithfulness metric satisfying the Metric protocol.
 
-    Uses the legacy Faithfulness @dataclass API with single_turn_ascore().
+    Uses the public Ragas 0.4 collections API with ascore() keyword args.
     Marked as experimental -- designed for NL answers, not code.
     """
 
@@ -45,14 +45,12 @@ class FaithfulnessMetric:
         if not rows:
             return MetricResult(name=self.name, score=0.0, details={"skipped": "no samples"})
 
-        from ragas.dataset_schema import SingleTurnSample  # ty: ignore[unresolved-import]
-        from ragas.metrics._faithfulness import (  # ty: ignore[unresolved-import]
+        from ragas.metrics.collections import (  # ty: ignore[unresolved-import]
             Faithfulness as RagasFaithfulness,
         )
 
         llm = create_ragas_llm(config)
-        ragas_metric = RagasFaithfulness()
-        ragas_metric.llm = llm
+        ragas_metric = RagasFaithfulness(llm=llm)
 
         judge_logger: JudgeLogger | None = None
         if config.judge_log_path is not None:
@@ -67,16 +65,17 @@ class FaithfulnessMetric:
             async def score_one(row):
                 async with semaphore:
                     try:
-                        sample = SingleTurnSample(
+                        result = await ragas_metric.ascore(
                             user_input=row.user_input,
                             response=row.response,
                             retrieved_contexts=row.retrieved_contexts,
                         )
-                        score = await ragas_metric.single_turn_ascore(sample)
+                        score = result if isinstance(result, float) else result.value
                         scores.append(score)
                         sample_scores[row.session_id] = score
+                        reason = None if isinstance(result, float) else result.reason
                         if judge_logger:
-                            judge_logger.log(self.name, row.user_input, score, None)
+                            judge_logger.log(self.name, row.user_input, score, reason)
                     except Exception as exc:
                         safe_error = redact_sensitive(f"ERROR: {exc}")
                         logger.warning(
