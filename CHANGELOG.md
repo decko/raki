@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased] (v0.6.0) — Make It Real
+
+### Breaking Changes
+
+- **`raki report` positional argument**: `raki report --input file.json` is now
+  `raki report file.json`. The `--input` / `-i` option has been replaced with a
+  positional argument. Update any scripts or CI pipelines that use the old syntax.
+- **`--tenant` removed**: The `--tenant` CLI option has been removed entirely.
+  It wrote a field nothing consumed. It can be re-added with actual functionality
+  if needed later.
+
+### Changed
+
+- `--threshold` + `--no-llm` warning updated from generic message to:
+  "No retrieval metrics active — threshold applies only to LLM-backed metrics.
+  Operational metrics use non-0-1 scales; per-metric thresholds planned for v0.7.0."
+
 ## [Unreleased] (v0.4.0) — Security & Data Completeness
 - Security hardening: symlinks, encoding, redaction, size limits
 - Adapter completeness: model_id, tokens, recursive loading, generational sorting

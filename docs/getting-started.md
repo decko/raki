@@ -96,10 +96,10 @@ RAKI saves evaluation results as JSON. You can re-render the CLI summary or gene
 
 ```bash
 # Re-render CLI summary from a saved report
-uv run raki report --input results/raki-report-20260410T120000.json
+uv run raki report results/raki-report-20260410T120000.json
 
 # Generate an HTML report from the same JSON
-uv run raki report --input results/raki-report-20260410T120000.json --html results/report.html
+uv run raki report results/raki-report-20260410T120000.json --html results/report.html
 ```
 
 If the JSON report was generated without `--include-sessions`, RAKI will show aggregate scores only and warn that per-session drill-down is unavailable.
