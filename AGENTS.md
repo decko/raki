@@ -27,18 +27,21 @@
 ```
 src/raki/
   __init__.py
-  cli.py                  # Click entry points
+  cli.py                  # Click entry points (run, validate, report, metrics, adapters)
   model/                  # Pydantic 2 domain models (EvalDataset, EvalSample, etc.)
   adapters/               # Session format adapters (any format -> EvalDataset)
+    __init__.py            # default_registry() — central adapter registration
   metrics/
     ragas/                # Ragas-based retrieval metrics (pluggable, isolated)
-    operational/          # Cost, rework cycles, verify rate, severity (no LLM)
+    operational/          # Cost, rework, verify rate, severity, latency, tokens (no LLM)
   report/                 # Rich CLI + JSON + HTML (Jinja2) report generation
+    rerender.py            # MetricStub, helpers for re-rendering from saved JSON
   ground_truth/           # YAML loaders + Ragas synthetic generation
 tests/
   conftest.py             # Factory fixtures (not duplicated across test files)
   fixtures/               # Realistic session data for tests
   test_<module>.py        # One test file per module
+changes/                  # Towncrier news fragments (one per issue)
 pyproject.toml
 ```
 
@@ -46,11 +49,17 @@ pyproject.toml
 
 ```bash
 uv sync --python 3.12 --all-extras       # Install all dependencies
-uv run pytest tests/ -v                   # Run tests
+uv run pytest tests/ -v                   # Run tests (fast, no LLM)
+uv run pytest tests/ -m slow -v          # Run LLM integration tests (requires credentials)
 uv run ruff check src/ tests/             # Lint
 uv run ruff format src/ tests/            # Format
 uv run ty check src/raki/                 # Type check
 uv run raki --help                        # CLI usage
+uv run raki metrics                       # List all available metrics
+uv run raki metrics --json                # Machine-readable metric list
+uv run raki validate -m raki.yaml --deep  # Smoke-test adapters + metrics
+uv run towncrier build --draft --version X.Y.Z  # Preview changelog
+uv run towncrier build --version X.Y.Z    # Build changelog (consumes fragments)
 ```
 
 ## Architecture
@@ -124,10 +133,24 @@ Assigned-by: <developer-or-orchestrator>
 ## Subagent conventions
 
 - **Orchestrator** spawns task agents and review agents.
-- **Task agents**: implement code, run tests, leave changes unstaged.
-- **Review agents**: review diffs, classify findings as `CRITICAL` / `IMPORTANT` / `MINOR`.
+- **Task agents** (Sonnet): implement code, run tests, leave changes unstaged.
+- **Review agents** (Opus): review diffs, classify findings as `CRITICAL` / `IMPORTANT` / `MINOR`.
 - `Assigned-by` trailer tracks delegation.
 - Max 3 review iterations per task.
+
+### Specialist dispatch matrix
+
+| Specialist | Model | When to dispatch |
+|-----------|-------|-----------------|
+| Python | Opus | Every code change |
+| Security | Opus | Adapters, CLI, reports, credentials |
+| RAG | Opus | Ragas metrics, ground truth, LLM setup |
+| UXD | Opus | CLI commands, options, error messages, output |
+| CLI | Opus | Click patterns, option interactions, exit codes |
+| Doc Writer | Opus | Any release, any user-facing behavior change |
+| PM | Opus | Scope decisions, prioritization, feature design |
+
+Python Specialist runs on every code issue. Always cross-reference findings between specialist rounds.
 
 ## Testing conventions
 
@@ -154,18 +177,39 @@ Assigned-by: <developer-or-orchestrator>
 - **Version lives in two places**: `pyproject.toml` and `src/raki/__init__.py` — both must match before tagging
 - **README on PyPI**: `readme = "README.md"` in pyproject.toml renders the README as the project description page
 
+### Changelog (towncrier)
+
+Changelogs are generated from news fragments in `changes/` via towncrier.
+
+- **Fragment naming**: `<issue-number>.<type>` (e.g., `83.feature`, `101.fix`)
+- **Fragment types**: `breaking`, `feature`, `fix`, `doc`, `misc`
+- **Orphan fragments**: `+<name>.<type>` for changes not tied to a single issue
+- **Each PR should create a fragment** describing the user-facing change
+- **At release time**: `uv run towncrier build --version X.Y.Z` generates CHANGELOG.md and removes fragments
+
+### Pre-release checklist
+
+1. Run `uv run pytest tests/ -v` — all tests pass
+2. Run `uv run pytest tests/ -m slow -v` — LLM integration tests pass (if credentials available)
+3. Run `raki run` against real session data (e.g., SODA sessions at `~/dev/soda`)
+4. Open the HTML report in a browser — verify score cards, N/A display, drill-down
+5. Run `raki validate --deep` — smoke-test adapters and metrics
+6. Run `uv run towncrier build --version X.Y.Z` — generate changelog
+7. Bump version in `pyproject.toml` and `src/raki/__init__.py`
+8. Commit, tag `vX.Y.Z`, push tag — workflow handles PyPI + GitHub Release
+
 ## Documentation rule
 
 Every spec must include doc update requirements. Every implementation task that changes user-facing behavior must update the relevant docs in the same PR. Never defer doc updates to a separate task.
 
 ## Orchestrator
 
-The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated development sessions via `claude --enable-auto-mode`. It dispatches Sonnet for implementation and Opus for review, with Python/Security/RAG specialist agents reviewing in parallel.
+The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated development sessions via `claude --enable-auto-mode`. It dispatches Sonnet for implementation and Opus for review, with 7 specialist agents reviewing in parallel (see dispatch matrix above).
 
 ## Gotchas
 
 1. **ty is strict** -- Protocol attributes must be satisfied by class variables, not instance attributes.
-2. **Ragas 0.4 API** -- imports from `ragas.metrics.collections`; `ascore()` takes keyword args (`user_input`, `retrieved_contexts`, `response`, `reference`), not `SingleTurnSample`.
+2. **Ragas 0.4 + Anthropic** -- `llm_factory()` must receive `provider="anthropic"` explicitly (defaults to `"openai"`). Must pop `top_p` from `llm.model_args` after creation — Anthropic rejects `temperature` + `top_p` together. GoogleEmbeddings ignores pre-configured clients (known bug, #106).
 3. **Large session files** -- some session formats can be 50MB+; `detect()` must read only the first 4KB.
 4. **ReviewFinding.severity** -- `Literal["critical", "major", "minor"]`, not bare `str`.
 5. **Operational metrics** -- return raw values (cost in $, cycles as count), not 0-1 normalized.
@@ -174,6 +218,10 @@ The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated develo
 8. **Version in two places** -- `pyproject.toml` and `src/raki/__init__.py` must match. Bump both before tagging.
 9. **HTML report is optional** -- jinja2 is in the `[html]` extra. Template uses `autoescape=True` (XSS protection). `METRIC_METADATA` dict must stay in sync with metric classes — `TestMetricMetadataSync` enforces this.
 10. **Test before tagging** -- always run pytest + manual verification against real data + open the HTML report in a browser before pushing a version tag.
+11. **New metric checklist** -- every new metric must be added to 3 places: `ALL_OPERATIONAL` in `metrics/operational/__init__.py`, `METRIC_METADATA` in `report/html_report.py`, and `OPERATIONAL_METRICS` in `report/cli_summary.py`. Missing any one causes silent misclassification (e.g., threshold gating treats it as retrieval).
+12. **N/A display convention** -- metrics signal "no data" via `details` dict: `sessions_with_*: 0` for missing session fields, `skipped: "<reason>"` for Ragas metrics without ground truth. Renderers check these to show "N/A (reason)" instead of misleading 0.0.
+13. **Ground truth matching is fragile** -- `match_ground_truth()` uses `code_area` domain-token overlap from triage phases only. Sessions without a triage phase will not match. Low match rate triggers a CLI warning.
+14. **`scikit-network` requires C++ compiler** -- the `ragas` extra pulls `scikit-network` which needs `g++`. Documented in getting-started.md.
 
 ## Things agents often get wrong here
 
@@ -189,3 +237,7 @@ The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated develo
 - Bumping version in only one of the two files (pyproject.toml / __init__.py).
 - Tagging a release without testing against real data first.
 - Deferring doc updates to a separate task instead of shipping with the code.
+- Adding a metric to `ALL_OPERATIONAL` but forgetting `METRIC_METADATA` or `OPERATIONAL_METRICS`.
+- Showing 0.0 for metrics with no data instead of N/A (check `sessions_with_*` / `skipped` keys).
+- Calling `llm_factory()` without `provider="anthropic"` (defaults to openai, fails).
+- Not creating a towncrier fragment for user-facing changes.
