@@ -1131,45 +1131,76 @@ class TestLLMProviderDispatch:
 
 
 class TestCreateRagasEmbeddings:
-    def test_uses_vertex_ai_embeddings(self, monkeypatch: pytest.MonkeyPatch):
-        """create_ragas_embeddings() should use VertexAIEmbeddings, not OpenAI default."""
+    def test_uses_ragas_embedding_factory_with_google(self, monkeypatch: pytest.MonkeyPatch):
+        """create_ragas_embeddings() should use Ragas embedding_factory with Google provider."""
         import sys
 
-        mock_vertex_instance = MagicMock()
-        mock_vertex_class = MagicMock(return_value=mock_vertex_instance)
+        mock_embeddings_result = MagicMock()
+        mock_factory = MagicMock(return_value=mock_embeddings_result)
+        mock_embeddings_base = MagicMock()
+        mock_embeddings_base.embedding_factory = mock_factory
 
-        mock_langchain_vertex = MagicMock()
-        mock_langchain_vertex.VertexAIEmbeddings = mock_vertex_class
+        mock_genai_client = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = mock_genai_client
 
-        monkeypatch.setitem(sys.modules, "langchain_google_vertexai", mock_langchain_vertex)
+        mock_google = MagicMock()
+        mock_google.genai = mock_genai
 
+        monkeypatch.setitem(sys.modules, "google", mock_google)
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+        monkeypatch.setitem(sys.modules, "ragas.embeddings", MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.embeddings.base", mock_embeddings_base)
+        monkeypatch.setenv("VERTEXAI_PROJECT", "test-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-east5")
+
+        import importlib
+
+        import raki.metrics.ragas.llm_setup
+
+        importlib.reload(raki.metrics.ragas.llm_setup)
         from raki.metrics.ragas.llm_setup import create_ragas_embeddings
 
         result = create_ragas_embeddings()
-        mock_vertex_class.assert_called_once_with(model_name="text-embedding-005")
-        assert result is mock_vertex_instance
+        mock_factory.assert_called_once()
+        call_kwargs = mock_factory.call_args
+        assert call_kwargs[0][0] == "google"
+        assert call_kwargs[1]["model"] == "text-embedding-005"
+        assert call_kwargs[1]["interface"] == "modern"
+        assert result is mock_embeddings_result
 
-    def test_does_not_use_openai_default(self, monkeypatch: pytest.MonkeyPatch):
-        """Verify we don't call the OpenAI-defaulting embedding_factory()."""
+    def test_passes_vertex_project_to_genai_client(self, monkeypatch: pytest.MonkeyPatch):
+        """Verify genai.Client is created with vertexai=True and project from env."""
         import sys
 
-        mock_embedding_factory = MagicMock()
-        mock_embeddings_module = MagicMock()
-        mock_embeddings_module.embedding_factory = mock_embedding_factory
+        mock_genai_client = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = mock_genai_client
 
-        mock_vertex_class = MagicMock(return_value=MagicMock())
-        mock_langchain_vertex = MagicMock()
-        mock_langchain_vertex.VertexAIEmbeddings = mock_vertex_class
+        mock_google = MagicMock()
+        mock_google.genai = mock_genai
 
-        monkeypatch.setitem(sys.modules, "ragas", MagicMock())
-        monkeypatch.setitem(sys.modules, "ragas.embeddings", mock_embeddings_module)
-        monkeypatch.setitem(sys.modules, "langchain_google_vertexai", mock_langchain_vertex)
+        mock_embeddings_base = MagicMock()
+        mock_embeddings_base.embedding_factory = MagicMock(return_value=MagicMock())
 
+        monkeypatch.setitem(sys.modules, "google", mock_google)
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+        monkeypatch.setitem(sys.modules, "ragas.embeddings", MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.embeddings.base", mock_embeddings_base)
+        monkeypatch.setenv("VERTEXAI_PROJECT", "my-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "europe-west1")
+
+        import importlib
+
+        import raki.metrics.ragas.llm_setup
+
+        importlib.reload(raki.metrics.ragas.llm_setup)
         from raki.metrics.ragas.llm_setup import create_ragas_embeddings
 
         create_ragas_embeddings()
-        # embedding_factory (which defaults to OpenAI) should NOT be called
-        mock_embedding_factory.assert_not_called()
+        mock_genai.Client.assert_called_once_with(
+            vertexai=True, project="my-project", location="europe-west1"
+        )
 
 
 # ---------------------------------------------------------------------------
