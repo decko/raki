@@ -753,7 +753,7 @@
           {% if meta.subtitle %}<div class="metric-subtitle">{{ meta.subtitle }}</div>{% endif %}
           {% if name in no_data_metrics %}
           <div class="metric-value" style="color: #666;">N/A</div>
-          <div class="metric-subtitle" style="color: #888; font-size: 0.75rem;">no data in sessions</div>
+          <div class="metric-subtitle" style="color: #888; font-size: 0.75rem;">{{ no_data_metrics[name] }}</div>
           {% else %}
           <div class="metric-value {{ color_class(score, name) }}">{% if meta.display_format == "currency" %}${{ "%.2f"|format(score) }}{% elif meta.display_format == "count" %}{{ "%.1f"|format(score) }}{% elif meta.display_format == "percent" %}{{ "%.0f"|format(score * 100) }}%{% elif meta.display_format == "duration" %}{{ "%.1f"|format(score) }}s{% else %}{{ "%.2f"|format(score) }}{% endif %}</div>
           {% endif %}

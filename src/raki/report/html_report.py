@@ -549,11 +549,14 @@ def write_html_report(
     recurring_failures = _collect_recurring_failures(report)
     worst_sessions = compute_worst_sessions(report, limit=5)
 
-    no_data_metrics: set[str] = set()
+    no_data_metrics: dict[str, str] = {}
     for metric_name, details in report.metric_details.items():
+        if "skipped" in details:
+            no_data_metrics[metric_name] = str(details["skipped"])
+            continue
         for key, value in details.items():
             if key.startswith("sessions_with_") and value == 0:
-                no_data_metrics.add(metric_name)
+                no_data_metrics[metric_name] = "no data in sessions"
 
     env = _build_jinja_env()
     template = env.get_template("report.html.j2")

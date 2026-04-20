@@ -606,6 +606,14 @@ class TestNoDataMetricDisplay:
         }
         assert _has_no_data(details, "token_efficiency") is True
 
+    def test_has_no_data_detects_skipped(self) -> None:
+        from raki.report.cli_summary import _has_no_data
+
+        details = {
+            "faithfulness": {"skipped": "no samples"},
+        }
+        assert _has_no_data(details, "faithfulness") is True
+
     def test_has_no_data_returns_false_when_sessions_present(self) -> None:
         from raki.report.cli_summary import _has_no_data
 
@@ -618,6 +626,45 @@ class TestNoDataMetricDisplay:
         from raki.report.cli_summary import _has_no_data
 
         assert _has_no_data({}, "token_efficiency") is False
+
+    def test_no_data_reason_returns_skipped_message(self) -> None:
+        from raki.report.cli_summary import _no_data_reason
+
+        details = {
+            "faithfulness": {"skipped": "no samples"},
+        }
+        assert _no_data_reason(details, "faithfulness") == "no samples"
+
+    def test_no_data_reason_returns_default_for_sessions_with(self) -> None:
+        from raki.report.cli_summary import _no_data_reason
+
+        details = {
+            "token_efficiency": {"sessions_with_tokens": 0},
+        }
+        assert _no_data_reason(details, "token_efficiency") == "no data"
+
+    def test_print_summary_shows_skipped_reason_for_ragas_metrics(self) -> None:
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="test-skipped-ragas",
+            aggregate_scores={
+                "faithfulness": 0.0,
+                "context_precision": 0.0,
+            },
+            metric_details={
+                "faithfulness": {"skipped": "no samples"},
+                "context_precision": {"skipped": "no ground truth"},
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "N/A" in output
+        assert "no samples" in output or "no ground truth" in output
 
     def test_metric_details_populated_by_engine(self) -> None:
         from raki.metrics.engine import MetricsEngine
