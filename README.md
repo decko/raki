@@ -62,6 +62,7 @@ uv run raki metrics --json
 - [Ground Truth Curation Guide](docs/curation-guide.md) — write effective ground truth entries
 - [Adapter Guide](docs/adapter-guide.md) — integrate custom session formats
 - [Session Schema Reference](docs/session-schema.md) — field definitions for session-schema format
+- [CI Quality Gate Example](docs/examples/github-actions-quality-gate.yml) — GitHub Actions workflow for automated RAG evaluation
 
 ## Development
 

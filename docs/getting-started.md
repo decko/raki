@@ -132,6 +132,25 @@ The diff output shows:
 
 For per-session transition analysis, both reports must have been generated with `--include-sessions`. Without session data, only aggregate deltas are shown.
 
+## CI Integration
+
+RAKI works well as a CI quality gate. A typical setup has two layers:
+
+1. **Operational gate (every PR)** -- runs `raki run --no-llm` to check verify rate, rework cycles, and cost without needing API keys. Fast and free.
+2. **Nightly LLM gate (scheduled)** -- runs the full evaluation including Ragas retrieval metrics with `--threshold` to catch regressions overnight.
+
+```bash
+# Operational gate (no LLM, suitable for every PR)
+uv run raki run --manifest raki.yaml --no-llm --output results/ --quiet
+
+# Nightly gate (full evaluation with threshold)
+uv run raki run --manifest raki.yaml --threshold 0.7 --output results/ --quiet
+```
+
+Note that `--threshold` sets a minimum score for a zero exit code -- use it in the nightly job to fail the build on regressions, but not with `--no-llm` where the limited metric set makes a single threshold less meaningful.
+
+See [docs/examples/github-actions-quality-gate.yml](examples/github-actions-quality-gate.yml) for a complete GitHub Actions workflow with validation, operational gating, nightly LLM runs, and artifact upload.
+
 ## Next Steps
 
 - [Results Interpretation Reference](interpretation-reference.md) -- thresholds, patterns, and what to do about low scores
