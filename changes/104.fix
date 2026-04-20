@@ -1,0 +1,1 @@
+Pass ``provider="anthropic"`` to Ragas ``llm_factory()`` and remove ``top_p`` from model args to fix Anthropic API compatibility.

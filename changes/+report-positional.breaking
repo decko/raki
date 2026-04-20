@@ -1,0 +1,1 @@
+``raki report`` now takes the input file as a positional argument: ``raki report file.json`` replaces ``raki report --input file.json``.

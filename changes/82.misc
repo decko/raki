@@ -1,0 +1,1 @@
+Extract report re-rendering helpers (``MetricStub``, ``is_session_data_stripped``, ``metric_stubs_from_metadata``) to ``raki/report/rerender.py``.
