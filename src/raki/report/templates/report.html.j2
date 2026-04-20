@@ -401,6 +401,22 @@
     margin-bottom: 2rem;
   }
 
+  .needs-attention {
+    margin-bottom: 2rem;
+  }
+
+  .needs-attention-badge {
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: rgba(244, 67, 54, 0.15);
+    color: var(--red);
+    margin-left: 0.5rem;
+    vertical-align: middle;
+  }
+
   details {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
@@ -409,16 +425,28 @@
     overflow: hidden;
   }
 
+  details.verdict-fail {
+    border-left: 4px solid var(--red);
+  }
+
+  details.verdict-rework {
+    border-left: 4px solid var(--yellow);
+  }
+
+  details.verdict-pass {
+    border-left: 4px solid var(--green);
+  }
+
   summary {
     padding: 0.8rem 1.2rem;
     cursor: pointer;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     font-weight: 600;
     color: var(--text-primary);
     user-select: none;
     list-style: none;
+    gap: 0.6rem;
   }
 
   summary::-webkit-details-marker { display: none; }
@@ -426,13 +454,99 @@
   summary::before {
     content: "\25b6";
     display: inline-block;
-    margin-right: 0.7rem;
     font-size: 0.7rem;
     transition: transform 0.2s;
+    flex-shrink: 0;
   }
 
   details[open] > summary::before {
     transform: rotate(90deg);
+  }
+
+  .verdict-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+
+  .verdict-badge-fail {
+    background: rgba(244, 67, 54, 0.2);
+    color: var(--red);
+  }
+
+  .verdict-badge-rework {
+    background: rgba(255, 193, 7, 0.2);
+    color: var(--yellow);
+  }
+
+  .verdict-badge-pass {
+    background: rgba(76, 175, 80, 0.15);
+    color: var(--green);
+  }
+
+  .row-session-id {
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .row-detail {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 0.9rem;
+  }
+
+  .row-severity-pills {
+    display: inline-flex;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+
+  .row-severity-pill {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 600;
+  }
+
+  .row-severity-pill-critical {
+    background: rgba(244, 67, 54, 0.2);
+    color: var(--severity-critical);
+  }
+
+  .row-severity-pill-major {
+    background: rgba(255, 152, 0, 0.2);
+    color: var(--severity-major);
+  }
+
+  .row-severity-pill-minor {
+    background: rgba(139, 195, 58, 0.2);
+    color: var(--severity-minor);
+  }
+
+  .row-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 400;
+  }
+
+  .row-cost {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  }
+
+  .row-duration {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    color: var(--text-muted);
   }
 
   .detail-content {
@@ -483,6 +597,12 @@
   .phase-status-failed { background: var(--red); }
   .phase-status-skipped { background: var(--text-muted); }
 
+  .phase-duration {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  }
+
   .findings-list {
     margin: 0.5rem 0;
   }
@@ -510,6 +630,11 @@
   }
 
   .finding-location {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+  }
+
+  .finding-reviewer {
     color: var(--text-muted);
     font-size: 0.8rem;
   }
@@ -764,7 +889,7 @@
     <h2>Worst {{ worst_sessions | length if worst_sessions else 0 }} Sessions</h2>
     {% if worst_sessions %}
     {% for entry in worst_sessions %}
-    <button class="worst-session-row" type="button" data-target="session-{{ entry.session_id }}" aria-label="Jump to session {{ entry.session_id }}">
+    <button class="worst-session-row" type="button" data-target="drilldown-session-{{ entry.session_id }}" aria-label="Jump to session {{ entry.session_id }}">
       <span class="session-id">{{ entry.session_id }}</span>
       <span class="session-score {{ color_class(entry.avg_score, "") }}">{{ "%.2f"|format(entry.avg_score) }}</span>
     </button>
@@ -774,99 +899,159 @@
     {% endif %}
   </section>
 
-  {# --- Per-Session Drill-Down --- #}
-  <section class="drilldown-section">
-    <h2>Per-Session Drill-Down</h2>
-    {% if report.sample_results %}
-    {% for sample_result in report.sample_results %}
-    {% set sample = sample_result.sample %}
-    {% set session_id = sample.session.session_id %}
-    <details id="session-{{ session_id }}" aria-expanded="false">
-      <summary>
-        <span>{{ session_id }}</span>
-        <span class="score-chips">
-          {% for metric_result in sample_result.scores %}
-          {% if session_id in metric_result.sample_scores %}
-          {% set session_score = metric_result.sample_scores[session_id] %}
-          <span class="score-chip">
-            <span class="chip-name">{{ metric_result.name }}</span>
-            <span class="chip-value {{ color_class(session_score, metric_result.name) }}">{{ "%.2f"|format(session_score) }}</span>
-          </span>
-          {% endif %}
-          {% endfor %}
-        </span>
-      </summary>
-      <div class="detail-content">
-        <div class="session-meta">
-          <div class="meta-item">
-            <span class="meta-label">Rework Cycles</span>
-            <span>{{ sample.session.rework_cycles }}</span>
-          </div>
-          {% if sample.session.total_cost_usd is not none %}
-          <div class="meta-item">
-            <span class="meta-label">Cost</span>
-            <span>${{ "%.2f"|format(sample.session.total_cost_usd) }}</span>
-          </div>
-          {% endif %}
-          <div class="meta-item">
-            <span class="meta-label">Phases</span>
-            <span>{{ sample.phases | length }}</span>
-          </div>
+  {# --- Macro: render a single drill-down row with expanded detail --- #}
+  {% macro render_drilldown_row(row, sample_result, prefix="session") %}
+  {% set sample = sample_result.sample %}
+  {% set session_id = sample.session.session_id %}
+  <details id="{{ prefix }}-session-{{ session_id }}" class="verdict-{{ row.verdict }}" aria-expanded="false">
+    <summary>
+      <span class="verdict-badge verdict-badge-{{ row.verdict }}">{{ row.verdict | upper }}</span>
+      <span class="row-session-id">{{ session_id }}</span>
+      <span class="row-detail">&mdash; {{ row.detail }}</span>
+      {% if row.verdict != "pass" or row.minor_count > 0 %}
+      <span class="row-severity-pills">
+        {% if row.critical_count > 0 %}
+        <span class="row-severity-pill row-severity-pill-critical">{{ row.critical_count }} critical</span>
+        {% endif %}
+        {% if row.major_count > 0 %}
+        <span class="row-severity-pill row-severity-pill-major">{{ row.major_count }} major</span>
+        {% endif %}
+        {% if row.minor_count > 0 %}
+        <span class="row-severity-pill row-severity-pill-minor">{{ row.minor_count }} minor</span>
+        {% endif %}
+      </span>
+      {% endif %}
+      <span class="row-right">
+        <span class="row-cost">${{ "%.2f"|format(row.cost) }}</span>
+        <span class="row-duration">{{ format_duration(row.duration_seconds) }}</span>
+      </span>
+    </summary>
+    <div class="detail-content">
+      <div class="session-meta">
+        <div class="meta-item">
+          <span class="meta-label">Rework Cycles</span>
+          <span>{{ sample.session.rework_cycles }}</span>
         </div>
-
-        {# Phases #}
-        <h3>Phases</h3>
-        <div class="phase-list">
-          {% for phase in sample.phases %}
-          <div class="phase-item">
-            <span class="phase-status phase-status-{{ phase.status }}"></span>
-            <span>{{ phase.name }} (gen {{ phase.generation }})</span>
-            <span style="color: var(--text-muted);">&mdash; {{ phase.status }}</span>
-          </div>
-          {% endfor %}
-        </div>
-
-        {# Findings #}
-        {% if sample.findings %}
-        <h3>Findings</h3>
-        <div class="findings-list">
-          {% for finding in sample.findings %}
-          <div class="finding-item finding-{{ finding.severity }}">
-            <div class="finding-header">
-              <span class="severity-badge severity-{{ finding.severity }}">{{ finding.severity }}</span>
-              <span class="finding-issue">{{ finding.issue }}</span>
-            </div>
-            {% if finding.file %}
-            <div class="finding-location">{{ finding.file }}{% if finding.line %}:{{ finding.line }}{% endif %}</div>
-            {% endif %}
-            {% if finding.suggestion %}
-            <div class="finding-suggestion">{{ finding.suggestion }}</div>
-            {% endif %}
-          </div>
-          {% endfor %}
+        {% if sample.session.total_cost_usd is not none %}
+        <div class="meta-item">
+          <span class="meta-label">Cost</span>
+          <span>${{ "%.2f"|format(sample.session.total_cost_usd) }}</span>
         </div>
         {% endif %}
+        <div class="meta-item">
+          <span class="meta-label">Phases</span>
+          <span>{{ sample.phases | length }}</span>
+        </div>
+      </div>
 
-        {# Faithfulness breakdown #}
-        {% for metric_result in sample_result.scores %}
-        {% if metric_result.name == "faithfulness" and metric_result.details %}
-        <div class="faithfulness-detail">
-          <span class="claims-label">Faithfulness Claims:</span>
-          {% if "claims_verified" in metric_result.details and "claims_total" in metric_result.details %}
-          {{ metric_result.details["claims_verified"] }} / {{ metric_result.details["claims_total"] }} claims verified
-          {% else %}
-          {% for detail_key, detail_val in metric_result.details.items() %}
-          {{ detail_key }}: {{ detail_val }}{% if not loop.last %}, {% endif %}
-          {% endfor %}
+      {# Phase timeline #}
+      {% if sample.phases %}
+      <h3>Phases</h3>
+      <div class="phase-list">
+        {% for phase in sample.phases %}
+        <div class="phase-item">
+          <span class="phase-status phase-status-{{ phase.status }}"></span>
+          <span>{{ phase.name }} (gen {{ phase.generation }})</span>
+          <span style="color: var(--text-muted);">&mdash; {{ phase.status }}</span>
+          {% if phase.duration_ms is not none %}
+          <span class="phase-duration">{{ format_duration(phase.duration_ms // 1000) }}</span>
           {% endif %}
         </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">Phase data unavailable</p>
+      {% endif %}
+
+      {# Findings #}
+      {% if sample.findings %}
+      <h3>Findings</h3>
+      <div class="findings-list">
+        {% for finding in sample.findings %}
+        <div class="finding-item finding-{{ finding.severity }}">
+          <div class="finding-header">
+            <span class="severity-badge severity-{{ finding.severity }}">{{ finding.severity }}</span>
+            <span class="finding-issue">{{ finding.issue }}</span>
+          </div>
+          {% if finding.file %}
+          <div class="finding-location">{{ finding.file }}{% if finding.line %}:{{ finding.line }}{% endif %}</div>
+          {% endif %}
+          {% if finding.reviewer %}
+          <div class="finding-reviewer">Reviewer: {{ finding.reviewer }}</div>
+          {% endif %}
+          {% if finding.suggestion %}
+          <div class="finding-suggestion">{{ finding.suggestion }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="empty-state">No review findings in this session</p>
+      {% endif %}
+
+      {# Score chips #}
+      {% if sample_result.scores %}
+      <div class="score-chips">
+        {% for metric_result in sample_result.scores %}
+        {% if session_id in metric_result.sample_scores %}
+        {% set session_score = metric_result.sample_scores[session_id] %}
+        <span class="score-chip">
+          <span class="chip-name">{{ metric_result.name }}</span>
+          <span class="chip-value {{ color_class(session_score, metric_result.name) }}">{{ "%.2f"|format(session_score) }}</span>
+        </span>
         {% endif %}
         {% endfor %}
       </div>
-    </details>
+      {% endif %}
+
+      {# Faithfulness breakdown #}
+      {% for metric_result in sample_result.scores %}
+      {% if metric_result.name == "faithfulness" and metric_result.details %}
+      <div class="faithfulness-detail">
+        <span class="claims-label">Faithfulness Claims:</span>
+        {% if "claims_verified" in metric_result.details and "claims_total" in metric_result.details %}
+        {{ metric_result.details["claims_verified"] }} / {{ metric_result.details["claims_total"] }} claims verified
+        {% else %}
+        {% for detail_key, detail_val in metric_result.details.items() %}
+        {{ detail_key }}: {{ detail_val }}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </details>
+  {% endmacro %}
+
+  {# --- Build session_id -> sample_result lookup --- #}
+  {% set session_lookup = {} %}
+  {% for sample_result in report.sample_results %}
+  {% set _ = session_lookup.update({sample_result.sample.session.session_id: sample_result}) %}
+  {% endfor %}
+
+  {# --- Needs Attention Section --- #}
+  {% if needs_attention_count > 0 %}
+  <section class="needs-attention">
+    <h2>Needs Attention <span class="needs-attention-badge">{{ needs_attention_count }} session{{ "s" if needs_attention_count != 1 else "" }} need{{ "s" if needs_attention_count == 1 else "" }} attention</span></h2>
+    {% for row in needs_attention_rows %}
+    {% if row.session_id in session_lookup %}
+    {{ render_drilldown_row(row, session_lookup[row.session_id], prefix="attention") }}
+    {% endif %}
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {# --- Per-Session Drill-Down --- #}
+  <section class="drilldown-section">
+    <h2>Per-Session Drill-Down</h2>
+    {% if drill_down_rows %}
+    {% for row in drill_down_rows %}
+    {% if row.session_id in session_lookup %}
+    {{ render_drilldown_row(row, session_lookup[row.session_id], prefix="drilldown") }}
+    {% endif %}
     {% endfor %}
     {% else %}
-    <p class="empty-state">No per-session data available.</p>
+    <p class="empty-state">Per-session details unavailable &mdash; regenerate with --include-sessions</p>
     {% endif %}
   </section>
   </main>

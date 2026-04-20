@@ -5,7 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from raki.model.report import EvalReport
+from raki.model.dataset import EvalSample
+from raki.model.report import EvalReport, SampleResult
 from raki.report.cli_summary import (
     EXPERIMENTAL_METRICS,
     OPERATIONAL_METRICS,
@@ -130,6 +131,106 @@ def _get_metric_meta(name: str) -> dict[str, str | bool]:
             "docs_anchor": "",
         },
     )
+
+
+@dataclass(frozen=True)
+class DrillDownRow:
+    """A row in the per-session drill-down with verdict-based display."""
+
+    session_id: str
+    verdict: Literal["pass", "rework", "fail"]
+    detail: str
+    critical_count: int
+    major_count: int
+    minor_count: int
+    cost: float
+    duration_seconds: int
+    sort_key: tuple[int, float]
+
+
+def _determine_verdict(sample: EvalSample) -> Literal["pass", "rework", "fail"]:
+    """Determine the verdict for a session sample.
+
+    Logic: failed phase -> fail, rework_cycles > 0 -> rework, else pass.
+    """
+    for phase in sample.phases:
+        if phase.status == "failed":
+            return "fail"
+    if sample.session.rework_cycles > 0:
+        return "rework"
+    return "pass"
+
+
+def _build_detail(sample: EvalSample) -> str:
+    """Build detail text for a drill-down row.
+
+    - Failed phase: "<phase_name> failed"
+    - Rework cycles > 0: "<n> cycles"
+    - Clean pass: "<n> phases"
+    """
+    for phase in sample.phases:
+        if phase.status == "failed":
+            return f"{phase.name} failed"
+    if sample.session.rework_cycles > 0:
+        return f"{sample.session.rework_cycles} cycles"
+    return f"{len(sample.phases)} phases"
+
+
+def _compute_duration(sample: EvalSample) -> int:
+    """Sum phase durations in seconds. Returns 0 if no duration data."""
+    total_ms = 0
+    for phase in sample.phases:
+        if phase.duration_ms is not None:
+            total_ms += phase.duration_ms
+    return total_ms // 1000
+
+
+def _format_duration(seconds: int) -> str:
+    """Format seconds as M:SS (e.g. 252 -> '4:12')."""
+    minutes = seconds // 60
+    remaining_seconds = seconds % 60
+    return f"{minutes}:{remaining_seconds:02d}"
+
+
+def compute_drill_down_rows(
+    sample_results: list[SampleResult],
+) -> list[DrillDownRow]:
+    """Build and sort drill-down rows from sample results.
+
+    Sort order: FAIL(0) -> REWORK(1) -> PASS(2), cost descending within each group.
+    """
+    verdict_rank = {"fail": 0, "rework": 1, "pass": 2}
+    rows: list[DrillDownRow] = []
+
+    for sample_result in sample_results:
+        sample = sample_result.sample
+        session_id = sample.session.session_id
+        verdict = _determine_verdict(sample)
+        detail = _build_detail(sample)
+
+        severity_counter: Counter[str] = Counter()
+        for finding in sample.findings:
+            severity_counter[finding.severity] += 1
+
+        cost = sample.session.total_cost_usd or 0.0
+        duration = _compute_duration(sample)
+
+        rows.append(
+            DrillDownRow(
+                session_id=session_id,
+                verdict=verdict,
+                detail=detail,
+                critical_count=severity_counter.get("critical", 0),
+                major_count=severity_counter.get("major", 0),
+                minor_count=severity_counter.get("minor", 0),
+                cost=cost,
+                duration_seconds=duration,
+                sort_key=(verdict_rank[verdict], -cost),
+            )
+        )
+
+    rows.sort(key=lambda row: row.sort_key)
+    return rows
 
 
 @dataclass(frozen=True)
@@ -400,10 +501,13 @@ def write_html_report(
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    # Compute knowledge context and severity distribution BEFORE stripping
+    # Compute knowledge context, severity distribution, and drill-down BEFORE stripping
     show_knowledge_miss = has_knowledge_context(report)
     severity_dist = compute_severity_distribution(report)
     cost_range = compute_cost_range(report)
+    drill_down_rows = compute_drill_down_rows(report.sample_results)
+    needs_attention_rows = [row for row in drill_down_rows if row.verdict in ("fail", "rework")]
+    needs_attention_count = len(needs_attention_rows)
 
     if not include_sessions:
         # Strip session data from a serialized copy, then reload as a clean report
@@ -458,6 +562,10 @@ def write_html_report(
         cost_range=cost_range,
         has_retrieval=has_retrieval,
         docs_base_url=DOCS_BASE_URL,
+        drill_down_rows=drill_down_rows,
+        needs_attention_rows=needs_attention_rows,
+        needs_attention_count=needs_attention_count,
+        format_duration=_format_duration,
     )
 
     output.write_text(html_content, encoding="utf-8")
