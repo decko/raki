@@ -41,6 +41,26 @@ Run an evaluation using only operational metrics (no LLM required):
 uv run raki run --manifest examples/raki-minimal.yaml --no-llm
 ```
 
+### Discovering Available Metrics
+
+List all metrics RAKI can compute, including which ones require an LLM provider:
+
+```bash
+uv run raki metrics
+```
+
+Use `--json` for machine-readable output:
+
+```bash
+uv run raki metrics --json
+```
+
+Run only specific metrics by name (use the internal name from `raki metrics`):
+
+```bash
+uv run raki run --manifest examples/raki-minimal.yaml --no-llm --metrics cost_efficiency,rework_cycles
+```
+
 ## Prepare Your Data
 
 RAKI evaluates session transcripts produced by agentic coding tools. Each session is a directory containing phase files (`triage.json`, `implement.json`, `verify.json`, `review.json`) and an `events.jsonl` log. See `examples/sessions/` for working examples.

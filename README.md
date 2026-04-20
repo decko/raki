@@ -34,11 +34,20 @@ uv run raki run --manifest raki.yaml
 # Run operational metrics only
 uv run raki run --manifest raki.yaml --no-llm
 
+# Run specific metrics only
+uv run raki run --manifest raki.yaml --no-llm --metrics cost_efficiency,rework_cycles
+
 # Validate manifest and session data
 uv run raki validate --manifest raki.yaml
 
 # List available adapters
 uv run raki adapters
+
+# List available metrics (name, display name, LLM requirement)
+uv run raki metrics
+
+# Machine-readable metric list
+uv run raki metrics --json
 ```
 
 ## Documentation
