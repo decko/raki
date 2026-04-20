@@ -146,6 +146,22 @@ Assigned-by: <developer-or-orchestrator>
 - **Reports**: strip raw session data by default (`--include-sessions` to opt in).
 - **No credentials** in code, config, or reports.
 
+## Publishing
+
+- **PyPI**: `pip install raki` — published via Trusted Publishing (OIDC), no API tokens
+- **Workflow**: push a `v*` tag → `.github/workflows/publish.yml` runs tests → publishes to PyPI → creates GitHub Release with auto-generated notes
+- **Manual trigger**: `workflow_dispatch` runs tests only (no publish) — useful for dry runs
+- **Version lives in two places**: `pyproject.toml` and `src/raki/__init__.py` — both must match before tagging
+- **README on PyPI**: `readme = "README.md"` in pyproject.toml renders the README as the project description page
+
+## Documentation rule
+
+Every spec must include doc update requirements. Every implementation task that changes user-facing behavior must update the relevant docs in the same PR. Never defer doc updates to a separate task.
+
+## Orchestrator
+
+The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated development sessions via `claude --enable-auto-mode`. It dispatches Sonnet for implementation and Opus for review, with Python/Security/RAG specialist agents reviewing in parallel.
+
 ## Gotchas
 
 1. **ty is strict** -- Protocol attributes must be satisfied by class variables, not instance attributes.
@@ -154,6 +170,10 @@ Assigned-by: <developer-or-orchestrator>
 4. **ReviewFinding.severity** -- `Literal["critical", "major", "minor"]`, not bare `str`.
 5. **Operational metrics** -- return raw values (cost in $, cycles as count), not 0-1 normalized.
 6. **No blended score** -- operational and retrieval metrics are separate categories; never combine them.
+7. **`rich<15` constraint** -- instructor 1.x requires `rich>=13.7,<15`. Without this pin, uv resolves instructor 0.4.0 which pulls docstring-parser 0.15 (broken on Python 3.14 due to removed `ast.NameConstant`).
+8. **Version in two places** -- `pyproject.toml` and `src/raki/__init__.py` must match. Bump both before tagging.
+9. **HTML report is optional** -- jinja2 is in the `[html]` extra. Template uses `autoescape=True` (XSS protection). `METRIC_METADATA` dict must stay in sync with metric classes — `TestMetricMetadataSync` enforces this.
+10. **Test before tagging** -- always run pytest + manual verification against real data + open the HTML report in a browser before pushing a version tag.
 
 ## Things agents often get wrong here
 
@@ -166,3 +186,6 @@ Assigned-by: <developer-or-orchestrator>
 - Using single-character variable names in loops.
 - Blending operational and retrieval metrics into one score.
 - Using `str` instead of `Literal` for constrained fields.
+- Bumping version in only one of the two files (pyproject.toml / __init__.py).
+- Tagging a release without testing against real data first.
+- Deferring doc updates to a separate task instead of shipping with the code.
