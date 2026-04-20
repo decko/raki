@@ -3,43 +3,13 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
 
 from raki.adapters.redact import redact_sensitive
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from raki.model import EvalDataset
-    from raki.model.report import EvalReport, MetricResult
-    from raki.metrics.protocol import MetricConfig
-
-
-@dataclass(frozen=True)
-class _MetricStub:
-    """Lightweight stand-in for ``Metric`` when re-rendering from JSON reports.
-
-    Satisfies the full ``Metric`` protocol so that ``print_summary`` can accept
-    these stubs without type errors.
-    """
-
-    name: str
-    display_name: str
-    description: str
-    display_format: str
-    higher_is_better: bool
-    requires_ground_truth: bool = False
-    requires_llm: bool = False
-
-    def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:  # noqa: ARG002
-        """Stub — metric stubs are display-only and never compute scores."""
-        raise NotImplementedError("_MetricStub is display-only and cannot compute scores")
-
+from raki.report.rerender import is_session_data_stripped, metric_stubs_from_metadata
 
 console = Console()
 
@@ -490,54 +460,6 @@ def metrics(json_output: bool) -> None:
     console.print(table)
 
 
-def _is_session_data_stripped(report: EvalReport) -> bool:
-    """Check whether session data in sample_results has been stripped.
-
-    Returns True if any phase output is the ``<stripped>`` sentinel, indicating
-    the report was generated without ``--include-sessions``.
-    """
-    for sample_result in report.sample_results:
-        for phase in sample_result.sample.phases:
-            if phase.output == "<stripped>":
-                return True
-    return False
-
-
-def _metric_stubs_from_metadata(
-    aggregate_scores: dict[str, float],
-) -> Sequence[_MetricStub]:
-    """Build lightweight metric-like objects from METRIC_METADATA for print_summary.
-
-    When re-rendering from JSON, we don't have the original Metric instances.
-    This function creates simple objects that satisfy the display_name,
-    description, display_format, and higher_is_better attributes that
-    ``_MetricMeta`` in ``cli_summary`` looks up.
-    """
-    from raki.report.html_report import METRIC_METADATA
-
-    stubs: list[_MetricStub] = []
-    for metric_name in aggregate_scores:
-        meta = METRIC_METADATA.get(
-            metric_name,
-            {
-                "display_name": metric_name,
-                "description": "",
-                "display_format": "score",
-                "higher_is_better": True,
-            },
-        )
-        stubs.append(
-            _MetricStub(
-                name=metric_name,
-                display_name=str(meta["display_name"]),
-                description=str(meta["description"]),
-                display_format=str(meta["display_format"]),
-                higher_is_better=bool(meta["higher_is_better"]),
-            )
-        )
-    return stubs
-
-
 @main.command()
 @click.argument("input_path", required=False, default=None)
 @click.option(
@@ -593,7 +515,7 @@ def report(
         raise SystemExit(2) from exc
 
     session_count = len(eval_report.sample_results)
-    stripped = _is_session_data_stripped(eval_report)
+    stripped = is_session_data_stripped(eval_report)
 
     if stripped:
         console.print(
@@ -603,7 +525,7 @@ def report(
 
     from raki.report.cli_summary import print_summary
 
-    metric_stubs = _metric_stubs_from_metadata(eval_report.aggregate_scores)
+    metric_stubs = metric_stubs_from_metadata(eval_report.aggregate_scores)
     print_summary(
         eval_report,
         session_count=session_count,
