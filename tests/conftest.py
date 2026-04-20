@@ -25,6 +25,9 @@ def make_sample(
     verify_gen: int = 1,
     verify_status: Literal["completed", "failed", "skipped"] = "completed",
     findings: list[ReviewFinding] | None = None,
+    duration_ms: int | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
 ) -> EvalSample:
     meta = SessionMeta(
         session_id=session_id,
@@ -35,13 +38,24 @@ def make_sample(
     )
     verify_output = "PASS" if verify_status == "completed" else "FAIL"
     phases = [
-        PhaseResult(name="implement", generation=1, status="completed", output="done"),
+        PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="done",
+            duration_ms=duration_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+        ),
         PhaseResult(
             name="verify",
             generation=verify_gen,
             status=verify_status,
             output=verify_output,
             output_structured={"verdict": verify_output},
+            duration_ms=duration_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
         ),
     ]
     return EvalSample(

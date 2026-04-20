@@ -20,6 +20,7 @@ OPERATIONAL_METRICS = {
     "review_severity_distribution",
     "cost_efficiency",
     "knowledge_retrieval_miss_rate",
+    "phase_execution_time",
 }
 
 EXPERIMENTAL_METRICS = {
@@ -62,7 +63,7 @@ def color_for_score(
     Skip color for non-ratio metrics (currency, count) where higher_is_better
     is False -- those values are not on a 0-1 scale.
     """
-    if not higher_is_better and display_format in ("currency", "count"):
+    if not higher_is_better and display_format in ("currency", "count", "duration"):
         return "white"
     if higher_is_better:
         if score >= 0.8:
@@ -97,6 +98,8 @@ def format_metric_line(
         score_str = f"{score:.1f}"
     elif display_format == "percent":
         score_str = f"{score:.2f}"
+    elif display_format == "duration":
+        score_str = f"{score:.1f}s"
     else:
         score_str = f"{score:.2f}"
     count_str = f" (n={sample_count})" if sample_count is not None else ""
@@ -252,6 +255,8 @@ def _format_delta_value(value: float, display_format: str) -> str:
         return f"{value:.1f}"
     if display_format == "percent":
         return f"{value * 100:.0f}%"
+    if display_format == "duration":
+        return f"{value:.1f}s"
     return f"{value:.2f}"
 
 
@@ -266,6 +271,8 @@ def _format_delta_change(delta: float, display_format: str) -> str:
         return f"{sign}{delta:.1f}"
     if display_format == "percent":
         return f"{sign}{delta * 100:.0f}%"
+    if display_format == "duration":
+        return f"{sign}{delta:.1f}s"
     return f"{sign}{delta:.2f}"
 
 

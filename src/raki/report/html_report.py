@@ -75,6 +75,16 @@ METRIC_METADATA: dict[str, dict[str, str | bool]] = {
         "threshold": "Target: <0.20",
         "docs_anchor": "knowledge-miss-rate",
     },
+    "phase_execution_time": {
+        "display_name": "Phase execution time",
+        "higher_is_better": False,
+        "display_format": "duration",
+        "description": "Mean total phase execution time per session (seconds)",
+        "subtitle": "How long the agent spends executing phases per session",
+        "direction": "lower is better",
+        "threshold": "",
+        "docs_anchor": "phase-execution-time",
+    },
     "faithfulness": {
         "display_name": "Faithfulness",
         "higher_is_better": True,
@@ -267,7 +277,7 @@ def html_color_for_score(
     Skip color for non-ratio metrics (currency, count) where higher_is_better
     is False -- those values are not on a 0-1 scale.
     """
-    if not higher_is_better and display_format in ("currency", "count"):
+    if not higher_is_better and display_format in ("currency", "count", "duration"):
         return "white"
     if higher_is_better:
         if score >= 0.8:
@@ -607,6 +617,8 @@ def write_diff_html_report(
             return f"{value:.1f}"
         if display_format == "percent":
             return f"{value * 100:.0f}%"
+        if display_format == "duration":
+            return f"{value:.1f}s"
         return f"{value:.2f}"
 
     def format_delta(delta: float, metric_name: str) -> str:
@@ -621,6 +633,8 @@ def write_diff_html_report(
             return f"{sign}{delta:.1f}"
         if display_format == "percent":
             return f"{sign}{delta * 100:.0f}%"
+        if display_format == "duration":
+            return f"{sign}{delta:.1f}s"
         return f"{sign}{delta:.2f}"
 
     env = _build_jinja_env()

@@ -554,3 +554,101 @@ def test_knowledge_miss_rate_uses_session_phase_fallback():
     # "authentication" appears in knowledge_context, so it's a capability gap
     assert result.details["capability_gaps"] == 1
     assert result.details["retrieval_gaps"] == 0
+
+
+# --- PhaseExecutionTimeMetric ---
+
+
+class TestPhaseExecutionTime:
+    def test_computes_total_duration_per_session(self):
+        """Two phases with 5000ms each = 10.0s total per session."""
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        sample = make_sample("s1", duration_ms=5000)
+        dataset = make_dataset(sample)
+        metric = PhaseExecutionTimeMetric()
+        result = metric.compute(dataset, MetricConfig())
+        # 2 phases * 5000ms = 10000ms = 10.0s
+        assert result.score == pytest.approx(10.0)
+
+    def test_skips_none_durations(self):
+        """Sessions with all None durations should be excluded from the aggregate."""
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        sample = make_sample("s1", duration_ms=None)
+        dataset = make_dataset(sample)
+        metric = PhaseExecutionTimeMetric()
+        result = metric.compute(dataset, MetricConfig())
+        assert result.score == 0.0
+
+    def test_per_session_scores(self):
+        """Per-session scores should reflect total phase time in seconds."""
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        sample_a = make_sample("s1", duration_ms=3000)
+        sample_b = make_sample("s2", duration_ms=6000)
+        dataset = make_dataset(sample_a, sample_b)
+        metric = PhaseExecutionTimeMetric()
+        result = metric.compute(dataset, MetricConfig())
+        # s1: 2 phases * 3000ms = 6.0s
+        assert result.sample_scores["s1"] == pytest.approx(6.0)
+        # s2: 2 phases * 6000ms = 12.0s
+        assert result.sample_scores["s2"] == pytest.approx(12.0)
+
+    def test_aggregate_is_mean_of_session_totals(self):
+        """Aggregate score should be the mean of per-session totals."""
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        sample_a = make_sample("s1", duration_ms=3000)
+        sample_b = make_sample("s2", duration_ms=6000)
+        dataset = make_dataset(sample_a, sample_b)
+        metric = PhaseExecutionTimeMetric()
+        result = metric.compute(dataset, MetricConfig())
+        # mean of 6.0s and 12.0s = 9.0s
+        assert result.score == pytest.approx(9.0)
+
+    def test_details_include_percentiles(self):
+        """Details dict should include p50, p95, min, max keys."""
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        samples = [make_sample(f"s{idx}", duration_ms=idx * 1000) for idx in range(1, 6)]
+        dataset = make_dataset(*samples)
+        metric = PhaseExecutionTimeMetric()
+        result = metric.compute(dataset, MetricConfig())
+        assert "p50" in result.details
+        assert "p95" in result.details
+        assert "min" in result.details
+        assert "max" in result.details
+
+    def test_details_min_max_values(self):
+        """Min and max should match the smallest and largest session totals."""
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        sample_a = make_sample("s1", duration_ms=2000)  # 4.0s total
+        sample_b = make_sample("s2", duration_ms=8000)  # 16.0s total
+        dataset = make_dataset(sample_a, sample_b)
+        metric = PhaseExecutionTimeMetric()
+        result = metric.compute(dataset, MetricConfig())
+        assert result.details["min"] == pytest.approx(4.0)
+        assert result.details["max"] == pytest.approx(16.0)
+
+    def test_empty_dataset(self):
+        """Empty dataset should produce score 0.0."""
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        dataset = EvalDataset(samples=[])
+        metric = PhaseExecutionTimeMetric()
+        result = metric.compute(dataset, MetricConfig())
+        assert result.score == 0.0
+
+    def test_metric_properties(self):
+        """Verify Protocol-required class attributes."""
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        metric = PhaseExecutionTimeMetric()
+        assert metric.name == "phase_execution_time"
+        assert metric.higher_is_better is False
+        assert metric.display_format == "duration"
+        assert metric.requires_ground_truth is False
+        assert metric.requires_llm is False
+        assert metric.display_name == "Phase execution time"
