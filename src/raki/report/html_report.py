@@ -366,7 +366,7 @@ def compute_worst_sessions(report: EvalReport, limit: int = 5) -> list[WorstSess
 
 def _build_jinja_env():  # type: ignore[no-any-return]
     """Create a Jinja2 environment loading templates from the package."""
-    from jinja2 import Environment, PackageLoader
+    from jinja2 import Environment, PackageLoader  # ty: ignore[unresolved-import]
 
     return Environment(
         loader=PackageLoader("raki.report", "templates"),
