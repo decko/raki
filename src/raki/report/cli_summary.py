@@ -1,5 +1,6 @@
 """Rich CLI summary output — color-coded metrics grouped by category."""
 
+from collections import Counter
 from collections.abc import Sequence
 
 from rich.console import Console
@@ -95,6 +96,62 @@ def format_metric_line(
     count_str = f" (n={sample_count})" if sample_count is not None else ""
     detail_str = f"  ({detail})" if detail else ""
     return f"[{color}]  {label:<35} {score_str}{count_str}{detail_str}[/{color}]"
+
+
+def generate_summary_sentence(report: EvalReport, session_count: int) -> str:
+    """Generate a plain-English summary sentence from aggregate scores.
+
+    The summary highlights key numbers: verify rate, rework cycles, finding counts,
+    and average cost. Missing metrics are gracefully omitted.
+    """
+    parts: list[str] = []
+    scores = report.aggregate_scores
+
+    verify_rate = scores.get("first_pass_verify_rate")
+    if verify_rate is not None:
+        pct = f"{verify_rate * 100:.0f}%"
+        parts.append(f"{pct} of sessions passed on first try")
+
+    rework = scores.get("rework_cycles")
+    if rework is not None:
+        parts.append(f"with an average of {rework:.1f} rework cycles")
+
+    # Count findings from sample_results
+    severity_counter: Counter[str] = Counter()
+    for sample_result in report.sample_results:
+        for finding in sample_result.sample.findings:
+            severity_counter[finding.severity] += 1
+
+    if severity_counter:
+        finding_parts: list[str] = []
+        for severity_level in ("critical", "major", "minor"):
+            count = severity_counter.get(severity_level, 0)
+            if count > 0:
+                finding_parts.append(f"{count} {severity_level}")
+        if finding_parts:
+            finding_text = ", ".join(finding_parts)
+            parts.append(f"Reviewers found {finding_text} issues across all sessions")
+
+    cost = scores.get("cost_efficiency")
+    if cost is not None:
+        parts.append(f"Average cost: ${cost:.2f}/session")
+
+    if not parts:
+        return f"Evaluation completed across {session_count} sessions."
+
+    # Join the first two parts with comma, rest with period
+    sentence_parts: list[str] = []
+    if len(parts) >= 2 and "passed on first try" in parts[0]:
+        sentence_parts.append(f"{parts[0]}, {parts[1]}")
+        remaining = parts[2:]
+    else:
+        sentence_parts.append(parts[0])
+        remaining = parts[1:]
+
+    for part in remaining:
+        sentence_parts.append(part)
+
+    return ". ".join(sentence_parts) + "."
 
 
 def print_summary(

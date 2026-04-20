@@ -3,11 +3,18 @@
 import json
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
+from raki.model.phases import ReviewFinding
 from raki.model.report import EvalReport, MetricResult, SampleResult
-from raki.report.cli_summary import color_for_score, format_metric_line, print_summary
+from raki.report.cli_summary import (
+    color_for_score,
+    format_metric_line,
+    generate_summary_sentence,
+    print_summary,
+)
 from raki.report.json_report import load_json_report, write_json_report
 
 from conftest import make_sample
@@ -408,3 +415,110 @@ class TestPrintSummary:
         print_summary(report, session_count=10, console=test_console)
         output = string_io.getvalue()
         assert "same-provider" not in output.lower()
+
+
+# --- generate_summary_sentence tests ---
+
+
+def _make_finding(severity: Literal["critical", "major", "minor"]) -> ReviewFinding:
+    """Helper to create a ReviewFinding with a given severity."""
+    return ReviewFinding(
+        reviewer="test-reviewer",
+        severity=severity,
+        issue=f"Test {severity} issue",
+    )
+
+
+class TestGenerateSummarySentence:
+    def test_includes_verify_rate_percentage(self) -> None:
+        """Summary sentence should include verify rate as a percentage."""
+        report = EvalReport(
+            run_id="summary-test",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.91,
+                "rework_cycles": 0.4,
+                "cost_efficiency": 7.42,
+            },
+        )
+        sentence = generate_summary_sentence(report, session_count=20)
+        assert "91%" in sentence
+
+    def test_includes_rework_cycles(self) -> None:
+        """Summary sentence should include average rework cycles."""
+        report = EvalReport(
+            run_id="summary-test",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.91,
+                "rework_cycles": 0.4,
+                "cost_efficiency": 7.42,
+            },
+        )
+        sentence = generate_summary_sentence(report, session_count=20)
+        assert "0.4" in sentence
+
+    def test_includes_cost(self) -> None:
+        """Summary sentence should include average cost per session."""
+        report = EvalReport(
+            run_id="summary-test",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.91,
+                "rework_cycles": 0.4,
+                "cost_efficiency": 7.42,
+            },
+        )
+        sentence = generate_summary_sentence(report, session_count=20)
+        assert "$7.42" in sentence
+
+    def test_includes_finding_counts_from_samples(self) -> None:
+        """Summary sentence should include severity breakdown when samples exist."""
+        findings_a = [
+            _make_finding("critical"),
+            _make_finding("critical"),
+            _make_finding("major"),
+        ]
+        findings_b = [
+            _make_finding("minor"),
+            _make_finding("minor"),
+            _make_finding("minor"),
+        ]
+        sample_a = make_sample("s1", findings=findings_a)
+        sample_b = make_sample("s2", findings=findings_b)
+        report = EvalReport(
+            run_id="summary-findings",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "rework_cycles": 1.0,
+                "cost_efficiency": 10.0,
+            },
+            sample_results=[
+                SampleResult(sample=sample_a, scores=[]),
+                SampleResult(sample=sample_b, scores=[]),
+            ],
+        )
+        sentence = generate_summary_sentence(report, session_count=2)
+        assert "2 critical" in sentence
+        assert "1 major" in sentence
+        assert "3 minor" in sentence
+
+    def test_omits_missing_metrics(self) -> None:
+        """Summary sentence should gracefully handle missing metrics."""
+        report = EvalReport(
+            run_id="summary-partial",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.75,
+            },
+        )
+        sentence = generate_summary_sentence(report, session_count=10)
+        assert "75%" in sentence
+        # Should not crash, should produce a reasonable sentence
+        assert isinstance(sentence, str)
+        assert len(sentence) > 0
+
+    def test_returns_string(self) -> None:
+        """generate_summary_sentence should always return a string."""
+        report = EvalReport(
+            run_id="summary-empty",
+            aggregate_scores={},
+        )
+        sentence = generate_summary_sentence(report, session_count=0)
+        assert isinstance(sentence, str)
