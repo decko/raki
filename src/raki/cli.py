@@ -100,6 +100,30 @@ def _warn_unimplemented_options(con: Console | None = None, **options: object) -
             out.print(f"[yellow]Warning: --{option_name} is not yet implemented[/yellow]")
 
 
+# LLM metric names that are always known (Ragas-backed retrieval metrics)
+_RAGAS_METRICS: dict[str, tuple[str, bool]] = {
+    "context_precision": ("Context precision", True),
+    "context_recall": ("Context recall", True),
+    "faithfulness": ("Faithfulness", True),
+    "answer_relevancy": ("Answer relevancy", True),
+}
+
+
+def _all_metric_names() -> dict[str, str]:
+    """Return a mapping of all known metric names to display names.
+
+    Includes operational metrics from ALL_OPERATIONAL and Ragas retrieval metrics.
+    """
+    from raki.metrics.operational import ALL_OPERATIONAL
+
+    names: dict[str, str] = {}
+    for metric in ALL_OPERATIONAL:
+        names[metric.name] = metric.display_name
+    for ragas_name, (display_name, _requires_llm) in _RAGAS_METRICS.items():
+        names[ragas_name] = display_name
+    return names
+
+
 @click.group()
 @click.version_option(package_name="raki")
 def main():
@@ -161,9 +185,22 @@ def run(
 
     _warn_unimplemented_options(
         con=out,
-        metrics=metric_names,
         tenant=tenant,
     )
+
+    # Validate --metrics filter before doing any heavy loading
+    requested_names: set[str] | None = None
+    if metric_names is not None:
+        all_known = _all_metric_names()
+        requested_names = {name.strip() for name in metric_names.split(",")}
+        unknown = requested_names - set(all_known.keys())
+        if unknown:
+            valid_list = ", ".join(sorted(all_known.keys()))
+            raise click.BadParameter(
+                f"Unknown metric(s): {', '.join(sorted(unknown))}. Valid metrics: {valid_list}",
+                param_hint="'--metrics'",
+            )
+
     manifest_file = _resolve_manifest(manifest_path, quiet=quiet, con=out)
 
     try:
@@ -240,7 +277,14 @@ def run(
     )
 
     all_metrics: list[Metric] = list(ALL_OPERATIONAL)
-    if not no_llm:
+
+    # Determine whether LLM metrics are needed: only import Ragas machinery
+    # when the user has not excluded LLM metrics via --no-llm and the
+    # --metrics filter (if any) includes at least one LLM-backed metric.
+    needs_llm = not no_llm and (
+        requested_names is None or any(name in requested_names for name in _RAGAS_METRICS)
+    )
+    if needs_llm:
         from raki.metrics.ragas.faithfulness import FaithfulnessMetric
         from raki.metrics.ragas.precision import ContextPrecisionMetric
         from raki.metrics.ragas.recall import ContextRecallMetric
@@ -254,6 +298,10 @@ def run(
                 AnswerRelevancyMetric(),
             ]
         )
+
+    # Apply --metrics filter after assembling the full metric list
+    if requested_names is not None:
+        all_metrics = [metric for metric in all_metrics if metric.name in requested_names]
 
     engine = MetricsEngine(all_metrics, config=config)
     report = engine.run(dataset, skip_llm=no_llm)
@@ -405,6 +453,55 @@ def adapters() -> None:
             f"  [bold]{adapter.name}[/bold]  {adapter.description}  "
             f"[dim](detects: {adapter.detection_hint})[/dim]"
         )
+
+
+@main.command()
+@click.option("--json", "json_output", is_flag=True, help="Output as JSON")
+def metrics(json_output: bool) -> None:
+    """List available metrics."""
+    from raki.metrics.operational import ALL_OPERATIONAL
+
+    all_metrics_info: list[dict[str, str | bool]] = []
+    for metric in ALL_OPERATIONAL:
+        all_metrics_info.append(
+            {
+                "name": metric.name,
+                "display_name": metric.display_name,
+                "requires_llm": metric.requires_llm,
+                "higher_is_better": metric.higher_is_better,
+            }
+        )
+    for ragas_name, (display_name, requires_llm) in _RAGAS_METRICS.items():
+        all_metrics_info.append(
+            {
+                "name": ragas_name,
+                "display_name": display_name,
+                "requires_llm": requires_llm,
+                "higher_is_better": True,
+            }
+        )
+
+    if json_output:
+        import json as json_mod
+
+        click.echo(json_mod.dumps({"metrics": all_metrics_info}, indent=2))
+        return
+
+    from rich.table import Table
+
+    table = Table(title="Available Metrics")
+    table.add_column("Name", style="bold")
+    table.add_column("Display Name")
+    table.add_column("Requires LLM")
+    table.add_column("Higher is Better")
+    for info in all_metrics_info:
+        table.add_row(
+            str(info["name"]),
+            str(info["display_name"]),
+            "\u2713" if info["requires_llm"] else "",
+            "\u2713" if info["higher_is_better"] else "",
+        )
+    console.print(table)
 
 
 def _is_session_data_stripped(report: EvalReport) -> bool:

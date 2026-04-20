@@ -373,22 +373,210 @@ class TestAdapterFiltering:
         assert "Warning: --adapter is not yet implemented" not in result.output
 
 
-class TestCliUnimplementedOptions:
-    def test_warns_metrics_option(self, empty_manifest):
+class TestMetricsFiltering:
+    def test_filter_single_metric(self, manifest_with_session):
+        manifest_path, _sessions = manifest_with_session
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "--metrics", "f1,recall"],
+            ["run", "-m", str(manifest_path), "--no-llm", "--metrics", "cost_efficiency", "-q"],
         )
-        assert "Warning: --metrics is not yet implemented" in result.output
+        assert result.exit_code == 0
 
-    def test_warns_tenant_option(self, empty_manifest):
+    def test_filter_multiple_metrics(self, manifest_with_session):
+        manifest_path, _sessions = manifest_with_session
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "--tenant", "acme"],
+            [
+                "run",
+                "-m",
+                str(manifest_path),
+                "--no-llm",
+                "--metrics",
+                "cost_efficiency,rework_cycles",
+                "-q",
+            ],
         )
-        assert "Warning: --tenant is not yet implemented" in result.output
+        assert result.exit_code == 0
+
+    def test_invalid_metric_name_exits_2(self, manifest_with_session):
+        manifest_path, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_path), "--no-llm", "--metrics", "nonexistent"],
+        )
+        assert result.exit_code == 2
+
+    def test_invalid_metric_name_shows_valid_names(self, manifest_with_session):
+        manifest_path, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_path), "--no-llm", "--metrics", "nonexistent"],
+        )
+        assert "Valid metrics" in result.output
+
+    def test_filter_only_runs_selected_metrics(self, manifest_with_session, tmp_path):
+        """Filtering to a single metric should only include that metric in the report."""
+        manifest_path, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(manifest_path),
+                "--no-llm",
+                "--metrics",
+                "cost_efficiency",
+                "-o",
+                str(output_dir),
+                "--json",
+                "-q",
+            ],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        metric_names = set(data.get("aggregate_scores", {}).keys())
+        assert "cost_efficiency" in metric_names
+        # Other operational metrics should not appear
+        assert "first_pass_verify_rate" not in metric_names
+
+    def test_filter_avoids_llm_import_when_only_operational(self, manifest_with_session):
+        """When --metrics selects only operational metrics, LLM imports should not happen."""
+        manifest_path, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(manifest_path),
+                "--metrics",
+                "cost_efficiency",
+                "-q",
+            ],
+        )
+        # Should succeed without LLM setup even though --no-llm was not specified
+        assert result.exit_code == 0
+
+    def test_filter_with_spaces_around_names(self, manifest_with_session):
+        """Metric names with spaces around commas should be trimmed."""
+        manifest_path, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(manifest_path),
+                "--no-llm",
+                "--metrics",
+                " cost_efficiency , rework_cycles ",
+                "-q",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_combined_metrics_and_no_llm(self, manifest_with_session):
+        """--metrics with only operational names + --no-llm should work fine."""
+        manifest_path, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(manifest_path),
+                "--no-llm",
+                "--metrics",
+                "first_pass_verify_rate,rework_cycles",
+                "-q",
+            ],
+        )
+        assert result.exit_code == 0
+
+
+class TestMetricsSubcommand:
+    def test_metrics_command_shows_in_help(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "metrics" in result.output
+
+    def test_metrics_lists_all(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics"])
+        assert result.exit_code == 0
+        # Rich table may truncate long names; check for a shorter metric name
+        assert "rework_cycles" in result.output
+
+    def test_metrics_shows_operational_metrics(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics"])
+        assert result.exit_code == 0
+        assert "cost_efficiency" in result.output
+        assert "rework_cycles" in result.output
+
+    def test_metrics_shows_ragas_metrics(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics"])
+        assert result.exit_code == 0
+        assert "context_precision" in result.output
+        assert "faithfulness" in result.output
+
+    def test_metrics_shows_display_name(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics"])
+        assert result.exit_code == 0
+        assert "Verify rate" in result.output
+
+    def test_metrics_shows_requires_llm_column(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics"])
+        assert result.exit_code == 0
+        assert "Requires LLM" in result.output
+
+    def test_metrics_shows_higher_is_better_column(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics"])
+        assert result.exit_code == 0
+        assert "Higher is Better" in result.output
+
+    def test_metrics_json_output(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert "metrics" in data
+        metric_names = {metric_info["name"] for metric_info in data["metrics"]}
+        assert "first_pass_verify_rate" in metric_names
+        assert "context_precision" in metric_names
+
+    def test_metrics_json_includes_all_fields(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        for metric_info in data["metrics"]:
+            assert "name" in metric_info
+            assert "display_name" in metric_info
+            assert "requires_llm" in metric_info
+            assert "higher_is_better" in metric_info
+
+    def test_metrics_json_types(self):
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        for metric_info in data["metrics"]:
+            assert isinstance(metric_info["name"], str)
+            assert isinstance(metric_info["display_name"], str)
+            assert isinstance(metric_info["requires_llm"], bool)
+            assert isinstance(metric_info["higher_is_better"], bool)
 
 
 class TestCliJudgeModel:
@@ -1026,3 +1214,40 @@ class TestCliReportDiff:
         result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
         assert result.exit_code == 0
         assert "Improvement" in result.output or "improvement" in result.output.lower()
+
+
+class TestCliUnimplementedOptions:
+    def test_tenant_warning(self, empty_manifest):
+        """--tenant is still unimplemented and should produce a warning."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(empty_manifest), "--no-llm", "--tenant", "acme-corp"],
+        )
+        assert result.exit_code == 0
+        assert "Warning: --tenant is not yet implemented" in result.output
+
+
+class TestRagasMetricsSync:
+    """_RAGAS_METRICS dict keys must stay in sync with actual Ragas metric class .name attributes."""
+
+    def test_ragas_metrics_keys_match_class_names(self):
+        """The set of _RAGAS_METRICS keys must equal the set of Ragas metric .name values."""
+        from raki.cli import _RAGAS_METRICS
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+        from raki.metrics.ragas.recall import ContextRecallMetric
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        ragas_classes = [
+            FaithfulnessMetric,
+            ContextPrecisionMetric,
+            ContextRecallMetric,
+            AnswerRelevancyMetric,
+        ]
+        class_names = {cls.name for cls in ragas_classes}
+        dict_keys = set(_RAGAS_METRICS.keys())
+        assert dict_keys == class_names, (
+            f"_RAGAS_METRICS keys {dict_keys} do not match "
+            f"Ragas metric class .name attributes {class_names}"
+        )
