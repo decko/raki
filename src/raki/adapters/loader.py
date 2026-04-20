@@ -18,13 +18,22 @@ class DatasetLoader:
         self.errors: list[LoadError] = []
         self.skipped: list[Path] = []
 
-    def load_directory(self, root: Path, *, recursive: bool = False) -> EvalDataset:
+    def load_directory(
+        self,
+        root: Path,
+        *,
+        recursive: bool = False,
+        adapter_name: str | None = None,
+    ) -> EvalDataset:
         """Load sessions from a directory.
 
         Args:
             root: Root directory to scan for sessions.
             recursive: When True, descend into subdirectories to find sessions.
                 Default is False for backward compatibility.
+            adapter_name: When set, bypass auto-detection and use the named
+                adapter for every child path. Raises ``ValueError`` if the
+                name is not registered.
 
         Returns:
             EvalDataset containing all successfully loaded sessions.
@@ -32,10 +41,13 @@ class DatasetLoader:
         # Resolve to an absolute path to prevent trivial path traversal.
         # Full manifest-level validation is deferred to the CLI/manifest layer (Issues #6/#8).
         root = root.resolve()
+        if adapter_name is not None and self._registry.get(adapter_name) is None:
+            valid_names = ", ".join(adapter.name for adapter in self._registry.list_all())
+            raise ValueError(f"Unknown adapter: '{adapter_name}'. Valid adapters: {valid_names}")
         samples: list[EvalSample] = []
         self.errors = []
         self.skipped = []
-        self._scan_directory(root, samples, recursive=recursive)
+        self._scan_directory(root, samples, recursive=recursive, adapter_name=adapter_name)
         return EvalDataset(samples=samples)
 
     def _scan_directory(
@@ -44,10 +56,18 @@ class DatasetLoader:
         samples: list[EvalSample],
         *,
         recursive: bool,
+        adapter_name: str | None = None,
     ) -> None:
-        """Scan a directory for sessions, optionally recursing into subdirectories."""
+        """Scan a directory for sessions, optionally recursing into subdirectories.
+
+        When *adapter_name* is set, the named adapter is used for every child
+        instead of auto-detecting the format.
+        """
         for child in sorted(directory.iterdir()):
-            adapter = self._detect_adapter(child)
+            if adapter_name is not None:
+                adapter = self._registry.get(adapter_name)
+            else:
+                adapter = self._detect_adapter(child)
             if adapter is not None:
                 try:
                     sample = adapter.load(child)
@@ -55,7 +75,7 @@ class DatasetLoader:
                 except Exception as exc:
                     self.errors.append(LoadError(path=child, error=str(exc)))
             elif recursive and child.is_dir() and not child.is_symlink():
-                self._scan_directory(child, samples, recursive=True)
+                self._scan_directory(child, samples, recursive=True, adapter_name=adapter_name)
             else:
                 self.skipped.append(child)
 

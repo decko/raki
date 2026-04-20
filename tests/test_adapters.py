@@ -1013,6 +1013,63 @@ def test_generational_sorting_no_meta_generation_defaults(tmp_path):
     assert impl_phases[2].generation == 3
 
 
+# --- DatasetLoader adapter_name filtering tests (issue #79) ---
+
+
+class TestDatasetLoaderAdapterName:
+    def test_load_directory_with_valid_adapter_name(self, sessions_dir):
+        registry = AdapterRegistry()
+        registry.register(SessionSchemaAdapter())
+        loader = DatasetLoader(registry)
+        dataset = loader.load_directory(sessions_dir, adapter_name="session-schema")
+        assert len(dataset.samples) == 2
+
+    def test_load_directory_with_invalid_adapter_name(self, sessions_dir):
+        registry = AdapterRegistry()
+        registry.register(SessionSchemaAdapter())
+        loader = DatasetLoader(registry)
+        with pytest.raises(ValueError, match="Unknown adapter"):
+            loader.load_directory(sessions_dir, adapter_name="nonexistent")
+
+    def test_load_directory_adapter_name_bypasses_detection(self, tmp_path):
+        """When adapter_name is set, _detect_adapter() is not called for each child."""
+        import shutil
+
+        # Copy alcove fixture into a flat dir alongside a session-schema dir
+        shutil.copy(ALCOVE_FIXTURE, tmp_path / "alcove-simple.json")
+        session_dir = tmp_path / "session-101"
+        session_dir.mkdir()
+        meta = {
+            "ticket": "101",
+            "summary": "test",
+            "started_at": "2026-04-10T08:00:00Z",
+            "total_cost": 1.0,
+            "rework_cycles": 0,
+            "phases": {},
+        }
+        import json
+
+        (session_dir / "meta.json").write_text(json.dumps(meta))
+        (session_dir / "events.jsonl").write_text("")
+
+        registry = AdapterRegistry()
+        registry.register(SessionSchemaAdapter())
+        registry.register(AlcoveAdapter())
+        loader = DatasetLoader(registry)
+
+        # Force session-schema adapter: alcove file should be skipped/error, not loaded
+        dataset = loader.load_directory(tmp_path, adapter_name="session-schema")
+        session_ids = {sample.session.session_id for sample in dataset.samples}
+        # Only the session-schema session should be loaded (alcove file will fail/be skipped)
+        assert "101" in session_ids
+        alcove_ids = {
+            sample.session.session_id
+            for sample in dataset.samples
+            if sample.session.session_id == "ae7d2bf4-2f77-4ea6-8e3c-5442fe3d9fa7"
+        }
+        assert len(alcove_ids) == 0
+
+
 # --- default_registry() tests (issue #78) ---
 
 

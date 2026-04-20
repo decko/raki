@@ -332,15 +332,48 @@ class TestCliExitCodes:
         assert result.exit_code == 2
 
 
-class TestCliUnimplementedOptions:
-    def test_warns_adapter_option(self, empty_manifest):
+class TestAdapterFiltering:
+    def test_valid_adapter_name(self, manifest_with_session):
+        manifest_path, _sessions = manifest_with_session
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "--adapter", "custom"],
+            ["run", "-m", str(manifest_path), "--no-llm", "--adapter", "session-schema", "-q"],
         )
-        assert "Warning: --adapter is not yet implemented" in result.output
+        assert result.exit_code == 0
 
+    def test_invalid_adapter_name_exits_2(self, manifest_with_session):
+        manifest_path, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_path), "--no-llm", "--adapter", "nonexistent"],
+        )
+        assert result.exit_code == 2
+
+    def test_invalid_adapter_name_shows_valid_names(self, manifest_with_session):
+        manifest_path, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_path), "--no-llm", "--adapter", "nonexistent"],
+        )
+        assert "session-schema" in result.output
+        assert "alcove" in result.output
+
+    def test_adapter_name_passed_to_loader(self, manifest_with_session):
+        """Valid adapter name should be passed through to the loader without warning."""
+        manifest_path, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_path), "--no-llm", "--adapter", "session-schema"],
+        )
+        assert result.exit_code == 0
+        assert "Warning: --adapter is not yet implemented" not in result.output
+
+
+class TestCliUnimplementedOptions:
     def test_warns_metrics_option(self, empty_manifest):
         runner = CliRunner()
         result = runner.invoke(
