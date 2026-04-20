@@ -71,6 +71,8 @@ Fraction of rework-triggering findings where the relevant knowledge was not in t
 
 These metrics use LLM-backed evaluation via Ragas and require ground truth data.
 
+> **Note:** Retrieval quality metrics require ground truth to be configured and matched. If `ground_truth.path` is not set in your manifest, or if sessions do not match any ground truth entries, these metrics will produce 0.0 scores. Run `raki validate` to check your ground truth match rate.
+
 ### context_precision -- Context precision
 
 Fraction of retrieved contexts that are actually relevant to the question (higher is better).

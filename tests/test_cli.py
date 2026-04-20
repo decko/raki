@@ -711,6 +711,125 @@ def _write_diff_report_json(
     path.write_text(json.dumps(data, indent=2, default=str))
 
 
+class TestGroundTruthWiring:
+    def test_run_loads_ground_truth_when_configured(self, manifest_with_ground_truth):
+        """run() should succeed when manifest has ground_truth.path set."""
+        manifest_path, _sessions, _gt = manifest_with_ground_truth
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "-m", str(manifest_path), "--no-llm", "-q"])
+        assert result.exit_code == 0
+
+    def test_run_logs_match_count(self, manifest_with_ground_truth):
+        """run() should log how many sessions matched ground truth."""
+        manifest_path, _sessions, _gt = manifest_with_ground_truth
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "-m", str(manifest_path), "--no-llm"])
+        assert "Matched ground truth" in result.output
+
+    def test_run_warns_low_match_rate(self, manifest_with_ground_truth):
+        """run() should warn when match rate is below 50%."""
+        manifest_path, _sessions, _gt = manifest_with_ground_truth
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "-m", str(manifest_path), "--no-llm"])
+        # The pass-simple fixture has no triage phase with code_area, so 0/1 match rate
+        assert (
+            "ground truth matching relies on" in result.output
+            or "Matched ground truth for 0" in result.output
+        )
+
+    def test_run_graceful_on_corrupt_ground_truth(self, tmp_path, pass_simple_dir):
+        """run() should continue gracefully when ground truth YAML is corrupt."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        session_dest = sessions / "101"
+        session_dest.mkdir()
+        for file_path in pass_simple_dir.iterdir():
+            (session_dest / file_path.name).write_text(file_path.read_text())
+
+        ground_truth = tmp_path / "curated.yaml"
+        ground_truth.write_text("not: valid: yaml: [[[")
+
+        manifest = tmp_path / "raki.yaml"
+        manifest.write_text(
+            f"sessions:\n  path: {sessions}\n  format: auto\n"
+            f"ground_truth:\n  path: {ground_truth}\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "-m", str(manifest), "--no-llm"])
+        assert result.exit_code == 0
+
+    def test_run_quiet_suppresses_match_log(self, manifest_with_ground_truth):
+        """run() in quiet mode should not log match count."""
+        manifest_path, _sessions, _gt = manifest_with_ground_truth
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "-m", str(manifest_path), "--no-llm", "-q"])
+        assert result.exit_code == 0
+        assert "Matched ground truth" not in result.output
+
+    def test_validate_reports_ground_truth_status(self, manifest_with_ground_truth):
+        """validate command should report ground truth status when configured."""
+        manifest_path, _sessions, _gt = manifest_with_ground_truth
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest_path)])
+        assert "ground truth" in result.output.lower()
+
+    def test_validate_graceful_on_corrupt_ground_truth(self, tmp_path, pass_simple_dir):
+        """validate command should warn on corrupt ground truth YAML."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        session_dest = sessions / "101"
+        session_dest.mkdir()
+        for file_path in pass_simple_dir.iterdir():
+            (session_dest / file_path.name).write_text(file_path.read_text())
+
+        ground_truth = tmp_path / "curated.yaml"
+        ground_truth.write_text("not: valid: yaml: [[[")
+
+        manifest = tmp_path / "raki.yaml"
+        manifest.write_text(
+            f"sessions:\n  path: {sessions}\n  format: auto\n"
+            f"ground_truth:\n  path: {ground_truth}\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest)])
+        assert result.exit_code == 0
+
+    def test_run_with_matching_ground_truth(self, tmp_path, pass_simple_dir):
+        """run() should match ground truth when session has matching triage code_area."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        session_dest = sessions / "101"
+        session_dest.mkdir()
+        for file_path in pass_simple_dir.iterdir():
+            (session_dest / file_path.name).write_text(file_path.read_text())
+        # Patch triage.json to include code_area for domain matching
+        triage_path = session_dest / "triage.json"
+        triage_path.write_text(
+            '{"ticket_key": "101", "complexity": "small", '
+            '"approach": "Add pydantic validation", '
+            '"automatable": true, "code_area": "api validation"}'
+        )
+
+        ground_truth = tmp_path / "curated.yaml"
+        ground_truth.write_text(
+            "- question: How does API validation work?\n"
+            "  expected_approach: Use pydantic\n"
+            "  domains:\n"
+            "    - api\n"
+            "    - validation\n"
+        )
+
+        manifest = tmp_path / "raki.yaml"
+        manifest.write_text(
+            f"sessions:\n  path: {sessions}\n  format: auto\n"
+            f"ground_truth:\n  path: {ground_truth}\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "-m", str(manifest), "--no-llm"])
+        assert result.exit_code == 0
+        assert "Matched ground truth for 1/1" in result.output
+
+
 class TestCliReportDiff:
     def test_diff_produces_cli_summary(self, tmp_path):
         """raki report --diff baseline.json compare.json produces CLI summary."""
