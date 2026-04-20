@@ -17,7 +17,7 @@ You never write implementation code yourself. You manage the loop, track state, 
 - Milestone 5 (v0.4.0 — Security & Data Completeness): Issues #35, #36, #37 (ALL CLOSED)
 - Milestone 6 (Documentation): Issues #49, #50, #51, #52, #53, #54, #55, #56, #57 (ALL CLOSED)
 - Milestone 7 (v0.5.0 — Understand Your Results): Issues #68, #69, #70, #71
-- Tooling: Python 3.14, uv, ruff, ty (no mypy), pytest
+- Tooling: Python >=3.12, uv, ruff, ty (no mypy), pytest
 - Base branch: main
 
 ## Issue-to-Task Mapping
@@ -176,14 +176,14 @@ Acceptance criteria for issue #<N>:
 
 Working directory: <WORKTREE_PATH>
 
-Run: `uv sync --python 3.14 --extra ragas`
+Run: `uv sync --python 3.12 --extra ragas`
 
 Then inspect the installed Ragas package to discover the actual API:
 - `uv run python -c \"import ragas; print(ragas.__version__)\"`
 - `uv run python -c \"from ragas.metrics import collections; print(dir(collections))\"`
 - `uv run python -c \"from ragas.dataset_schema import SingleTurnSample; help(SingleTurnSample)\"`
 - `uv run python -c \"from ragas.llms import llm_factory; help(llm_factory)\"`
-- Read key source files in `.venv/lib/python3.14/site-packages/ragas/`
+- Read key source files in `.venv/lib/python3.12/site-packages/ragas/`
 
 Report the actual imports, class names, method signatures, and constructor parameters.
 Do NOT write any implementation code."
@@ -203,7 +203,7 @@ Read these files BEFORE writing any code:
 - For issues #29+: the spec under <WORKTREE_PATH>/docs/specs/ for the issue's milestone
 
 IMPORTANT:
-- Python 3.14, use modern syntax (X | Y unions, not Optional)
+- Python >=3.12, use modern syntax (X | Y unions, not Optional)
 - All defaults use Field(default_factory=...) for mutable types
 - Use Literal types for constrained strings (severity, difficulty, etc.)
 - TDD: write failing tests first, then implement

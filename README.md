@@ -61,7 +61,7 @@ uv run raki metrics --json
 ## Development
 
 ```bash
-uv sync --python 3.14 --all-extras
+uv sync --python 3.12 --all-extras
 uv run pytest tests/ -v
 uv run ruff check src/ tests/
 uv run ruff format src/ tests/

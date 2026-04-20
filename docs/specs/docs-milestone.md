@@ -86,7 +86,7 @@ Inline YAML comments explain each field. No separate manifest documentation — 
 
 `docs/getting-started.md` — under 100 lines. Structure:
 
-1. **Prerequisites** — Python 3.14, uv
+1. **Prerequisites** — Python 3.12+, uv
 2. **Install** — `uv pip install raki` or clone + `uv sync`
 3. **Quick Start** — run against bundled examples (copy-pasteable commands, 60 seconds to output)
 4. **Prepare Your Data** — what session data looks like, link to schema reference and examples

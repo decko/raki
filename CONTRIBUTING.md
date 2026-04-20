@@ -8,7 +8,7 @@ Thanks for your interest in RAKI! This guide covers the workflow for contributin
 2. Set up your development environment:
 
 ```bash
-uv sync --python 3.14 --all-extras
+uv sync --python 3.12 --all-extras
 ```
 
 ## Branch Naming

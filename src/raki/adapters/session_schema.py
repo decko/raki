@@ -201,7 +201,7 @@ class SessionSchemaAdapter:
                             else None,
                         )
                     )
-                except KeyError, ValueError:
+                except (KeyError, ValueError):
                     continue
         return findings
 
@@ -227,6 +227,6 @@ class SessionSchemaAdapter:
                         data=redact_dict(raw.get("data", {})),
                     )
                 )
-            except KeyError, ValueError, ValidationError:
+            except (KeyError, ValueError, ValidationError):
                 continue
         return events
