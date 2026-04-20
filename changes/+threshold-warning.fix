@@ -1,1 +1,0 @@
-Update ``--threshold`` + ``--no-llm`` warning to accurately state that threshold applies only to LLM-backed retrieval metrics.

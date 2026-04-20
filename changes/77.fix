@@ -1,1 +1,0 @@
-Wire ground truth matching into CLI ``run`` and ``validate`` commands. Previously ``load_ground_truth()`` and ``match_ground_truth()`` were never called, causing Ragas metrics to silently produce 0.0 scores.
