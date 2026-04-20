@@ -21,6 +21,7 @@ OPERATIONAL_METRICS = {
     "cost_efficiency",
     "knowledge_retrieval_miss_rate",
     "phase_execution_time",
+    "token_efficiency",
 }
 
 EXPERIMENTAL_METRICS = {

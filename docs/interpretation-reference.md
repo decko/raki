@@ -67,6 +67,30 @@ Fraction of rework-triggering findings where the relevant knowledge was not in t
 
 **Red zone action:** Extract the topics from missed findings and add them to your knowledge base. This is the single most direct way to improve agent quality.
 
+### phase_execution_time -- Phase execution time
+
+Mean total phase execution time per session in seconds (lower is better). Sums `duration_ms` across all phases in each session and converts to seconds. Does not capture inter-phase gaps, orchestration overhead, or human-in-the-loop pauses.
+
+| Zone | Range | Meaning |
+|------|-------|---------|
+| Green | < 60s | Phases complete quickly |
+| Yellow | 60s -- 300s | Noticeable execution time |
+| Red | > 300s | Phases are taking a long time to execute |
+
+**Red zone action:** Examine which phases are slowest. Long execution times usually come from expensive tool calls, large context processing, or excessive retry loops within a single phase.
+
+### token_efficiency -- Tokens / phase
+
+Average tokens (input + output) consumed per phase (lower is better). Measures how efficiently each phase uses context. Phases where both `tokens_in` and `tokens_out` are missing are skipped.
+
+| Zone | Range | Meaning |
+|------|-------|---------|
+| Green | < 2,000 | Phases are lean and efficient |
+| Yellow | 2,000 -- 8,000 | Moderate token usage per phase |
+| Red | > 8,000 | Phases consume excessive tokens |
+
+**Red zone action:** Check whether phases are receiving overly large context windows or generating verbose output. Reducing retrieved context size and tightening prompts are the most effective levers. High token counts combined with high cost_per_session confirm that token volume is driving spend.
+
 ## Retrieval Quality Metrics
 
 These metrics use LLM-backed evaluation via Ragas and require ground truth data.
