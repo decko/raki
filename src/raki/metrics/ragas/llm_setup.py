@@ -48,25 +48,41 @@ def create_ragas_llm(config: MetricConfig):
 
     from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
 
-    return llm_factory(
+    llm = llm_factory(
         config.llm_model,
+        provider="anthropic",
         client=client,
         temperature=config.temperature,
     )
+    llm.model_args.pop("top_p", None)
+    return llm
 
 
 def create_ragas_embeddings():
     """Create embeddings for answer_relevancy metric.
 
-    Uses VertexAIEmbeddings from langchain-google-vertexai for consistency
-    with the Vertex AI LLM setup. The previous embedding_factory() defaulted
-    to OpenAI, which was inconsistent with the Anthropic/Vertex AI LLM config.
+    Uses Ragas embedding_factory with a pre-configured Google genai Client
+    for Vertex AI. Resolves project/location from VERTEXAI_PROJECT and
+    VERTEXAI_LOCATION environment variables.
 
     Defers imports so this module can be imported without dependencies installed.
     """
-    from langchain_google_vertexai import VertexAIEmbeddings  # ty: ignore[unresolved-import]
+    import os
 
-    return VertexAIEmbeddings(model_name="text-embedding-005")
+    from google import genai  # ty: ignore[unresolved-import]
+    from ragas.embeddings.base import embedding_factory  # ty: ignore[unresolved-import]
+
+    project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("VERTEXAI_PROJECT")
+    location = os.environ.get("VERTEXAI_LOCATION", "us-central1")
+
+    client = genai.Client(vertexai=True, project=project, location=location)
+
+    return embedding_factory(
+        "google",
+        model="text-embedding-005",
+        client=client,
+        interface="modern",
+    )
 
 
 def _validate_judge_log_path(log_path: Path, project_root: Path | None = None) -> Path:
