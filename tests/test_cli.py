@@ -1,7 +1,8 @@
-"""Tests for CLI commands: raki run, raki validate, raki adapters, raki report."""
+"""Tests for CLI commands: raki run, raki validate, raki adapters, raki report, raki report --diff."""
 
 import importlib.util
 import json
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
@@ -651,3 +652,225 @@ class TestCliReport:
         assert result.exit_code == 0
         # Should use display names from METRIC_METADATA, not raw metric keys
         assert "Verify rate" in result.output
+
+
+def _write_diff_report_json(
+    path: Path,
+    run_id: str = "eval-abc123",
+    aggregate_scores: dict | None = None,
+    include_sessions: bool = False,
+    session_ids: list[str] | None = None,
+    rework_cycles: int = 0,
+    verify_status: str = "completed",
+) -> None:
+    """Write a minimal EvalReport JSON file for diff testing."""
+    scores = aggregate_scores or {
+        "first_pass_verify_rate": 0.85,
+        "rework_cycles": 0.3,
+        "cost_efficiency": 7.50,
+    }
+    data = {
+        "run_id": run_id,
+        "timestamp": "2026-04-10T00:00:00Z",
+        "aggregate_scores": scores,
+        "sample_results": [],
+    }
+    if include_sessions and session_ids:
+        for session_id in session_ids:
+            verify_output = "PASS" if verify_status == "completed" else "FAIL"
+            data["sample_results"].append(
+                {
+                    "sample": {
+                        "session": {
+                            "session_id": session_id,
+                            "started_at": "2026-04-10T00:00:00Z",
+                            "total_phases": 3,
+                            "rework_cycles": rework_cycles,
+                            "total_cost_usd": 7.50,
+                        },
+                        "phases": [
+                            {
+                                "name": "implement",
+                                "generation": 1,
+                                "status": "completed",
+                                "output": "done",
+                            },
+                            {
+                                "name": "verify",
+                                "generation": 1,
+                                "status": verify_status,
+                                "output": verify_output,
+                            },
+                        ],
+                        "findings": [],
+                        "events": [],
+                    },
+                    "scores": [],
+                }
+            )
+    path.write_text(json.dumps(data, indent=2, default=str))
+
+
+class TestCliReportDiff:
+    def test_diff_produces_cli_summary(self, tmp_path):
+        """raki report --diff baseline.json compare.json produces CLI summary."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="eval-baseline",
+            aggregate_scores={"first_pass_verify_rate": 0.78, "rework_cycles": 1.2},
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="eval-compare",
+            aggregate_scores={"first_pass_verify_rate": 0.91, "rework_cycles": 0.4},
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
+        assert result.exit_code == 0
+        assert "eval-baseline" in result.output
+        assert "eval-compare" in result.output
+
+    def test_diff_shows_coverage_line(self, tmp_path):
+        """Diff output shows session coverage line."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="base",
+            include_sessions=True,
+            session_ids=["session-101", "session-102"],
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="comp",
+            include_sessions=True,
+            session_ids=["session-101", "session-200"],
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
+        assert result.exit_code == 0
+        assert "Matched" in result.output
+
+    def test_diff_exit_code_2_for_missing_file(self, tmp_path):
+        """Exit code 2 when baseline or compare file is missing."""
+        existing = tmp_path / "existing.json"
+        _write_diff_report_json(existing)
+        runner = CliRunner()
+        # Missing baseline
+        result = runner.invoke(
+            main, ["report", "--diff", str(tmp_path / "nope.json"), str(existing)]
+        )
+        assert result.exit_code == 2
+        # Missing compare
+        result = runner.invoke(
+            main, ["report", "--diff", str(existing), str(tmp_path / "nope.json")]
+        )
+        assert result.exit_code == 2
+
+    def test_diff_warns_no_session_data(self, tmp_path):
+        """Warning when either report lacks session data."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(baseline, run_id="base")
+        _write_diff_report_json(compare, run_id="comp")
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
+        assert result.exit_code == 0
+        assert "include-sessions" in result.output.lower() or "unavailable" in result.output.lower()
+
+    def test_diff_shows_direction_indicators(self, tmp_path):
+        """Diff shows direction indicators for metric changes."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="base",
+            aggregate_scores={"first_pass_verify_rate": 0.78},
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="comp",
+            aggregate_scores={"first_pass_verify_rate": 0.91},
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
+        assert result.exit_code == 0
+        # Should contain an indicator (green or ▲)
+        assert "▲" in result.output or "improved" in result.output.lower()
+
+    def test_diff_warning_banner_when_sessions_dropped(self, tmp_path):
+        """Warning banner when sessions are dropped or added."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="base",
+            include_sessions=True,
+            session_ids=["session-101", "session-102", "session-103"],
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="comp",
+            include_sessions=True,
+            session_ids=["session-101"],
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
+        assert result.exit_code == 0
+        assert "dropped" in result.output.lower()
+
+    @pytest.mark.skipif(
+        not importlib.util.find_spec("jinja2"),
+        reason="jinja2 not installed",
+    )
+    def test_diff_generates_html(self, tmp_path):
+        """raki report --diff --html produces an HTML diff report."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        html_out = tmp_path / "diff.html"
+        _write_diff_report_json(
+            baseline,
+            run_id="eval-base",
+            aggregate_scores={"first_pass_verify_rate": 0.78},
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="eval-comp",
+            aggregate_scores={"first_pass_verify_rate": 0.91},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--diff", str(baseline), str(compare), "--html", str(html_out)],
+        )
+        assert result.exit_code == 0
+        assert html_out.exists()
+        content = html_out.read_text()
+        assert "<html" in content.lower()
+        assert "eval-base" in content
+        assert "eval-comp" in content
+
+    def test_diff_changed_sessions_grouped(self, tmp_path):
+        """Changed sessions are grouped by transition type."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="base",
+            include_sessions=True,
+            session_ids=["session-101"],
+            verify_status="failed",
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="comp",
+            include_sessions=True,
+            session_ids=["session-101"],
+            verify_status="completed",
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
+        assert result.exit_code == 0
+        assert "Improvement" in result.output or "improvement" in result.output.lower()

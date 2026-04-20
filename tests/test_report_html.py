@@ -1522,62 +1522,62 @@ class TestDrillDownRowDataclass:
 
 
 class TestDetermineVerdict:
-    """_determine_verdict: failed phase -> fail, rework_cycles > 0 -> rework, else pass."""
+    """determine_verdict: failed phase -> fail, rework_cycles > 0 -> rework, else pass."""
 
     def test_fail_when_phase_failed(self) -> None:
         """Session with a failed phase should have verdict 'fail'."""
-        from raki.report.html_report import _determine_verdict
+        from raki.report.html_report import determine_verdict
 
         sample = make_sample("s1", verify_status="failed")
-        assert _determine_verdict(sample) == "fail"
+        assert determine_verdict(sample) == "fail"
 
     def test_rework_when_cycles_positive(self) -> None:
         """Session with rework_cycles > 0 but no failed phase should have verdict 'rework'."""
-        from raki.report.html_report import _determine_verdict
+        from raki.report.html_report import determine_verdict
 
         sample = make_sample("s1", rework_cycles=2, verify_status="completed")
-        assert _determine_verdict(sample) == "rework"
+        assert determine_verdict(sample) == "rework"
 
     def test_pass_when_clean(self) -> None:
         """Session with no failed phases and 0 rework_cycles should have verdict 'pass'."""
-        from raki.report.html_report import _determine_verdict
+        from raki.report.html_report import determine_verdict
 
         sample = make_sample("s1", rework_cycles=0, verify_status="completed")
-        assert _determine_verdict(sample) == "pass"
+        assert determine_verdict(sample) == "pass"
 
     def test_fail_takes_precedence_over_rework(self) -> None:
         """When both failed phase and rework_cycles > 0, verdict should be 'fail'."""
-        from raki.report.html_report import _determine_verdict
+        from raki.report.html_report import determine_verdict
 
         sample = make_sample("s1", rework_cycles=2, verify_status="failed")
-        assert _determine_verdict(sample) == "fail"
+        assert determine_verdict(sample) == "fail"
 
 
 class TestBuildDetail:
-    """_build_detail: "implement failed" / "2 cycles" / "5 phases"."""
+    """build_detail: "implement failed" / "2 cycles" / "5 phases"."""
 
     def test_detail_for_fail(self) -> None:
         """When a phase fails, detail should name the failed phase."""
-        from raki.report.html_report import _build_detail
+        from raki.report.html_report import build_detail
 
         sample = make_sample("s1", verify_status="failed")
-        detail = _build_detail(sample)
+        detail = build_detail(sample)
         assert "verify failed" in detail
 
     def test_detail_for_rework(self) -> None:
         """When rework_cycles > 0 and no failure, detail should show cycle count."""
-        from raki.report.html_report import _build_detail
+        from raki.report.html_report import build_detail
 
         sample = make_sample("s1", rework_cycles=2, verify_status="completed")
-        detail = _build_detail(sample)
+        detail = build_detail(sample)
         assert "2 cycles" in detail
 
     def test_detail_for_pass(self) -> None:
         """When clean pass, detail should show phase count."""
-        from raki.report.html_report import _build_detail
+        from raki.report.html_report import build_detail
 
         sample = make_sample("s1", rework_cycles=0, verify_status="completed")
-        detail = _build_detail(sample)
+        detail = build_detail(sample)
         assert "phases" in detail
 
 

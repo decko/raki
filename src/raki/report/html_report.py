@@ -1,9 +1,11 @@
 """HTML report generation — self-contained dark-themed report with Jinja2."""
 
+from __future__ import annotations
+
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from raki.model.dataset import EvalSample
 from raki.model.report import EvalReport, SampleResult
@@ -12,6 +14,9 @@ from raki.report.cli_summary import (
     OPERATIONAL_METRICS,
     generate_summary_sentence,
 )
+
+if TYPE_CHECKING:
+    from raki.report.diff import DiffReport
 
 # Metric metadata registry — maps raw metric names to display properties.
 # This mirrors the class-level attributes from each Metric implementation
@@ -148,7 +153,7 @@ class DrillDownRow:
     sort_key: tuple[int, float]
 
 
-def _determine_verdict(sample: EvalSample) -> Literal["pass", "rework", "fail"]:
+def determine_verdict(sample: EvalSample) -> Literal["pass", "rework", "fail"]:
     """Determine the verdict for a session sample.
 
     Logic: failed phase -> fail, rework_cycles > 0 -> rework, else pass.
@@ -161,7 +166,7 @@ def _determine_verdict(sample: EvalSample) -> Literal["pass", "rework", "fail"]:
     return "pass"
 
 
-def _build_detail(sample: EvalSample) -> str:
+def build_detail(sample: EvalSample) -> str:
     """Build detail text for a drill-down row.
 
     - Failed phase: "<phase_name> failed"
@@ -205,8 +210,8 @@ def compute_drill_down_rows(
     for sample_result in sample_results:
         sample = sample_result.sample
         session_id = sample.session.session_id
-        verdict = _determine_verdict(sample)
-        detail = _build_detail(sample)
+        verdict = determine_verdict(sample)
+        detail = build_detail(sample)
 
         severity_counter: Counter[str] = Counter()
         for finding in sample.findings:
@@ -566,6 +571,72 @@ def write_html_report(
         needs_attention_rows=needs_attention_rows,
         needs_attention_count=needs_attention_count,
         format_duration=_format_duration,
+    )
+
+    output.write_text(html_content, encoding="utf-8")
+
+
+def write_diff_html_report(
+    diff: "DiffReport",
+    output: Path,
+) -> None:
+    """Render and write a self-contained HTML diff report.
+
+    All CSS is inlined — no external dependencies. Uses the same dark theme
+    CSS variables as the main report template.
+    """
+    output = output.resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    match_result = diff.match_result
+    matched_count = len(match_result.matched_ids)
+    total_count = max(match_result.baseline_total, match_result.compare_total)
+    new_count = len(match_result.new_ids)
+    dropped_count = len(match_result.dropped_ids)
+
+    def format_display_name(metric_name: str) -> str:
+        meta = METRIC_METADATA.get(metric_name, {})
+        return str(meta.get("display_name", metric_name))
+
+    def format_value(value: float, metric_name: str) -> str:
+        meta = METRIC_METADATA.get(metric_name, {})
+        display_format = str(meta.get("display_format", "score"))
+        if display_format == "currency":
+            return f"${value:.2f}"
+        if display_format == "count":
+            return f"{value:.1f}"
+        if display_format == "percent":
+            return f"{value * 100:.0f}%"
+        return f"{value:.2f}"
+
+    def format_delta(delta: float, metric_name: str) -> str:
+        meta = METRIC_METADATA.get(metric_name, {})
+        display_format = str(meta.get("display_format", "score"))
+        sign = "+" if delta >= 0 else ""
+        if display_format == "currency":
+            if delta < 0:
+                return f"-${abs(delta):.2f}"
+            return f"{sign}${delta:.2f}"
+        if display_format == "count":
+            return f"{sign}{delta:.1f}"
+        if display_format == "percent":
+            return f"{sign}{delta * 100:.0f}%"
+        return f"{sign}{delta:.2f}"
+
+    env = _build_jinja_env()
+    template = env.get_template("diff.html.j2")
+
+    html_content = template.render(
+        diff=diff,
+        matched_count=matched_count,
+        total_count=total_count,
+        new_count=new_count,
+        dropped_count=dropped_count,
+        new_session_ids=sorted(match_result.new_ids),
+        dropped_session_ids=sorted(match_result.dropped_ids),
+        format_display_name=format_display_name,
+        format_value=format_value,
+        format_delta=format_delta,
     )
 
     output.write_text(html_content, encoding="utf-8")

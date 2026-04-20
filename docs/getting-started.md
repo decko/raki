@@ -84,6 +84,29 @@ uv run raki report --input results/raki-report-20260410T120000.json --html resul
 
 If the JSON report was generated without `--include-sessions`, RAKI will show aggregate scores only and warn that per-session drill-down is unavailable.
 
+## Comparing Runs
+
+Compare two evaluation runs side by side to see what improved and what regressed:
+
+```bash
+# Compare a baseline and a new run
+uv run raki report --diff results/baseline.json results/compare.json
+
+# Generate an HTML diff report
+uv run raki report --diff results/baseline.json results/compare.json --html results/diff.html
+
+# Write HTML to a specific output directory
+uv run raki report --diff results/baseline.json results/compare.json -o results/
+```
+
+The diff output shows:
+
+- **Coverage line** -- how many sessions matched between runs, plus counts of new and dropped sessions.
+- **Aggregate deltas** -- metric-by-metric comparison with direction indicators (green for improvements, red for regressions).
+- **Session transitions** -- which sessions changed verdict (e.g., REWORK to PASS), grouped by transition type with regressions listed first.
+
+For per-session transition analysis, both reports must have been generated with `--include-sessions`. Without session data, only aggregate deltas are shown.
+
 ## Next Steps
 
 - [Results Interpretation Reference](interpretation-reference.md) -- thresholds, patterns, and what to do about low scores
