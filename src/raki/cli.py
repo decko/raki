@@ -161,7 +161,6 @@ def run(
 
     _warn_unimplemented_options(
         con=out,
-        adapter=adapter_format,
         metrics=metric_names,
         tenant=tenant,
     )
@@ -178,12 +177,16 @@ def run(
     from raki.adapters import DatasetLoader
 
     registry = _build_registry()
+
     loader = DatasetLoader(registry)
 
     if not quiet:
         out.print(f"Loading sessions from [bold]{manifest.sessions.path}[/bold]...")
 
-    dataset = loader.load_directory(manifest.sessions.path)
+    try:
+        dataset = loader.load_directory(manifest.sessions.path, adapter_name=adapter_format)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="'--adapter'") from exc
 
     if verbose:
         for error in loader.errors:
