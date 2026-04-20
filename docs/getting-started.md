@@ -40,6 +40,13 @@ Validate the example manifest:
 uv run raki validate --manifest examples/raki-minimal.yaml
 ```
 
+For a deeper smoke test that checks adapter loading, ground truth wiring, and
+operational metrics against a single sample (no LLM calls, no full run):
+
+```bash
+uv run raki validate --manifest examples/raki-minimal.yaml --deep
+```
+
 Run an evaluation using only operational metrics (no LLM required):
 
 ```bash

@@ -1358,3 +1358,116 @@ class TestRagasMetricsSync:
             f"_RAGAS_METRICS keys {dict_keys} do not match "
             f"Ragas metric class .name attributes {class_names}"
         )
+
+
+class TestValidateDeep:
+    """Tests for raki validate --deep flag."""
+
+    def test_deep_flag_accepted(self, manifest_with_session):
+        """--deep should be an accepted option on the validate command."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        assert result.exit_code == 0
+
+    def test_deep_runs_adapter_check(self, manifest_with_session):
+        """--deep should check that each adapter can load a session."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        assert result.exit_code == 0
+        assert "Adapter" in result.output
+        assert "session-schema" in result.output
+
+    def test_deep_runs_operational_metrics_check(self, manifest_with_session):
+        """--deep should run operational metrics against a single sample."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        assert result.exit_code == 0
+        assert "Operational metrics" in result.output
+
+    def test_deep_shows_pass_indicators(self, manifest_with_session):
+        """--deep should show pass/fail indicators per check."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        assert result.exit_code == 0
+        # Should contain checkmark or PASS indicators
+        assert "\u2713" in result.output
+
+    def test_deep_checks_ground_truth_when_configured(self, manifest_with_ground_truth):
+        """--deep should check ground truth loading and matching when configured."""
+        manifest_path, _sessions, _gt = manifest_with_ground_truth
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest_path), "--deep"])
+        assert result.exit_code == 0
+        assert "ground truth" in result.output.lower()
+
+    def test_deep_no_ground_truth_skips_check(self, manifest_with_session):
+        """--deep should skip ground truth check when not configured."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        assert result.exit_code == 0
+        # Should not mention ground truth loading/matching (only the standard validate output)
+        # The deep section should not have ground truth checks
+        assert "Ground truth loading" not in result.output
+
+    def test_deep_no_llm_calls(self, manifest_with_session):
+        """--deep should not trigger any LLM metric computation."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        assert result.exit_code == 0
+        # Should not mention any LLM/Ragas metrics
+        assert "faithfulness" not in result.output.lower()
+        assert "context_precision" not in result.output.lower()
+
+    def test_deep_no_report_generation(self, manifest_with_session, tmp_path):
+        """--deep should not generate any report files."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        assert result.exit_code == 0
+        # No report files should be created in the current or results directory
+        json_files = list(tmp_path.glob("**/*.json"))
+        html_files = list(tmp_path.glob("**/*.html"))
+        # Only the manifest yaml should exist, no report outputs
+        assert not any("raki-report" in str(filepath) for filepath in json_files)
+        assert not any("raki-report" in str(filepath) for filepath in html_files)
+
+    def test_deep_with_empty_sessions_shows_skip(self, empty_manifest):
+        """--deep with no sessions should report that adapter checks are skipped."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(empty_manifest), "--deep"])
+        assert result.exit_code == 0
+        # Should indicate no sessions are available for deep checks
+        assert "no sessions" in result.output.lower() or "skip" in result.output.lower()
+
+    def test_deep_shows_metric_results(self, manifest_with_session):
+        """--deep should show individual metric results from the single-sample run."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        assert result.exit_code == 0
+        # Should show at least one metric name or display name
+        assert "Verify rate" in result.output or "first_pass_verify_rate" in result.output
+
+    def test_deep_adapter_failure_shows_fail(self, tmp_path):
+        """--deep should show a failure indicator when an adapter fails to load."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        # Create a malformed session directory that will fail to load
+        bad_session = sessions / "bad-session"
+        bad_session.mkdir()
+        # session-schema expects meta.json; create one with invalid content
+        (bad_session / "meta.json").write_text("not valid json {{{")
+        manifest = tmp_path / "raki.yaml"
+        manifest.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
+        # Should still exit 0 (deep is informational) but show failure indicators
+        assert result.exit_code == 0
+        # Should contain a failure indicator
+        assert "\u2717" in result.output or "fail" in result.output.lower()
