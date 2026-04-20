@@ -107,6 +107,20 @@ Problems: the question is too vague to discriminate retrieval quality, the conte
 
 This works because it requires synthesizing knowledge across notifications, auth, and rate limiting -- three separate domains. The contexts each capture a distinct required piece.
 
+## How Matching Works
+
+RAKI matches ground truth entries to sessions using domain-token overlap. During evaluation, each session's triage phase `output_structured["code_area"]` field is split into domain tokens. These tokens are compared against the `domains` list in each ground truth entry. The entry with the highest overlap is assigned to the session.
+
+**Important:** Sessions without a triage phase or without a `code_area` field in their structured output will not match any ground truth entry. If you see a low match rate (below 50%), check that your sessions include triage phases with `code_area` populated.
+
+You can verify match rates before running a full evaluation:
+
+```bash
+raki validate -m raki.yaml
+```
+
+The validate command shows a ground truth match preview when `ground_truth.path` is configured in your manifest.
+
 ## Further Reading
 
 - [`examples/ground-truth/curated.yaml`](../examples/ground-truth/curated.yaml) -- five fully annotated entries covering all difficulty levels and knowledge types

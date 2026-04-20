@@ -200,6 +200,35 @@ def run(
             f"({len(loader.skipped)} skipped, {len(loader.errors)} errors)"
         )
 
+    # Wire ground truth matching when configured
+    if manifest.ground_truth.path is not None:
+        try:
+            from raki.ground_truth.matcher import load_ground_truth, match_ground_truth
+
+            gt_entries = load_ground_truth(manifest.ground_truth.path)
+            matched_count = 0
+            for sample in dataset.samples:
+                match = match_ground_truth(sample, gt_entries)
+                if match is not None:
+                    sample.ground_truth = match
+                    matched_count += 1
+            if not quiet:
+                out.print(
+                    f"Matched ground truth for "
+                    f"[bold]{matched_count}/{len(dataset.samples)}[/bold] sessions"
+                )
+                if len(dataset.samples) > 0 and matched_count / len(dataset.samples) < 0.5:
+                    out.print(
+                        "[yellow]Warning: Low match rate — ground truth matching relies on "
+                        'output_structured["code_area"] in triage phases. Sessions without '
+                        "a triage phase or using a different schema will not match.[/yellow]"
+                    )
+        except Exception as exc:
+            out.print(
+                f"[yellow]Warning: Failed to load ground truth: "
+                f"{redact_sensitive(str(exc))}. Continuing without ground truth.[/yellow]"
+            )
+
     from raki.metrics import MetricsEngine
     from raki.metrics.operational import ALL_OPERATIONAL
     from raki.metrics.protocol import Metric, MetricConfig
@@ -326,6 +355,27 @@ def validate(manifest_path: str | None, quiet: bool, verbose: bool) -> None:
     dataset = loader.load_directory(manifest.sessions.path)
 
     console.print(f"[green]\u2713[/green] {len(dataset.samples)} sessions loaded")
+
+    # Report ground truth status when configured
+    if manifest.ground_truth.path is not None:
+        try:
+            from raki.ground_truth.matcher import load_ground_truth, match_ground_truth
+
+            gt_entries = load_ground_truth(manifest.ground_truth.path)
+            console.print(f"[green]\u2713[/green] {len(gt_entries)} ground truth entries loaded")
+            preview_matched = sum(
+                1
+                for sample in dataset.samples
+                if match_ground_truth(sample, gt_entries) is not None
+            )
+            console.print(
+                f"[green]\u2713[/green] Ground truth match preview: "
+                f"{preview_matched}/{len(dataset.samples)} sessions"
+            )
+        except Exception as exc:
+            console.print(
+                f"[yellow]\u26a0[/yellow] Failed to load ground truth: {redact_sensitive(str(exc))}"
+            )
 
     if loader.skipped:
         console.print(

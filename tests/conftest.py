@@ -105,6 +105,30 @@ def manifest_with_session(tmp_path: Path, pass_simple_dir: Path) -> tuple[Path, 
 
 
 @pytest.fixture
+def manifest_with_ground_truth(tmp_path: Path, pass_simple_dir: Path) -> tuple[Path, Path, Path]:
+    """Create a tmp_path with a manifest, sessions, and a ground truth YAML.
+
+    Returns:
+        Tuple of (manifest_path, sessions_directory, ground_truth_path).
+    """
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    session_dest = sessions / "101"
+    session_dest.mkdir()
+    for file_path in pass_simple_dir.iterdir():
+        (session_dest / file_path.name).write_text(file_path.read_text())
+    ground_truth = tmp_path / "curated.yaml"
+    ground_truth.write_text(
+        "- question: test question\n  expected_approach: test approach\n  domains:\n    - testing\n"
+    )
+    manifest = tmp_path / "raki.yaml"
+    manifest.write_text(
+        f"sessions:\n  path: {sessions}\n  format: auto\nground_truth:\n  path: {ground_truth}\n"
+    )
+    return manifest, sessions, ground_truth
+
+
+@pytest.fixture
 def empty_manifest(tmp_path: Path) -> Path:
     """Create a tmp_path with a manifest pointing to an empty sessions directory.
 
