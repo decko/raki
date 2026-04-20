@@ -32,6 +32,7 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
+    "towncrier>=24.8",
     "ty",
 ]
 all = ["raki[ragas,html,dev]"]
@@ -44,6 +45,38 @@ line-length = 100
 
 [tool.ty.environment]
 python-version = "3.12"
+
+[tool.towncrier]
+package = "raki"
+directory = "changes"
+filename = "CHANGELOG.md"
+title_format = "## [{version}] — {project_date}"
+underlines = ["", "", ""]
+
+[[tool.towncrier.type]]
+directory = "breaking"
+name = "Breaking Changes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "fix"
+name = "Bug Fixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Internal Changes"
+showcontent = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
