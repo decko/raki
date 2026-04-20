@@ -22,5 +22,6 @@ class EvalReport(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     config: dict = Field(default_factory=dict)
     aggregate_scores: dict[str, float] = Field(default_factory=dict)
+    metric_details: dict[str, dict] = Field(default_factory=dict)
     sample_results: list[SampleResult] = Field(default_factory=list)
     manifest_hash: str | None = None

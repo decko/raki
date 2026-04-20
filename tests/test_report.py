@@ -17,7 +17,7 @@ from raki.report.cli_summary import (
 )
 from raki.report.json_report import load_json_report, write_json_report
 
-from conftest import make_sample
+from conftest import make_dataset, make_sample
 
 
 def _make_report() -> EvalReport:
@@ -522,3 +522,158 @@ class TestGenerateSummarySentence:
         )
         sentence = generate_summary_sentence(report, session_count=0)
         assert isinstance(sentence, str)
+
+
+# --- No-data metric display tests ---
+
+
+class TestNoDataMetricDisplay:
+    def test_format_metric_line_shows_na_when_no_data(self) -> None:
+        line = format_metric_line(
+            "token_efficiency",
+            0.0,
+            display_name="Tokens / phase",
+            no_data=True,
+        )
+        assert "N/A" in line
+        assert "no data" in line
+        assert "[dim]" in line
+
+    def test_format_metric_line_shows_score_when_data_exists(self) -> None:
+        line = format_metric_line(
+            "token_efficiency",
+            1500.0,
+            display_format="count",
+            display_name="Tokens / phase",
+            no_data=False,
+        )
+        assert "1500.0" in line
+        assert "N/A" not in line
+
+    def test_print_summary_shows_na_for_no_data_metric(self) -> None:
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="test-no-data",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.8,
+                "token_efficiency": 0.0,
+            },
+            metric_details={
+                "first_pass_verify_rate": {"passed": 8, "total": 10},
+                "token_efficiency": {
+                    "mean_tokens_per_phase": 0.0,
+                    "sessions_with_tokens": 0,
+                },
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "N/A" in output
+
+    def test_print_summary_shows_score_when_data_present(self) -> None:
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="test-with-data",
+            aggregate_scores={
+                "token_efficiency": 1500.0,
+            },
+            metric_details={
+                "token_efficiency": {
+                    "mean_tokens_per_phase": 1500.0,
+                    "sessions_with_tokens": 5,
+                },
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=5, console=test_console)
+        output = string_io.getvalue()
+        assert "N/A" not in output
+
+    def test_has_no_data_detects_sessions_with_zero(self) -> None:
+        from raki.report.cli_summary import _has_no_data
+
+        details = {
+            "token_efficiency": {"sessions_with_tokens": 0, "mean_tokens_per_phase": 0.0},
+        }
+        assert _has_no_data(details, "token_efficiency") is True
+
+    def test_has_no_data_detects_skipped(self) -> None:
+        from raki.report.cli_summary import _has_no_data
+
+        details = {
+            "faithfulness": {"skipped": "no samples"},
+        }
+        assert _has_no_data(details, "faithfulness") is True
+
+    def test_has_no_data_returns_false_when_sessions_present(self) -> None:
+        from raki.report.cli_summary import _has_no_data
+
+        details = {
+            "token_efficiency": {"sessions_with_tokens": 5, "mean_tokens_per_phase": 1500.0},
+        }
+        assert _has_no_data(details, "token_efficiency") is False
+
+    def test_has_no_data_returns_false_for_missing_metric(self) -> None:
+        from raki.report.cli_summary import _has_no_data
+
+        assert _has_no_data({}, "token_efficiency") is False
+
+    def test_no_data_reason_returns_skipped_message(self) -> None:
+        from raki.report.cli_summary import _no_data_reason
+
+        details = {
+            "faithfulness": {"skipped": "no samples"},
+        }
+        assert _no_data_reason(details, "faithfulness") == "no samples"
+
+    def test_no_data_reason_returns_default_for_sessions_with(self) -> None:
+        from raki.report.cli_summary import _no_data_reason
+
+        details = {
+            "token_efficiency": {"sessions_with_tokens": 0},
+        }
+        assert _no_data_reason(details, "token_efficiency") == "no data"
+
+    def test_print_summary_shows_skipped_reason_for_ragas_metrics(self) -> None:
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="test-skipped-ragas",
+            aggregate_scores={
+                "faithfulness": 0.0,
+                "context_precision": 0.0,
+            },
+            metric_details={
+                "faithfulness": {"skipped": "no samples"},
+                "context_precision": {"skipped": "no ground truth"},
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "N/A" in output
+        assert "no samples" in output or "no ground truth" in output
+
+    def test_metric_details_populated_by_engine(self) -> None:
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+        from raki.metrics.protocol import MetricConfig
+
+        sample = make_sample("s1", tokens_in=None, tokens_out=None)
+        dataset = make_dataset(sample)
+        engine = MetricsEngine([TokenEfficiencyMetric()], config=MetricConfig())
+        report = engine.run(dataset)
+        assert "token_efficiency" in report.metric_details
+        assert report.metric_details["token_efficiency"]["sessions_with_tokens"] == 0

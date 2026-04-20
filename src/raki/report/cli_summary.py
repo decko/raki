@@ -81,6 +81,26 @@ def color_for_score(
         return "red"
 
 
+def _has_no_data(metric_details: dict[str, dict], metric_name: str) -> bool:
+    """Check if a metric has no applicable data based on its details dict."""
+    details = metric_details.get(metric_name, {})
+    if "skipped" in details:
+        return True
+    for key, value in details.items():
+        if key.startswith("sessions_with_") and value == 0:
+            return True
+    return False
+
+
+def _no_data_reason(metric_details: dict[str, dict], metric_name: str) -> str:
+    """Return a human-readable reason why a metric has no data."""
+    details = metric_details.get(metric_name, {})
+    skipped = details.get("skipped")
+    if skipped:
+        return str(skipped)
+    return "no data"
+
+
 def format_metric_line(
     name: str,
     score: float,
@@ -89,10 +109,14 @@ def format_metric_line(
     higher_is_better: bool = True,
     sample_count: int | None = None,
     display_name: str | None = None,
+    no_data: bool = False,
+    no_data_reason: str = "no data",
 ) -> str:
     """Format a single metric line with color, display format, and sample count."""
-    color = color_for_score(score, higher_is_better, display_format)
     label = display_name or name
+    if no_data:
+        return f"[dim]  {label:<35} N/A    ({no_data_reason})[/dim]"
+    color = color_for_score(score, higher_is_better, display_format)
     if display_format == "currency":
         score_str = f"${score:.2f}"
     elif display_format == "count":
@@ -199,6 +223,7 @@ def print_summary(
     if operational:
         output_console.print("[bold]Operational Health[/bold]")
         for name, score in operational.items():
+            metric_no_data = _has_no_data(report.metric_details, name)
             output_console.print(
                 format_metric_line(
                     name,
@@ -207,6 +232,10 @@ def print_summary(
                     display_format=meta.display_format(name),
                     higher_is_better=meta.higher_is_better(name),
                     display_name=meta.display_name(name),
+                    no_data=metric_no_data,
+                    no_data_reason=_no_data_reason(report.metric_details, name)
+                    if metric_no_data
+                    else "no data",
                 )
             )
         if session_count < 50:
@@ -220,6 +249,7 @@ def print_summary(
         output_console.print("[bold]Retrieval Quality[/bold]")
         for name, score in retrieval.items():
             tag = " [yellow]\\[experimental][/yellow]" if name in EXPERIMENTAL_METRICS else ""
+            metric_no_data = _has_no_data(report.metric_details, name)
             output_console.print(
                 format_metric_line(
                     name,
@@ -228,8 +258,12 @@ def print_summary(
                     display_format=meta.display_format(name),
                     higher_is_better=meta.higher_is_better(name),
                     display_name=meta.display_name(name),
+                    no_data=metric_no_data,
+                    no_data_reason=_no_data_reason(report.metric_details, name)
+                    if metric_no_data
+                    else "no data",
                 )
-                + tag
+                + ("" if metric_no_data else tag)
             )
         if session_count < 50:
             output_console.print(
