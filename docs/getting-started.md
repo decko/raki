@@ -4,7 +4,7 @@ Evaluate your agentic RAG sessions in under 10 minutes.
 
 ## Prerequisites
 
-- **Python 3.14** or later
+- **Python 3.12** or later
 - **[uv](https://docs.astral.sh/uv/)** package manager
 
 ## Install
@@ -12,11 +12,11 @@ Evaluate your agentic RAG sessions in under 10 minutes.
 ```bash
 git clone https://github.com/decko/raki.git
 cd raki
-uv sync --python 3.14 --extra html
+uv sync --python 3.12 --extra html
 ```
 
 > **LLM-backed metrics**: if you plan to use Ragas retrieval metrics, install
-> with `uv sync --python 3.14 --all-extras` instead. This pulls in
+> with `uv sync --python 3.12 --all-extras` instead. This pulls in
 > `scikit-network`, which requires a C++ compiler.
 
 Verify the install:

@@ -9,7 +9,7 @@
 
 ## Tech stack
 
-- **Language**: Python 3.14
+- **Language**: Python >=3.12
 - **Package manager**: uv (not pip, not poetry, not conda)
 - **Build backend**: hatchling
 - **Models**: Pydantic 2 (`Field(default_factory=...)` for mutable defaults, `Literal` for constrained strings)
@@ -45,7 +45,7 @@ pyproject.toml
 ## Commands reference
 
 ```bash
-uv sync --python 3.14 --all-extras       # Install all dependencies
+uv sync --python 3.12 --all-extras       # Install all dependencies
 uv run pytest tests/ -v                   # Run tests
 uv run ruff check src/ tests/             # Lint
 uv run ruff format src/ tests/            # Format

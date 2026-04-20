@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "raki"
 version = "0.5.1"
 description = "Retrieval Assessment for Knowledge Impact — evaluate agentic RAG quality"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 readme = "README.md"
 
@@ -42,7 +42,7 @@ raki = "raki.cli:main"
 line-length = 100
 
 [tool.ty.environment]
-python-version = "3.14"
+python-version = "3.12"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
