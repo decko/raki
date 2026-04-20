@@ -652,3 +652,98 @@ class TestPhaseExecutionTime:
         assert metric.requires_ground_truth is False
         assert metric.requires_llm is False
         assert metric.display_name == "Phase execution time"
+
+
+# --- TokenEfficiencyMetric ---
+
+
+class TestTokenEfficiency:
+    def test_computes_tokens_per_phase(self):
+        """Each phase gets tokens_in=1000 + tokens_out=500 = 1500 per phase."""
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        sample = make_sample("s1", tokens_in=1000, tokens_out=500)
+        dataset = make_dataset(sample)
+        metric = TokenEfficiencyMetric()
+        result = metric.compute(dataset, MetricConfig())
+        # 2 phases, each with 1000+500=1500 tokens -> mean per phase = 1500.0
+        assert result.score == pytest.approx(1500.0)
+
+    def test_skips_phases_with_both_none_tokens(self):
+        """Sessions with all None tokens should be excluded from the aggregate."""
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        sample = make_sample("s1", tokens_in=None, tokens_out=None)
+        dataset = make_dataset(sample)
+        metric = TokenEfficiencyMetric()
+        result = metric.compute(dataset, MetricConfig())
+        assert result.score == 0.0
+
+    def test_partial_none_tokens_treated_as_zero(self):
+        """Phases with only tokens_in=None but tokens_out set should count tokens_out."""
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        sample = make_sample("s1", tokens_in=None, tokens_out=500)
+        dataset = make_dataset(sample)
+        metric = TokenEfficiencyMetric()
+        result = metric.compute(dataset, MetricConfig())
+        # Each phase: (0 + 500) = 500 tokens -> mean per phase = 500.0
+        assert result.score == pytest.approx(500.0)
+
+    def test_per_session_scores(self):
+        """Per-session scores should reflect average tokens per phase."""
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        sample_a = make_sample("s1", tokens_in=500, tokens_out=200)
+        sample_b = make_sample("s2", tokens_in=2000, tokens_out=1000)
+        dataset = make_dataset(sample_a, sample_b)
+        metric = TokenEfficiencyMetric()
+        result = metric.compute(dataset, MetricConfig())
+        # s1: each phase = 700, mean = 700.0
+        assert result.sample_scores["s1"] == pytest.approx(700.0)
+        # s2: each phase = 3000, mean = 3000.0
+        assert result.sample_scores["s2"] == pytest.approx(3000.0)
+
+    def test_aggregate_is_mean_of_session_averages(self):
+        """Aggregate score should be the mean of per-session averages."""
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        sample_a = make_sample("s1", tokens_in=500, tokens_out=200)
+        sample_b = make_sample("s2", tokens_in=2000, tokens_out=1000)
+        dataset = make_dataset(sample_a, sample_b)
+        metric = TokenEfficiencyMetric()
+        result = metric.compute(dataset, MetricConfig())
+        # mean of 700.0 and 3000.0 = 1850.0
+        assert result.score == pytest.approx(1850.0)
+
+    def test_empty_dataset(self):
+        """Empty dataset should produce score 0.0."""
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        dataset = EvalDataset(samples=[])
+        metric = TokenEfficiencyMetric()
+        result = metric.compute(dataset, MetricConfig())
+        assert result.score == 0.0
+
+    def test_details_include_session_count(self):
+        """Details dict should include sessions_with_tokens count."""
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        sample_a = make_sample("s1", tokens_in=500, tokens_out=200)
+        sample_b = make_sample("s2", tokens_in=None, tokens_out=None)
+        dataset = make_dataset(sample_a, sample_b)
+        metric = TokenEfficiencyMetric()
+        result = metric.compute(dataset, MetricConfig())
+        assert result.details["sessions_with_tokens"] == 1
+
+    def test_metric_properties(self):
+        """Verify Protocol-required class attributes."""
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        metric = TokenEfficiencyMetric()
+        assert metric.name == "token_efficiency"
+        assert metric.higher_is_better is False
+        assert metric.display_format == "count"
+        assert metric.requires_ground_truth is False
+        assert metric.requires_llm is False
+        assert metric.display_name == "Tokens / phase"

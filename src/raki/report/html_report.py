@@ -85,6 +85,16 @@ METRIC_METADATA: dict[str, dict[str, str | bool]] = {
         "threshold": "",
         "docs_anchor": "phase-execution-time",
     },
+    "token_efficiency": {
+        "display_name": "Tokens / phase",
+        "higher_is_better": False,
+        "display_format": "count",
+        "description": "Average tokens (in + out) per phase",
+        "subtitle": "How many tokens the agent uses per phase on average",
+        "direction": "lower is better",
+        "threshold": "",
+        "docs_anchor": "token-efficiency",
+    },
     "faithfulness": {
         "display_name": "Faithfulness",
         "higher_is_better": True,

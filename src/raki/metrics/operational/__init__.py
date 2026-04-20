@@ -3,6 +3,7 @@ from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissR
 from raki.metrics.operational.latency import PhaseExecutionTimeMetric
 from raki.metrics.operational.rework import ReworkCycles
 from raki.metrics.operational.severity import ReviewSeverityDistribution
+from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
 from raki.metrics.operational.verify_rate import FirstPassVerifyRate
 
 ALL_OPERATIONAL = [
@@ -12,6 +13,7 @@ ALL_OPERATIONAL = [
     CostEfficiency(),
     KnowledgeRetrievalMissRate(),
     PhaseExecutionTimeMetric(),
+    TokenEfficiencyMetric(),
 ]
 
 __all__ = [
@@ -22,4 +24,5 @@ __all__ = [
     "PhaseExecutionTimeMetric",
     "ReviewSeverityDistribution",
     "ReworkCycles",
+    "TokenEfficiencyMetric",
 ]
