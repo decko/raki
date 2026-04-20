@@ -162,8 +162,7 @@ class TestCliRunThreshold:
             main,
             ["run", "-m", str(empty_manifest), "--no-llm", "--threshold", "0.8"],
         )
-        assert "threshold" in result.output.lower()
-        assert "no-llm" in result.output.lower() or "no_llm" in result.output.lower()
+        assert "No retrieval metrics active" in result.output
 
     def test_threshold_exit_code_1_when_below(self, manifest_with_session, tmp_path, monkeypatch):
         """--threshold 0.99 with low retrieval scores should produce exit code 1."""
@@ -786,11 +785,11 @@ class TestCliReport:
         assert "report" in result.output
 
     def test_report_renders_cli_summary(self, tmp_path):
-        """raki report --input renders CLI summary to terminal."""
+        """raki report file.json renders CLI summary to terminal."""
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
         runner = CliRunner()
-        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
         assert "Operational Health" in result.output
 
@@ -799,7 +798,7 @@ class TestCliReport:
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
         runner = CliRunner()
-        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
         assert "0.85" in result.output
 
@@ -808,14 +807,12 @@ class TestCliReport:
         reason="jinja2 not installed",
     )
     def test_report_generates_html(self, tmp_path):
-        """raki report --input --html generates an HTML file."""
+        """raki report file.json --html generates an HTML file."""
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
         html_path = tmp_path / "output.html"
         runner = CliRunner()
-        result = runner.invoke(
-            main, ["report", "--input", str(report_json), "--html", str(html_path)]
-        )
+        result = runner.invoke(main, ["report", str(report_json), "--html", str(html_path)])
         assert result.exit_code == 0
         assert html_path.exists()
         content = html_path.read_text()
@@ -826,7 +823,7 @@ class TestCliReport:
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=False)
         runner = CliRunner()
-        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
         assert "--include-sessions" in result.output
 
@@ -835,31 +832,22 @@ class TestCliReport:
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
         runner = CliRunner()
-        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
         assert "--include-sessions" not in result.output
 
     def test_report_exit_code_2_for_missing_input(self, tmp_path):
         """Exit code 2 when input file does not exist."""
         runner = CliRunner()
-        result = runner.invoke(main, ["report", "--input", str(tmp_path / "nonexistent.json")])
+        result = runner.invoke(main, ["report", str(tmp_path / "nonexistent.json")])
         assert result.exit_code == 2
-
-    def test_report_short_input_flag(self, tmp_path):
-        """raki report -i works as shorthand for --input."""
-        report_json = tmp_path / "report.json"
-        _write_report_json(report_json, include_sessions=True)
-        runner = CliRunner()
-        result = runner.invoke(main, ["report", "-i", str(report_json)])
-        assert result.exit_code == 0
-        assert "Operational Health" in result.output
 
     def test_report_html_default_alongside_json(self, tmp_path):
         """When --html is not given, no HTML file is generated."""
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
         runner = CliRunner()
-        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
         html_files = list(tmp_path.glob("*.html"))
         assert len(html_files) == 0
@@ -869,7 +857,7 @@ class TestCliReport:
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
         runner = CliRunner()
-        result = runner.invoke(main, ["report", "--input", str(report_json)])
+        result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
         # Should use display names from METRIC_METADATA, not raw metric keys
         assert "Verify rate" in result.output
@@ -1216,16 +1204,79 @@ class TestCliReportDiff:
         assert "Improvement" in result.output or "improvement" in result.output.lower()
 
 
-class TestCliUnimplementedOptions:
-    def test_tenant_warning(self, empty_manifest):
-        """--tenant is still unimplemented and should produce a warning."""
+class TestTenantRemoved:
+    def test_tenant_option_no_longer_exists(self):
+        """--tenant was removed in v0.6.0 and should produce a Click error."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "--tenant", "foo"])
+        assert result.exit_code == 2
+
+    def test_tenant_option_shows_no_such_option(self):
+        """Click should report --tenant as an unrecognized option."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "--tenant", "foo"])
+        assert "No such option" in result.output or "no such option" in result.output
+
+
+class TestThresholdWarningUpdated:
+    def test_threshold_with_no_llm_warns_no_retrieval_metrics_active(self, empty_manifest):
+        """--threshold + --no-llm should warn about no retrieval metrics being active."""
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "--tenant", "acme-corp"],
+            ["run", "-m", str(empty_manifest), "--no-llm", "--threshold", "0.5"],
         )
+        assert "No retrieval metrics active" in result.output
+
+    def test_threshold_warning_mentions_operational_scales(self, empty_manifest):
+        """Warning should explain that operational metrics use non-0-1 scales."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(empty_manifest), "--no-llm", "--threshold", "0.5"],
+        )
+        assert "non-0-1 scales" in result.output
+
+    def test_threshold_warning_mentions_v070(self, empty_manifest):
+        """Warning should mention per-metric thresholds planned for v0.7.0."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(empty_manifest), "--no-llm", "--threshold", "0.5"],
+        )
+        assert "v0.7.0" in result.output
+
+
+class TestReportPositionalArg:
+    def test_report_accepts_positional_path(self, tmp_path):
+        """raki report file.json should work (positional argument)."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
-        assert "Warning: --tenant is not yet implemented" in result.output
+        assert "Operational Health" in result.output
+
+    def test_report_positional_shows_aggregate_scores(self, tmp_path):
+        """Positional report path should display aggregate scores."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", str(report_json)])
+        assert result.exit_code == 0
+        assert "0.85" in result.output
+
+    def test_report_without_path_or_diff_errors(self):
+        """raki report with no arguments should error with exit code 2."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["report"])
+        assert result.exit_code == 2
+
+    def test_report_missing_positional_file_errors(self, tmp_path):
+        """Positional path to nonexistent file should produce exit code 2."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", str(tmp_path / "nonexistent.json")])
+        assert result.exit_code == 2
 
 
 class TestRagasMetricsSync:

@@ -92,14 +92,6 @@ def _resolve_manifest(
     return found
 
 
-def _warn_unimplemented_options(con: Console | None = None, **options: object) -> None:
-    """Print a warning for each option that was provided but is not yet implemented."""
-    out = con or console
-    for option_name, value in options.items():
-        if value is not None:
-            out.print(f"[yellow]Warning: --{option_name} is not yet implemented[/yellow]")
-
-
 # LLM metric names that are always known (Ragas-backed retrieval metrics)
 _RAGAS_METRICS: dict[str, tuple[str, bool]] = {
     "context_precision": ("Context precision", True),
@@ -157,7 +149,6 @@ def main():
     default="claude-sonnet-4-6",
     help="LLM model for judge metrics (default: claude-sonnet-4-6)",
 )
-@click.option("--tenant", default=None, help="Set tenant_id on the report")
 @click.option(
     "--include-sessions",
     is_flag=True,
@@ -175,18 +166,12 @@ def run(
     metric_names: str | None,
     parallel_count: int,
     judge_model: str,
-    tenant: str | None,
     include_sessions: bool,
     json_stdout: bool,
     verbose: bool,
 ) -> None:
     """Run evaluation against sessions."""
     out = _stderr_console() if json_stdout else console
-
-    _warn_unimplemented_options(
-        con=out,
-        tenant=tenant,
-    )
 
     # Validate --metrics filter before doing any heavy loading
     requested_names: set[str] | None = None
@@ -320,8 +305,9 @@ def run(
 
     if threshold is not None and no_llm:
         out.print(
-            "[yellow]Warning: --threshold is set but --no-llm is active. "
-            "Threshold applies to retrieval quality scores which require LLM metrics.[/yellow]"
+            "[yellow]Warning: No retrieval metrics active — threshold applies only to "
+            "LLM-backed metrics. Operational metrics use non-0-1 scales; "
+            "per-metric thresholds planned for v0.7.0.[/yellow]"
         )
 
     output_path = Path(output_dir)
@@ -553,14 +539,7 @@ def _metric_stubs_from_metadata(
 
 
 @main.command()
-@click.option(
-    "-i",
-    "--input",
-    "input_path",
-    required=False,
-    default=None,
-    help="Path to JSON report",
-)
+@click.argument("input_path", required=False, default=None)
 @click.option(
     "--diff",
     "diff_paths",
@@ -597,7 +576,7 @@ def report(
         return
 
     if input_path is None:
-        console.print("[red]Error: --input is required when not using --diff[/red]")
+        console.print("[red]Error: input path is required when not using --diff[/red]")
         raise SystemExit(2)
 
     from raki.report.json_report import load_json_report
