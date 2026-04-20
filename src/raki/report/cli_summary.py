@@ -1,12 +1,18 @@
 """Rich CLI summary output — color-coded metrics grouped by category."""
 
+from __future__ import annotations
+
 from collections import Counter
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 
 from raki.metrics.protocol import Metric
 from raki.model.report import EvalReport
+
+if TYPE_CHECKING:
+    from raki.report.diff import DiffReport, SessionTransition
 
 OPERATIONAL_METRICS = {
     "first_pass_verify_rate",
@@ -236,3 +242,137 @@ def print_summary(
         output_console.print(
             f"[dim]  {session_count} evaluated, {skipped_count} skipped, {error_count} errors[/dim]"
         )
+
+
+def _format_delta_value(value: float, display_format: str) -> str:
+    """Format a metric value for the diff summary."""
+    if display_format == "currency":
+        return f"${value:.2f}"
+    if display_format == "count":
+        return f"{value:.1f}"
+    if display_format == "percent":
+        return f"{value * 100:.0f}%"
+    return f"{value:.2f}"
+
+
+def _format_delta_change(delta: float, display_format: str) -> str:
+    """Format a delta change value with sign."""
+    sign = "+" if delta >= 0 else ""
+    if display_format == "currency":
+        if delta < 0:
+            return f"-${abs(delta):.2f}"
+        return f"{sign}${delta:.2f}"
+    if display_format == "count":
+        return f"{sign}{delta:.1f}"
+    if display_format == "percent":
+        return f"{sign}{delta * 100:.0f}%"
+    return f"{sign}{delta:.2f}"
+
+
+def print_diff_summary(
+    diff: DiffReport,
+    console: Console | None = None,
+) -> None:
+    """Print a Rich CLI diff summary comparing two evaluation runs.
+
+    Shows the comparison header, coverage line, aggregate metric deltas
+    with direction indicators, and session transition counts.
+    """
+    from raki.report.html_report import METRIC_METADATA
+
+    output_console = console or Console()
+    output_console.print()
+
+    # Header
+    output_console.print(
+        f"Comparing [bold]{diff.baseline_run_id}[/bold] → [bold]{diff.compare_run_id}[/bold]"
+    )
+
+    # Coverage line
+    match_result = diff.match_result
+    matched_count = len(match_result.matched_ids)
+    total_count = max(match_result.baseline_total, match_result.compare_total)
+    new_count = len(match_result.new_ids)
+    dropped_count = len(match_result.dropped_ids)
+
+    coverage_parts: list[str] = []
+    if new_count > 0:
+        coverage_parts.append(f"{new_count} new")
+    if dropped_count > 0:
+        coverage_parts.append(f"{dropped_count} dropped")
+    coverage_detail = f" ({', '.join(coverage_parts)})" if coverage_parts else ""
+    output_console.print(f"Matched: {matched_count}/{total_count} sessions{coverage_detail}")
+
+    # Warning banner for dropped/new sessions
+    if dropped_count > 0 or new_count > 0:
+        warning_parts: list[str] = []
+        if dropped_count > 0:
+            warning_parts.append(f"{dropped_count} sessions dropped")
+        if new_count > 0:
+            warning_parts.append(f"{new_count} new")
+        output_console.print(
+            f"[yellow]Warning: {', '.join(warning_parts)} — "
+            f"aggregate deltas based on matched sessions only[/yellow]"
+        )
+
+    output_console.print()
+
+    # Aggregate deltas table
+    if diff.deltas:
+        for metric_delta in diff.deltas:
+            meta = METRIC_METADATA.get(metric_delta.name, {})
+            display_name = str(meta.get("display_name", metric_delta.name))
+            display_format = str(meta.get("display_format", "score"))
+
+            baseline_str = _format_delta_value(metric_delta.baseline_value, display_format)
+            compare_str = _format_delta_value(metric_delta.compare_value, display_format)
+            delta_str = _format_delta_change(metric_delta.delta, display_format)
+
+            if metric_delta.direction == "improved":
+                color = "green"
+                indicator = "▲"
+            elif metric_delta.direction == "regressed":
+                color = "red"
+                indicator = "▼"
+            else:
+                color = "white"
+                indicator = "="
+
+            output_console.print(
+                f"[{color}]  {display_name:<20} {baseline_str} → {compare_str}  "
+                f"({delta_str})  {indicator}[/{color}]"
+            )
+        output_console.print()
+
+    # Session transition counts
+    if diff.has_session_data:
+        if diff.improvements:
+            transition_labels = _group_transition_labels(diff.improvements)
+            output_console.print(
+                f"Improvements: {len(diff.improvements)} sessions ({transition_labels})"
+            )
+        if diff.regressions:
+            transition_labels = _group_transition_labels(diff.regressions)
+            output_console.print(
+                f"Regressions:  {len(diff.regressions)} sessions ({transition_labels})"
+            )
+        if not diff.improvements and not diff.regressions:
+            output_console.print("[dim]No session verdict changes[/dim]")
+    else:
+        output_console.print(
+            "[yellow]Per-session comparison unavailable — "
+            "both reports must be generated with --include-sessions[/yellow]"
+        )
+
+
+def _group_transition_labels(
+    transitions: list[SessionTransition],
+) -> str:
+    """Group transitions by type and produce a summary label like 'REWORK → PASS'."""
+    label_counter: Counter[str] = Counter()
+    for trans in transitions:
+        label = f"{trans.old_verdict.upper()} → {trans.new_verdict.upper()}"
+        label_counter[label] += 1
+
+    parts = [label for label, _count in label_counter.most_common()]
+    return ", ".join(parts)

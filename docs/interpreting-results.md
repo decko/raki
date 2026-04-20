@@ -96,3 +96,48 @@ its source material.
 
 - **Direction:** Higher is better
 - This metric is **experimental** for agentic sessions.
+
+## Comparing Runs
+
+Use `raki report --diff baseline.json compare.json` to compare two evaluation
+runs side by side. The diff output highlights what changed between runs.
+
+### Reading the Diff Output
+
+**Coverage line** shows how many sessions were matched by `session_id`:
+
+```
+Matched: 42/58 sessions (16 new, 4 dropped)
+```
+
+If sessions were dropped or added, a warning banner notes that aggregate
+deltas are based on matched sessions only.
+
+**Aggregate deltas** show the change for each metric:
+
+- **Direction indicators**: a green up arrow (improved) or red down arrow
+  (regressed) respects each metric's `higher_is_better` setting. For
+  example, a *decrease* in rework cycles is shown as an improvement.
+- **Flat deltas** are shown with an equals sign when values are identical.
+
+**Session transitions** group sessions by verdict change:
+
+- Regressions (PASS to REWORK, PASS to FAIL) are listed first.
+- Improvements (REWORK to PASS, FAIL to PASS) follow.
+- Sessions with unchanged verdicts are not listed.
+
+### What You Need
+
+Both reports must have been generated with `--include-sessions` for
+per-session transition analysis. Without session data, only aggregate
+metric deltas are shown, and a warning notes that per-session comparison
+is unavailable.
+
+### When to Use Diff
+
+- **After prompt or config changes**: compare before/after runs to verify
+  that changes improved metrics without introducing regressions.
+- **Across evaluation batches**: compare runs on different session sets to
+  spot trends in retrieval quality or operational health.
+- **CI pipelines**: use diff to gate merges -- if regressions appear, the
+  diff output shows exactly which sessions regressed and by how much.

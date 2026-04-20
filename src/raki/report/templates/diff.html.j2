@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAKI Diff Report &mdash; {{ diff.baseline_run_id }} vs {{ diff.compare_run_id }}</title>
+<style>
+  :root {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-tertiary: #252540;
+    --bg-card: #1e1e35;
+    --text-primary: #e0e0e8;
+    --text-secondary: #a0a0b8;
+    --text-muted: #6a6a80;
+    --border-color: #2e2e48;
+    --accent: #6c63ff;
+    --green: #4caf50;
+    --yellow: #ffc107;
+    --red: #f44336;
+    --white-metric: #b0b0c8;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    padding: 2rem;
+  }
+
+  .container {
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  header {
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  header h1 {
+    font-size: 1.8rem;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+  }
+
+  header .meta {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+  }
+
+  header .meta span {
+    margin-right: 1.5rem;
+  }
+
+  h2 {
+    font-size: 1.4rem;
+    margin: 1.5rem 0 1rem;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+  }
+
+  .coverage-line {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+  }
+
+  .coverage-line strong {
+    color: var(--accent);
+  }
+
+  .warning-banner {
+    background: rgba(255, 193, 7, 0.1);
+    border: 1px solid rgba(255, 193, 7, 0.3);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+    color: var(--yellow);
+    font-size: 0.9rem;
+  }
+
+  .info-banner {
+    background: rgba(108, 99, 255, 0.1);
+    border: 1px solid rgba(108, 99, 255, 0.3);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-style: italic;
+  }
+
+  /* Deltas table */
+  .deltas-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 2rem;
+  }
+
+  .deltas-table th,
+  .deltas-table td {
+    padding: 0.7rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .deltas-table th {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .deltas-table td {
+    color: var(--text-primary);
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.95rem;
+  }
+
+  .deltas-table td.metric-name-cell {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-weight: 600;
+  }
+
+  .delta-improved { color: var(--green); }
+  .delta-regressed { color: var(--red); }
+  .delta-flat { color: var(--text-muted); }
+
+  .direction-indicator {
+    font-size: 1rem;
+    margin-left: 0.3rem;
+  }
+
+  /* Transition groups */
+  .transition-group {
+    margin-bottom: 1.5rem;
+  }
+
+  .transition-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+
+  .transition-count {
+    color: var(--text-muted);
+    font-weight: 400;
+    font-size: 0.9rem;
+  }
+
+  .transition-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    margin-bottom: 0.4rem;
+    font-size: 0.9rem;
+  }
+
+  .transition-row.regression-row {
+    border-left: 3px solid var(--red);
+  }
+
+  .transition-row.improvement-row {
+    border-left: 3px solid var(--green);
+  }
+
+  .verdict-badge {
+    display: inline-block;
+    padding: 0.12rem 0.45rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+  }
+
+  .verdict-badge-fail {
+    background: rgba(244, 67, 54, 0.2);
+    color: var(--red);
+  }
+
+  .verdict-badge-rework {
+    background: rgba(255, 193, 7, 0.2);
+    color: var(--yellow);
+  }
+
+  .verdict-badge-pass {
+    background: rgba(76, 175, 80, 0.15);
+    color: var(--green);
+  }
+
+  .session-id {
+    font-weight: 600;
+  }
+
+  .was-label {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+  }
+
+  .arrow {
+    color: var(--text-muted);
+  }
+
+  /* Collapsed sections */
+  details {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-bottom: 0.75rem;
+    overflow: hidden;
+  }
+
+  summary {
+    padding: 0.8rem 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+    color: var(--text-primary);
+    user-select: none;
+    list-style: none;
+    gap: 0.6rem;
+  }
+
+  summary::-webkit-details-marker { display: none; }
+
+  summary::before {
+    content: "\25b6";
+    display: inline-block;
+    font-size: 0.7rem;
+    transition: transform 0.2s;
+    flex-shrink: 0;
+  }
+
+  details[open] > summary::before {
+    transform: rotate(90deg);
+  }
+
+  .collapsed-content {
+    padding: 0 1.2rem 1rem;
+  }
+
+  .collapsed-session-list {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.8;
+  }
+
+  /* Summary box */
+  .summary-box {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+  }
+
+  .summary-stat {
+    display: inline-block;
+    margin-right: 2rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .summary-stat .stat-value {
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .empty-state {
+    color: var(--text-muted);
+    font-style: italic;
+    padding: 1rem 0;
+  }
+
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>RAKI Diff Report</h1>
+    <div class="meta">
+      <span><strong>Baseline:</strong> {{ diff.baseline_run_id }}</span>
+      <span><strong>Compare:</strong> {{ diff.compare_run_id }}</span>
+    </div>
+  </header>
+
+  <main>
+  {# --- Coverage --- #}
+  <div class="coverage-line">
+    Matched: <strong>{{ matched_count }}/{{ total_count }}</strong> sessions
+    {% if new_count > 0 or dropped_count > 0 %}
+    ({% if new_count > 0 %}{{ new_count }} new{% endif %}{% if new_count > 0 and dropped_count > 0 %}, {% endif %}{% if dropped_count > 0 %}{{ dropped_count }} dropped{% endif %})
+    {% endif %}
+  </div>
+
+  {% if dropped_count > 0 or new_count > 0 %}
+  <div class="warning-banner">
+    &#9888;
+    {% if dropped_count > 0 %}{{ dropped_count }} sessions dropped{% endif %}{% if dropped_count > 0 and new_count > 0 %}, {% endif %}{% if new_count > 0 %}{{ new_count }} new{% endif %}
+    &mdash; aggregate deltas based on {{ matched_count }} matched sessions only
+  </div>
+  {% endif %}
+
+  {# --- Aggregate Deltas --- #}
+  <h2>Aggregate Deltas</h2>
+  {% if diff.deltas %}
+  <table class="deltas-table">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Baseline</th>
+        <th>Compare</th>
+        <th>Delta</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for delta in diff.deltas %}
+      <tr>
+        <td class="metric-name-cell">{{ format_display_name(delta.name) }}</td>
+        <td>{{ format_value(delta.baseline_value, delta.name) }}</td>
+        <td>{{ format_value(delta.compare_value, delta.name) }}</td>
+        <td class="delta-{{ delta.direction }}">
+          {{ format_delta(delta.delta, delta.name) }}
+          <span class="direction-indicator">{% if delta.direction == "improved" %}&#9650;{% elif delta.direction == "regressed" %}&#9660;{% else %}={% endif %}</span>
+        </td>
+        <td></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No common metrics to compare.</p>
+  {% endif %}
+
+  {# --- Changed Sessions --- #}
+  <h2>Changed Sessions</h2>
+
+  {% if not diff.has_session_data %}
+  <div class="info-banner">
+    Per-session comparison unavailable &mdash; both reports must be generated with --include-sessions
+  </div>
+  {% else %}
+
+  {# --- Summary box --- #}
+  {% if diff.regressions or diff.improvements %}
+  <div class="summary-box">
+    {% if diff.improvements %}
+    <span class="summary-stat">
+      <span class="stat-value" style="color: var(--green);">{{ diff.improvements | length }}</span> improvement{{ "s" if diff.improvements | length != 1 else "" }}
+    </span>
+    {% endif %}
+    {% if diff.regressions %}
+    <span class="summary-stat">
+      <span class="stat-value" style="color: var(--red);">{{ diff.regressions | length }}</span> regression{{ "s" if diff.regressions | length != 1 else "" }}
+    </span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# --- Regressions first --- #}
+  {% if diff.regressions %}
+  {% set regression_groups = {} %}
+  {% for trans in diff.regressions %}
+  {% set label = trans.old_verdict|upper ~ " → " ~ trans.new_verdict|upper %}
+  {% if label not in regression_groups %}
+  {% set _ = regression_groups.update({label: []}) %}
+  {% endif %}
+  {% set _ = regression_groups[label].append(trans) %}
+  {% endfor %}
+
+  {% for label, transitions in regression_groups.items() %}
+  <div class="transition-group">
+    <div class="transition-header">
+      <span style="color: var(--red);">{{ label }}</span>
+      <span class="transition-count">({{ transitions | length }} session{{ "s" if transitions | length != 1 else "" }})</span>
+    </div>
+    {% for trans in transitions %}
+    <div class="transition-row regression-row">
+      <span class="verdict-badge verdict-badge-{{ trans.new_verdict }}">{{ trans.new_verdict | upper }}</span>
+      <span class="session-id">{{ trans.session_id }}</span>
+      <span class="was-label">&mdash; was {{ trans.old_verdict | upper }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {# --- Improvements --- #}
+  {% if diff.improvements %}
+  {% set improvement_groups = {} %}
+  {% for trans in diff.improvements %}
+  {% set label = trans.old_verdict|upper ~ " → " ~ trans.new_verdict|upper %}
+  {% if label not in improvement_groups %}
+  {% set _ = improvement_groups.update({label: []}) %}
+  {% endif %}
+  {% set _ = improvement_groups[label].append(trans) %}
+  {% endfor %}
+
+  {% for label, transitions in improvement_groups.items() %}
+  <div class="transition-group">
+    <div class="transition-header">
+      <span style="color: var(--green);">{{ label }}</span>
+      <span class="transition-count">({{ transitions | length }} session{{ "s" if transitions | length != 1 else "" }})</span>
+    </div>
+    {% for trans in transitions %}
+    <div class="transition-row improvement-row">
+      <span class="verdict-badge verdict-badge-{{ trans.new_verdict }}">{{ trans.new_verdict | upper }}</span>
+      <span class="session-id">{{ trans.session_id }}</span>
+      <span class="was-label">&mdash; was {{ trans.old_verdict | upper }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if not diff.regressions and not diff.improvements %}
+  <p class="empty-state">No session verdict changes between runs.</p>
+  {% endif %}
+
+  {# --- New sessions (collapsed) --- #}
+  {% if new_session_ids %}
+  <details>
+    <summary>New sessions ({{ new_session_ids | length }})</summary>
+    <div class="collapsed-content">
+      <div class="collapsed-session-list">
+        {% for sid in new_session_ids %}
+        {{ sid }}{% if not loop.last %}<br>{% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
+  {# --- Dropped sessions (collapsed) --- #}
+  {% if dropped_session_ids %}
+  <details>
+    <summary>Dropped sessions ({{ dropped_session_ids | length }})</summary>
+    <div class="collapsed-content">
+      <div class="collapsed-session-list">
+        {% for sid in dropped_session_ids %}
+        {{ sid }}{% if not loop.last %}<br>{% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </details>
+  {% endif %}
+
+  {% endif %}
+  </main>
+
+  <footer>
+    Generated by RAKI &mdash; Retrieval Assessment for Knowledge Impact
+  </footer>
+</div>
+</body>
+</html>

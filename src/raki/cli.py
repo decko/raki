@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -409,8 +410,17 @@ def _metric_stubs_from_metadata(
     "-i",
     "--input",
     "input_path",
-    required=True,
-    help="Path to JSON report (required)",
+    required=False,
+    default=None,
+    help="Path to JSON report",
+)
+@click.option(
+    "--diff",
+    "diff_paths",
+    nargs=2,
+    type=str,
+    default=None,
+    help="Compare two JSON reports: --diff baseline.json compare.json",
 )
 @click.option(
     "--html",
@@ -418,8 +428,31 @@ def _metric_stubs_from_metadata(
     default=None,
     help="Output HTML file path",
 )
-def report(input_path: str, html_path: str | None) -> None:
-    """Re-render CLI summary and HTML from a saved JSON report."""
+@click.option(
+    "-o",
+    "--output",
+    "output_dir",
+    default=None,
+    help="Output directory for diff report",
+)
+def report(
+    input_path: str | None,
+    diff_paths: tuple[str, str] | None,
+    html_path: str | None,
+    output_dir: str | None,
+) -> None:
+    """Re-render CLI summary and HTML from a saved JSON report.
+
+    Use --diff to compare two evaluation runs side by side.
+    """
+    if diff_paths is not None:
+        _handle_diff(diff_paths, html_path, output_dir)
+        return
+
+    if input_path is None:
+        console.print("[red]Error: --input is required when not using --diff[/red]")
+        raise SystemExit(2)
+
     from raki.report.json_report import load_json_report
 
     path = Path(input_path)
@@ -466,6 +499,66 @@ def report(input_path: str, html_path: str | None) -> None:
         except ImportError:
             console.print(
                 "[yellow]Note: jinja2 not installed — skipping HTML report. "
+                "Install with: uv pip install raki[html][/yellow]"
+            )
+
+
+def _handle_diff(
+    diff_paths: tuple[str, str],
+    html_path: str | None,
+    output_dir: str | None,
+) -> None:
+    """Handle the --diff subflow of the report command."""
+    from raki.report.json_report import load_json_report
+
+    baseline_path = Path(diff_paths[0])
+    compare_path = Path(diff_paths[1])
+
+    if not baseline_path.exists():
+        console.print(f"[red]Error: baseline file not found: {baseline_path}[/red]")
+        raise SystemExit(2)
+    if not compare_path.exists():
+        console.print(f"[red]Error: compare file not found: {compare_path}[/red]")
+        raise SystemExit(2)
+
+    try:
+        baseline_report = load_json_report(baseline_path)
+    except Exception as exc:
+        console.print(f"[red]Error loading baseline report: {redact_sensitive(str(exc))}[/red]")
+        raise SystemExit(2) from exc
+
+    try:
+        compare_report = load_json_report(compare_path)
+    except Exception as exc:
+        console.print(f"[red]Error loading compare report: {redact_sensitive(str(exc))}[/red]")
+        raise SystemExit(2) from exc
+
+    from raki.report.diff import generate_diff_report
+
+    diff_report = generate_diff_report(baseline_report, compare_report)
+
+    from raki.report.cli_summary import print_diff_summary
+
+    print_diff_summary(diff_report, console=console)
+
+    # Determine HTML output path
+    resolved_html_path: Path | None = None
+    if html_path is not None:
+        resolved_html_path = Path(html_path)
+    elif output_dir is not None:
+        safe_base = re.sub(r"[/\\]|\.\.", "_", baseline_report.run_id)
+        safe_comp = re.sub(r"[/\\]|\.\.", "_", compare_report.run_id)
+        resolved_html_path = Path(output_dir) / f"diff-{safe_base}-vs-{safe_comp}.html"
+
+    if resolved_html_path is not None:
+        try:
+            from raki.report.html_report import write_diff_html_report
+
+            write_diff_html_report(diff_report, resolved_html_path)
+            console.print(f"\nDiff report written:\n  HTML -> {resolved_html_path}")
+        except ImportError:
+            console.print(
+                "[yellow]Note: jinja2 not installed — skipping HTML diff report. "
                 "Install with: uv pip install raki[html][/yellow]"
             )
 
