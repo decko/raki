@@ -51,12 +51,9 @@ def _stderr_console() -> Console:
 
 def _build_registry():
     """Build the default adapter registry with all built-in adapters."""
-    from raki.adapters import AdapterRegistry, AlcoveAdapter, SessionSchemaAdapter
+    from raki.adapters import default_registry
 
-    registry = AdapterRegistry()
-    registry.register(SessionSchemaAdapter())
-    registry.register(AlcoveAdapter())
-    return registry
+    return default_registry()
 
 
 def _resolve_manifest(

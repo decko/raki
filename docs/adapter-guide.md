@@ -62,13 +62,13 @@ Use `redact_sensitive()` on free-text fields, `redact_dict()` on structured data
 
 ## Registration
 
-Add your adapter to `_build_registry()` in `src/raki/cli.py`:
+Register your adapter in `default_registry()` in `src/raki/adapters/__init__.py`:
 
 ```python
-def _build_registry():
-    from raki.adapters import AdapterRegistry, AlcoveAdapter, SessionSchemaAdapter
-    from raki.adapters.my_format import MyFormatAdapter
+from raki.adapters.my_format import MyFormatAdapter
 
+
+def default_registry() -> AdapterRegistry:
     registry = AdapterRegistry()
     registry.register(SessionSchemaAdapter())
     registry.register(AlcoveAdapter())
@@ -77,6 +77,14 @@ def _build_registry():
 ```
 
 Run `raki adapters` to verify your adapter appears in the list.
+
+For programmatic use, you can also call `default_registry()` directly:
+
+```python
+from raki.adapters import default_registry
+
+registry = default_registry()
+```
 
 ## Testing
 
