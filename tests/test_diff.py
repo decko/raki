@@ -490,6 +490,10 @@ class TestPrintDiffSummary:
         assert "green" in output.lower() or "▲" in output
 
 
+@pytest.mark.skipif(
+    not __import__("importlib").util.find_spec("jinja2"),
+    reason="jinja2 not installed",
+)
 class TestWriteDiffHtmlReport:
     def test_generates_html_file(self, tmp_path):
         diff = DiffReport(
