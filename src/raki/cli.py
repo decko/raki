@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from pathlib import Path
 
 import click
@@ -11,6 +11,12 @@ from rich.console import Console
 
 from raki.adapters.redact import redact_sensitive
 from raki.report.rerender import is_session_data_stripped, metric_stubs_from_metadata
+
+if TYPE_CHECKING:
+    from raki.adapters.loader import DatasetLoader
+    from raki.adapters.registry import AdapterRegistry
+    from raki.ground_truth.manifest import EvalManifest
+    from raki.model import EvalDataset
 
 console = Console()
 
@@ -348,7 +354,8 @@ def run(
 @click.option("-m", "--manifest", "manifest_path", default=None, help="Path to manifest file")
 @click.option("-q", "--quiet", is_flag=True, help="Suppress auto-discovery messages")
 @click.option("-v", "--verbose", is_flag=True, help="Show debug output")
-def validate(manifest_path: str | None, quiet: bool, verbose: bool) -> None:
+@click.option("--deep", is_flag=True, help="Run smoke-test checks (adapter loading, metrics)")
+def validate(manifest_path: str | None, quiet: bool, verbose: bool, deep: bool) -> None:
     """Check manifest and session data without running metrics."""
     manifest_file = _resolve_manifest(manifest_path, quiet=quiet)
 
@@ -408,6 +415,116 @@ def validate(manifest_path: str | None, quiet: bool, verbose: bool) -> None:
         f"\nReady to evaluate [bold]{len(dataset.samples)}[/bold] sessions"
         f" ({len(loader.skipped)} skipped, {len(loader.errors)} errors)."
     )
+
+    if deep:
+        _run_deep_checks(registry, dataset, manifest, loader)
+
+
+def _run_deep_checks(
+    registry: AdapterRegistry,
+    dataset: EvalDataset,
+    manifest: EvalManifest,
+    loader: DatasetLoader,
+) -> None:
+    """Run deep smoke-test checks: adapter loading, ground truth, operational metrics.
+
+    No LLM calls, no full evaluation run, no report generation.
+    """
+    from raki.model import EvalDataset
+
+    console.print("\n[bold]Deep checks[/bold]")
+
+    # --- Check 1: Adapter loading ---
+    # Try loading one session through each registered adapter that detected sessions
+    if not dataset.samples:
+        console.print("[yellow]\u26a0[/yellow] No sessions loaded — skipping adapter checks")
+    else:
+        session_paths = sorted(p for p in manifest.sessions.path.iterdir() if p.is_dir())
+        for adapter in registry.list_all():
+            adapter_name = adapter.name
+            try:
+                # Find a path that this adapter can detect and load
+                loaded_any = False
+                for session_path in session_paths:
+                    if adapter.detect(session_path):
+                        sample = adapter.load(session_path)
+                        console.print(
+                            f"[green]\u2713[/green] Adapter [bold]{adapter_name}[/bold] "
+                            f"loaded session: {sample.session.session_id}"
+                        )
+                        loaded_any = True
+                        break
+                if not loaded_any:
+                    console.print(
+                        f"[dim]\u2014[/dim] Adapter [bold]{adapter_name}[/bold] "
+                        f"— no matching sessions found"
+                    )
+            except Exception as exc:
+                console.print(
+                    f"[red]\u2717[/red] Adapter [bold]{adapter_name}[/bold] "
+                    f"failed: {redact_sensitive(str(exc))}"
+                )
+
+    # --- Check 2: Ground truth loading and matching ---
+    if manifest.ground_truth.path is not None:
+        try:
+            from raki.ground_truth.matcher import load_ground_truth, match_ground_truth
+
+            gt_entries = load_ground_truth(manifest.ground_truth.path)
+            console.print(
+                f"[green]\u2713[/green] Ground truth loading: {len(gt_entries)} entries loaded"
+            )
+            if dataset.samples:
+                matched = sum(
+                    1
+                    for sample in dataset.samples
+                    if match_ground_truth(sample, gt_entries) is not None
+                )
+                console.print(
+                    f"[green]\u2713[/green] Ground truth matching: "
+                    f"{matched}/{len(dataset.samples)} sessions matched"
+                )
+            else:
+                console.print(
+                    "[yellow]\u26a0[/yellow] Ground truth matching: no sessions to match against"
+                )
+        except Exception as exc:
+            console.print(
+                f"[red]\u2717[/red] Ground truth loading failed: {redact_sensitive(str(exc))}"
+            )
+
+    # --- Check 3: Operational metrics against a single sample ---
+    if not dataset.samples:
+        console.print(
+            "[yellow]\u26a0[/yellow] Operational metrics — no sessions available, skipping"
+        )
+    else:
+        from raki.metrics.operational import ALL_OPERATIONAL
+        from raki.metrics.protocol import MetricConfig
+
+        single_dataset = EvalDataset(samples=[dataset.samples[0]])
+        config = MetricConfig()
+        all_passed = True
+        metric_lines: list[str] = []
+        for metric in ALL_OPERATIONAL:
+            try:
+                result = metric.compute(single_dataset, config)
+                metric_lines.append(f"    {metric.display_name}: {result.score}")
+            except Exception as exc:
+                all_passed = False
+                metric_lines.append(
+                    f"    [red]\u2717[/red] {metric.display_name}: "
+                    f"failed — {redact_sensitive(str(exc))}"
+                )
+        if all_passed:
+            console.print(
+                "[green]\u2713[/green] Operational metrics — "
+                "all computed successfully against 1 sample"
+            )
+        else:
+            console.print("[red]\u2717[/red] Operational metrics — some metrics failed")
+        for line in metric_lines:
+            console.print(line)
 
 
 @main.command()
