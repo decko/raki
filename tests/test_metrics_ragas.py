@@ -1044,6 +1044,92 @@ class TestCreateRagasLlm:
         assert call_kwargs.kwargs["temperature"] == 0.0
 
 
+class TestLLMProviderDispatch:
+    """Tests for provider dispatch in create_ragas_llm()."""
+
+    def test_vertex_anthropic_uses_async_anthropic_vertex(self, monkeypatch: pytest.MonkeyPatch):
+        """vertex-anthropic provider should instantiate AsyncAnthropicVertex."""
+        import sys
+
+        mock_llm_factory = MagicMock(return_value=MagicMock())
+        mock_llms = MagicMock()
+        mock_llms.llm_factory = mock_llm_factory
+
+        mock_anthropic = MagicMock()
+        mock_vertex_instance = MagicMock()
+        mock_anthropic.AsyncAnthropicVertex = MagicMock(return_value=mock_vertex_instance)
+
+        monkeypatch.setitem(sys.modules, "anthropic", mock_anthropic)
+        monkeypatch.setitem(sys.modules, "ragas", MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.llms", mock_llms)
+
+        from raki.metrics.ragas.llm_setup import create_ragas_llm
+
+        config = MetricConfig(llm_provider="vertex-anthropic")
+        create_ragas_llm(config)
+
+        mock_anthropic.AsyncAnthropicVertex.assert_called_once()
+        mock_llm_factory.assert_called_once()
+        call_kwargs = mock_llm_factory.call_args
+        assert call_kwargs.kwargs["client"] is mock_vertex_instance
+
+    def test_anthropic_uses_async_anthropic(self, monkeypatch: pytest.MonkeyPatch):
+        """anthropic provider should instantiate AsyncAnthropic (direct API)."""
+        import sys
+
+        mock_llm_factory = MagicMock(return_value=MagicMock())
+        mock_llms = MagicMock()
+        mock_llms.llm_factory = mock_llm_factory
+
+        mock_anthropic = MagicMock()
+        mock_direct_instance = MagicMock()
+        mock_anthropic.AsyncAnthropic = MagicMock(return_value=mock_direct_instance)
+
+        monkeypatch.setitem(sys.modules, "anthropic", mock_anthropic)
+        monkeypatch.setitem(sys.modules, "ragas", MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.llms", mock_llms)
+
+        from raki.metrics.ragas.llm_setup import create_ragas_llm
+
+        config = MetricConfig(llm_provider="anthropic")
+        create_ragas_llm(config)
+
+        mock_anthropic.AsyncAnthropic.assert_called_once()
+        mock_llm_factory.assert_called_once()
+        call_kwargs = mock_llm_factory.call_args
+        assert call_kwargs.kwargs["client"] is mock_direct_instance
+
+    def test_unknown_provider_rejected_by_pydantic(self):
+        """Pydantic Literal type rejects unknown providers at config construction."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="literal_error"):
+            MetricConfig(llm_provider="openai")  # type: ignore[arg-type]
+
+    def test_unknown_provider_error_lists_valid_options(self):
+        """Pydantic error message should mention supported providers."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="vertex-anthropic") as exc_info:
+            MetricConfig(llm_provider="bedrock")  # type: ignore[arg-type]
+        assert "anthropic" in str(exc_info.value)
+
+    def test_create_ragas_llm_raises_on_invalid_provider(self):
+        """Defense-in-depth: create_ragas_llm raises ValueError for unknown providers."""
+        from raki.metrics.ragas.llm_setup import create_ragas_llm
+
+        # Bypass Pydantic validation to test the runtime guard
+        config = MetricConfig()
+        object.__setattr__(config, "llm_provider", "unknown")
+        with pytest.raises(ValueError, match="Unknown LLM provider"):
+            create_ragas_llm(config)
+
+    def test_default_provider_is_vertex_anthropic(self):
+        """MetricConfig default llm_provider should be vertex-anthropic."""
+        config = MetricConfig()
+        assert config.llm_provider == "vertex-anthropic"
+
+
 class TestCreateRagasEmbeddings:
     def test_uses_vertex_ai_embeddings(self, monkeypatch: pytest.MonkeyPatch):
         """create_ragas_embeddings() should use VertexAIEmbeddings, not OpenAI default."""

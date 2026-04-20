@@ -1,29 +1,53 @@
 """LLM setup and judge logging for Ragas metrics.
 
-Uses Ragas 0.4 llm_factory with AsyncAnthropicVertex for Anthropic models
-on Google Cloud Vertex AI.
+Uses Ragas 0.4 llm_factory with configurable Anthropic client:
+- vertex-anthropic (default): AsyncAnthropicVertex for Vertex AI
+- anthropic: AsyncAnthropic for direct Anthropic API
 """
 
 import json
 import logging
 from pathlib import Path
+from typing import get_args
 
 from raki.adapters.redact import redact_sensitive
-from raki.metrics.protocol import MetricConfig
+from raki.metrics.protocol import LLMProvider, MetricConfig
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_PROVIDERS = get_args(LLMProvider)
 
 
 def create_ragas_llm(config: MetricConfig):
     """Create a Ragas LLM using the 0.4 llm_factory.
 
+    Dispatches on ``config.llm_provider``:
+
+    - ``vertex-anthropic`` (default) -- uses ``AsyncAnthropicVertex``
+    - ``anthropic`` -- uses ``AsyncAnthropic`` (direct Anthropic API)
+
     Defers ragas and anthropic imports so this module can be imported
     without those packages installed.
+
+    Raises:
+        ValueError: If ``config.llm_provider`` is not a supported provider.
     """
-    from anthropic import AsyncAnthropicVertex  # ty: ignore[unresolved-import]
+    if config.llm_provider == "vertex-anthropic":
+        from anthropic import AsyncAnthropicVertex  # ty: ignore[unresolved-import]
+
+        client = AsyncAnthropicVertex()
+    elif config.llm_provider == "anthropic":
+        from anthropic import AsyncAnthropic  # ty: ignore[unresolved-import]
+
+        client = AsyncAnthropic()
+    else:
+        supported_list = ", ".join(SUPPORTED_PROVIDERS)
+        raise ValueError(
+            f"Unknown LLM provider: '{config.llm_provider}'. Supported providers: {supported_list}"
+        )
+
     from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
 
-    client = AsyncAnthropicVertex()
     return llm_factory(
         config.llm_model,
         client=client,

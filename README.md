@@ -24,12 +24,17 @@ uv run raki run --manifest raki.yaml --no-llm
 
 The `--no-llm` flag runs operational metrics only (no API keys needed).
 To include Ragas retrieval metrics, omit the flag and configure an LLM provider.
+Use `--judge-provider anthropic` for direct Anthropic API access, or
+`--judge-provider vertex-anthropic` (default) for Vertex AI.
 
 ## Usage
 
 ```bash
-# Run all metrics (requires LLM provider)
+# Run all metrics (requires LLM provider -- Vertex AI Anthropic by default)
 uv run raki run --manifest raki.yaml
+
+# Run all metrics with direct Anthropic API
+uv run raki run --manifest raki.yaml --judge-provider anthropic
 
 # Run operational metrics only
 uv run raki run --manifest raki.yaml --no-llm
