@@ -604,6 +604,62 @@ class TestCliJudgeModel:
         assert result.exit_code == 0
 
 
+class TestCliJudgeProvider:
+    def test_judge_provider_vertex_anthropic_accepted(self, empty_manifest):
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--no-llm",
+                "--judge-provider",
+                "vertex-anthropic",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_judge_provider_anthropic_accepted(self, empty_manifest):
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--no-llm",
+                "--judge-provider",
+                "anthropic",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_judge_provider_invalid_rejected(self, empty_manifest):
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--no-llm",
+                "--judge-provider",
+                "openai",
+            ],
+        )
+        assert result.exit_code == 2
+
+    def test_judge_provider_default(self, empty_manifest):
+        """Default judge provider (vertex-anthropic) should be accepted without errors."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(empty_manifest), "--no-llm"],
+        )
+        assert result.exit_code == 0
+
+
 class TestCliParallelWiring:
     def test_parallel_option_accepted(self, empty_manifest):
         """--parallel should be accepted without 'not yet implemented' warning."""

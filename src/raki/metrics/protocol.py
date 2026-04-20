@@ -1,14 +1,16 @@
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
 from raki.model import EvalDataset
 from raki.model.report import MetricResult
 
+LLMProvider = Literal["vertex-anthropic", "anthropic"]
+
 
 class MetricConfig(BaseModel):
-    llm_provider: str = "vertex-anthropic"
+    llm_provider: LLMProvider = "vertex-anthropic"
     llm_model: str = "claude-sonnet-4-6"
     temperature: float = 0.0
     batch_size: int = 4

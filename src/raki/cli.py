@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 from pathlib import Path
 
 import click
@@ -120,6 +121,13 @@ def main():
     help="LLM model for judge metrics (default: claude-sonnet-4-6)",
 )
 @click.option(
+    "--judge-provider",
+    "judge_provider",
+    type=click.Choice(["vertex-anthropic", "anthropic"]),
+    default="vertex-anthropic",
+    help="LLM provider for judge metrics (default: vertex-anthropic)",
+)
+@click.option(
     "--include-sessions",
     is_flag=True,
     help="Include full session data in JSON report",
@@ -136,6 +144,7 @@ def run(
     metric_names: str | None,
     parallel_count: int,
     judge_model: str,
+    judge_provider: str,
     include_sessions: bool,
     json_stdout: bool,
     verbose: bool,
@@ -223,9 +232,10 @@ def run(
 
     from raki.metrics import MetricsEngine
     from raki.metrics.operational import ALL_OPERATIONAL
-    from raki.metrics.protocol import Metric, MetricConfig
+    from raki.metrics.protocol import LLMProvider, Metric, MetricConfig
 
     config = MetricConfig(
+        llm_provider=cast(LLMProvider, judge_provider),
         llm_model=judge_model,
         batch_size=parallel_count,
         project_root=manifest_file.parent.resolve(),

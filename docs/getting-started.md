@@ -18,6 +18,11 @@ uv sync --python 3.12 --extra html
 > **LLM-backed metrics**: if you plan to use Ragas retrieval metrics, install
 > with `uv sync --python 3.12 --all-extras` instead. This pulls in
 > `scikit-network`, which requires a C++ compiler.
+>
+> By default, RAKI uses **Vertex AI Anthropic** (`--judge-provider vertex-anthropic`)
+> for LLM judge calls. If you have a direct Anthropic API key instead, use
+> `--judge-provider anthropic`. Set the `ANTHROPIC_API_KEY` environment variable
+> for direct API access, or configure Google Cloud credentials for Vertex AI.
 
 Verify the install:
 
