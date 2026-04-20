@@ -81,6 +81,15 @@ def color_for_score(
         return "red"
 
 
+def _has_no_data(metric_details: dict[str, dict], metric_name: str) -> bool:
+    """Check if a metric has no applicable data based on its details dict."""
+    details = metric_details.get(metric_name, {})
+    for key, value in details.items():
+        if key.startswith("sessions_with_") and value == 0:
+            return True
+    return False
+
+
 def format_metric_line(
     name: str,
     score: float,
@@ -89,10 +98,13 @@ def format_metric_line(
     higher_is_better: bool = True,
     sample_count: int | None = None,
     display_name: str | None = None,
+    no_data: bool = False,
 ) -> str:
     """Format a single metric line with color, display format, and sample count."""
-    color = color_for_score(score, higher_is_better, display_format)
     label = display_name or name
+    if no_data:
+        return f"[dim]  {label:<35} N/A    (no data)[/dim]"
+    color = color_for_score(score, higher_is_better, display_format)
     if display_format == "currency":
         score_str = f"${score:.2f}"
     elif display_format == "count":
@@ -207,6 +219,7 @@ def print_summary(
                     display_format=meta.display_format(name),
                     higher_is_better=meta.higher_is_better(name),
                     display_name=meta.display_name(name),
+                    no_data=_has_no_data(report.metric_details, name),
                 )
             )
         if session_count < 50:
@@ -228,6 +241,7 @@ def print_summary(
                     display_format=meta.display_format(name),
                     higher_is_better=meta.higher_is_better(name),
                     display_name=meta.display_name(name),
+                    no_data=_has_no_data(report.metric_details, name),
                 )
                 + tag
             )

@@ -549,6 +549,12 @@ def write_html_report(
     recurring_failures = _collect_recurring_failures(report)
     worst_sessions = compute_worst_sessions(report, limit=5)
 
+    no_data_metrics: set[str] = set()
+    for metric_name, details in report.metric_details.items():
+        for key, value in details.items():
+            if key.startswith("sessions_with_") and value == 0:
+                no_data_metrics.add(metric_name)
+
     env = _build_jinja_env()
     template = env.get_template("report.html.j2")
 
@@ -591,6 +597,7 @@ def write_html_report(
         needs_attention_rows=needs_attention_rows,
         needs_attention_count=needs_attention_count,
         format_duration=_format_duration,
+        no_data_metrics=no_data_metrics,
     )
 
     output.write_text(html_content, encoding="utf-8")

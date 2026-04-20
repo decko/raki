@@ -26,6 +26,7 @@ class MetricsEngine:
             result = metric.compute(dataset, self._config)
             results.append(result)
         aggregate = {result.name: result.score for result in results}
+        details = {result.name: result.details for result in results if result.details}
         sample_results = self._build_sample_results(dataset, results)
         return EvalReport(
             run_id=f"eval-{uuid.uuid4().hex[:8]}",
@@ -35,6 +36,7 @@ class MetricsEngine:
                 "skip_llm": skip_llm,
             },
             aggregate_scores=aggregate,
+            metric_details=details,
             sample_results=sample_results,
             manifest_hash=dataset.manifest_hash,
         )

@@ -751,11 +751,17 @@
             {% if meta.docs_anchor %}<a href="{{ docs_base_url }}#{{ meta.docs_anchor }}">{{ meta.display_name }}</a>{% else %}{{ meta.display_name }}{% endif %}
           </div>
           {% if meta.subtitle %}<div class="metric-subtitle">{{ meta.subtitle }}</div>{% endif %}
-          <div class="metric-value {{ color_class(score, name) }}">{% if meta.display_format == "currency" %}${{ "%.2f"|format(score) }}{% elif meta.display_format == "count" %}{{ "%.1f"|format(score) }}{% elif meta.display_format == "percent" %}{{ "%.0f"|format(score * 100) }}%{% else %}{{ "%.2f"|format(score) }}{% endif %}</div>
+          {% if name in no_data_metrics %}
+          <div class="metric-value" style="color: #666;">N/A</div>
+          <div class="metric-subtitle" style="color: #888; font-size: 0.75rem;">no data in sessions</div>
+          {% else %}
+          <div class="metric-value {{ color_class(score, name) }}">{% if meta.display_format == "currency" %}${{ "%.2f"|format(score) }}{% elif meta.display_format == "count" %}{{ "%.1f"|format(score) }}{% elif meta.display_format == "percent" %}{{ "%.0f"|format(score * 100) }}%{% elif meta.display_format == "duration" %}{{ "%.1f"|format(score) }}s{% else %}{{ "%.2f"|format(score) }}{% endif %}</div>
+          {% endif %}
+          {% if name not in no_data_metrics %}
           {% if name == "cost_efficiency" and cost_range %}
           <div class="cost-range">Range: ${{ "%.2f"|format(cost_range[0]) }} &ndash; ${{ "%.2f"|format(cost_range[1]) }}</div>
           {% endif %}
-          {% if meta.display_format not in ("currency", "count") and score <= 1.0 and score >= 0.0 %}
+          {% if meta.display_format not in ("currency", "count", "duration") and score <= 1.0 and score >= 0.0 %}
           <div class="metric-bar">
             <div class="metric-bar-fill bg-{{ color_name(score, name) }}" style="width: {{ (score * 100)|int }}%"></div>
           </div>
@@ -764,6 +770,7 @@
             {% if meta.direction %}<span class="direction-badge">{{ meta.direction }}</span>{% endif %}
             {% if meta.threshold %}<span class="threshold-label">{{ meta.threshold }}</span>{% endif %}
           </div>
+          {% endif %}
         </div>
         {% endif %}
         {% endfor %}
