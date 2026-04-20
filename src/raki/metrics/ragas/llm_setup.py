@@ -32,8 +32,6 @@ def create_ragas_llm(config: MetricConfig):
     Raises:
         ValueError: If ``config.llm_provider`` is not a supported provider.
     """
-    from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
-
     if config.llm_provider == "vertex-anthropic":
         from anthropic import AsyncAnthropicVertex  # ty: ignore[unresolved-import]
 
@@ -47,6 +45,8 @@ def create_ragas_llm(config: MetricConfig):
         raise ValueError(
             f"Unknown LLM provider: '{config.llm_provider}'. Supported providers: {supported_list}"
         )
+
+    from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
 
     return llm_factory(
         config.llm_model,
