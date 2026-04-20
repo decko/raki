@@ -1013,6 +1013,27 @@ def test_generational_sorting_no_meta_generation_defaults(tmp_path):
     assert impl_phases[2].generation == 3
 
 
+# --- default_registry() tests (issue #78) ---
+
+
+class TestDefaultRegistry:
+    def test_default_registry_contains_both_adapters(self):
+        from raki.adapters import default_registry
+
+        registry = default_registry()
+        adapters = registry.list_all()
+        adapter_names = {adapter.name for adapter in adapters}
+        assert "session-schema" in adapter_names
+        assert "alcove" in adapter_names
+
+    def test_default_registry_returns_fresh_instance(self):
+        from raki.adapters import default_registry
+
+        registry_a = default_registry()
+        registry_b = default_registry()
+        assert registry_a is not registry_b
+
+
 # --- Zero-token and missing-data edge-case tests (issue #37) ---
 
 
