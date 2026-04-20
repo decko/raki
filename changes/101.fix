@@ -1,1 +1,0 @@
-Show "N/A (no data)" instead of misleading 0.0 for metrics when session data lacks the required fields (e.g., token counts).
