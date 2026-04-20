@@ -1469,3 +1469,487 @@ class TestMetricLinksToInterpretingDocs:
         content = output.read_text()
         assert "interpreting-results" in content
         assert "<a " in content
+
+
+# --- Issue #68: Drill-down redesign tests ---
+
+
+class TestDrillDownRowDataclass:
+    """DrillDownRow frozen dataclass with verdict, detail, severity counts, cost, duration."""
+
+    def test_drill_down_row_creation(self) -> None:
+        """DrillDownRow should store session_id, verdict, detail, severity counts, cost, duration."""
+        from raki.report.html_report import DrillDownRow
+
+        row = DrillDownRow(
+            session_id="session-101",
+            verdict="fail",
+            detail="implement failed",
+            critical_count=2,
+            major_count=0,
+            minor_count=1,
+            cost=4.20,
+            duration_seconds=42,
+            sort_key=(0, -4.20),
+        )
+        assert row.session_id == "session-101"
+        assert row.verdict == "fail"
+        assert row.detail == "implement failed"
+        assert row.critical_count == 2
+        assert row.major_count == 0
+        assert row.minor_count == 1
+        assert row.cost == pytest.approx(4.20)
+        assert row.duration_seconds == 42
+        assert row.sort_key == (0, -4.20)
+
+    def test_drill_down_row_is_frozen(self) -> None:
+        """DrillDownRow should be immutable (frozen dataclass)."""
+        from raki.report.html_report import DrillDownRow
+
+        row = DrillDownRow(
+            session_id="session-101",
+            verdict="pass",
+            detail="5 phases",
+            critical_count=0,
+            major_count=0,
+            minor_count=0,
+            cost=8.50,
+            duration_seconds=252,
+            sort_key=(2, -8.50),
+        )
+        with pytest.raises(AttributeError):
+            row.verdict = "fail"  # type: ignore[misc]
+
+
+class TestDetermineVerdict:
+    """_determine_verdict: failed phase -> fail, rework_cycles > 0 -> rework, else pass."""
+
+    def test_fail_when_phase_failed(self) -> None:
+        """Session with a failed phase should have verdict 'fail'."""
+        from raki.report.html_report import _determine_verdict
+
+        sample = make_sample("s1", verify_status="failed")
+        assert _determine_verdict(sample) == "fail"
+
+    def test_rework_when_cycles_positive(self) -> None:
+        """Session with rework_cycles > 0 but no failed phase should have verdict 'rework'."""
+        from raki.report.html_report import _determine_verdict
+
+        sample = make_sample("s1", rework_cycles=2, verify_status="completed")
+        assert _determine_verdict(sample) == "rework"
+
+    def test_pass_when_clean(self) -> None:
+        """Session with no failed phases and 0 rework_cycles should have verdict 'pass'."""
+        from raki.report.html_report import _determine_verdict
+
+        sample = make_sample("s1", rework_cycles=0, verify_status="completed")
+        assert _determine_verdict(sample) == "pass"
+
+    def test_fail_takes_precedence_over_rework(self) -> None:
+        """When both failed phase and rework_cycles > 0, verdict should be 'fail'."""
+        from raki.report.html_report import _determine_verdict
+
+        sample = make_sample("s1", rework_cycles=2, verify_status="failed")
+        assert _determine_verdict(sample) == "fail"
+
+
+class TestBuildDetail:
+    """_build_detail: "implement failed" / "2 cycles" / "5 phases"."""
+
+    def test_detail_for_fail(self) -> None:
+        """When a phase fails, detail should name the failed phase."""
+        from raki.report.html_report import _build_detail
+
+        sample = make_sample("s1", verify_status="failed")
+        detail = _build_detail(sample)
+        assert "verify failed" in detail
+
+    def test_detail_for_rework(self) -> None:
+        """When rework_cycles > 0 and no failure, detail should show cycle count."""
+        from raki.report.html_report import _build_detail
+
+        sample = make_sample("s1", rework_cycles=2, verify_status="completed")
+        detail = _build_detail(sample)
+        assert "2 cycles" in detail
+
+    def test_detail_for_pass(self) -> None:
+        """When clean pass, detail should show phase count."""
+        from raki.report.html_report import _build_detail
+
+        sample = make_sample("s1", rework_cycles=0, verify_status="completed")
+        detail = _build_detail(sample)
+        assert "phases" in detail
+
+
+class TestComputeDuration:
+    """_compute_duration: sum phase durations in seconds."""
+
+    def test_sums_phase_durations(self) -> None:
+        """Should sum all phase duration_ms values and convert to seconds."""
+        from raki.model.phases import PhaseResult
+        from raki.report.html_report import _compute_duration
+
+        meta = SessionMeta(
+            session_id="s1",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=2,
+            rework_cycles=0,
+        )
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="done",
+                duration_ms=60000,
+            ),
+            PhaseResult(
+                name="verify",
+                generation=1,
+                status="completed",
+                output="PASS",
+                duration_ms=30000,
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        assert _compute_duration(sample) == 90
+
+    def test_zero_when_no_duration_data(self) -> None:
+        """Should return 0 when phases have no duration_ms."""
+        from raki.report.html_report import _compute_duration
+
+        sample = make_sample("s1")
+        assert _compute_duration(sample) == 0
+
+
+class TestFormatDuration:
+    """_format_duration: format seconds as M:SS."""
+
+    def test_format_minutes_seconds(self) -> None:
+        """Should format 252 seconds as '4:12'."""
+        from raki.report.html_report import _format_duration
+
+        assert _format_duration(252) == "4:12"
+
+    def test_format_zero(self) -> None:
+        """Should format 0 seconds as '0:00'."""
+        from raki.report.html_report import _format_duration
+
+        assert _format_duration(0) == "0:00"
+
+    def test_format_under_minute(self) -> None:
+        """Should format 42 seconds as '0:42'."""
+        from raki.report.html_report import _format_duration
+
+        assert _format_duration(42) == "0:42"
+
+    def test_format_exact_minutes(self) -> None:
+        """Should format 120 seconds as '2:00'."""
+        from raki.report.html_report import _format_duration
+
+        assert _format_duration(120) == "2:00"
+
+    def test_format_large_duration(self) -> None:
+        """Should format 454 seconds as '7:34'."""
+        from raki.report.html_report import _format_duration
+
+        assert _format_duration(454) == "7:34"
+
+
+class TestComputeDrillDownRows:
+    """compute_drill_down_rows: build and sort rows with FAIL first, then REWORK, then PASS."""
+
+    def test_sorts_fail_first(self) -> None:
+        """FAIL rows should come before REWORK and PASS."""
+        from raki.report.html_report import compute_drill_down_rows
+
+        sample_fail = make_sample("s-fail", verify_status="failed", cost=4.20)
+        sample_rework = make_sample("s-rework", rework_cycles=2, cost=26.10)
+        sample_pass = make_sample("s-pass", rework_cycles=0, cost=8.50)
+        sample_results = [
+            SampleResult(sample=sample_pass, scores=[]),
+            SampleResult(sample=sample_fail, scores=[]),
+            SampleResult(sample=sample_rework, scores=[]),
+        ]
+        rows = compute_drill_down_rows(sample_results)
+        assert rows[0].verdict == "fail"
+        assert rows[1].verdict == "rework"
+        assert rows[2].verdict == "pass"
+
+    def test_cost_descending_within_verdict_group(self) -> None:
+        """Within the same verdict group, rows should be sorted by cost descending."""
+        from raki.report.html_report import compute_drill_down_rows
+
+        sample_pass_cheap = make_sample("s-cheap", rework_cycles=0, cost=5.00)
+        sample_pass_expensive = make_sample("s-expensive", rework_cycles=0, cost=20.00)
+        sample_results = [
+            SampleResult(sample=sample_pass_cheap, scores=[]),
+            SampleResult(sample=sample_pass_expensive, scores=[]),
+        ]
+        rows = compute_drill_down_rows(sample_results)
+        assert rows[0].session_id == "s-expensive"
+        assert rows[1].session_id == "s-cheap"
+
+    def test_severity_counts_from_findings(self) -> None:
+        """Row severity counts should reflect actual findings."""
+        from raki.report.html_report import compute_drill_down_rows
+
+        findings = [
+            ReviewFinding(reviewer="r1", severity="critical", issue="crit1"),
+            ReviewFinding(reviewer="r1", severity="critical", issue="crit2"),
+            ReviewFinding(reviewer="r1", severity="major", issue="maj1"),
+        ]
+        sample = make_sample("s1", rework_cycles=1, findings=findings)
+        rows = compute_drill_down_rows([SampleResult(sample=sample, scores=[])])
+        assert rows[0].critical_count == 2
+        assert rows[0].major_count == 1
+        assert rows[0].minor_count == 0
+
+    def test_empty_sample_results_returns_empty(self) -> None:
+        """Empty sample_results should return empty list."""
+        from raki.report.html_report import compute_drill_down_rows
+
+        rows = compute_drill_down_rows([])
+        assert rows == []
+
+
+class TestDrillDownRowsInHtml:
+    """Drill-down rows render in HTML with verdict badges, borders, cost, and duration."""
+
+    def test_verdict_badges_in_html(self, tmp_path: Path) -> None:
+        """HTML drill-down should show FAIL/REWORK/PASS verdict badges."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # session-alpha has verify failed -> FAIL
+        assert "verdict-fail" in content or "FAIL" in content
+        # session-beta has rework_cycles=1 -> REWORK
+        assert "verdict-rework" in content or "REWORK" in content
+        # session-gamma has no rework/failure -> PASS
+        assert "verdict-pass" in content or "PASS" in content
+
+    def test_verdict_left_border_colors(self, tmp_path: Path) -> None:
+        """Rows should have left border colored by verdict (red/yellow/none)."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "border-fail" in content or "border-left" in content
+
+    def test_cost_shown_in_drilldown_row(self, tmp_path: Path) -> None:
+        """Each drill-down row should show cost with dollar sign."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "$25.00" in content
+        assert "$15.00" in content
+        assert "$8.00" in content
+
+    def test_severity_badges_on_fail_rework_only(self, tmp_path: Path) -> None:
+        """Severity badges should appear on FAIL/REWORK rows but not on clean PASS rows."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # session-gamma is PASS with no findings -- should not have severity pills in row
+        # Find the gamma session in the drill-down section (verdict-pass details element)
+        drilldown_start = content.find("Per-Session Drill-Down")
+        assert drilldown_start != -1
+        gamma_idx = content.find("session-gamma", drilldown_start)
+        assert gamma_idx != -1
+        # Find the next summary/details boundary after gamma
+        next_detail_idx = content.find("</summary>", gamma_idx)
+        gamma_row = content[gamma_idx:next_detail_idx]
+        assert "row-severity-pill-critical" not in gamma_row
+        assert "row-severity-pill-major" not in gamma_row
+
+    def test_drill_down_sorted_fail_first(self, tmp_path: Path) -> None:
+        """In HTML, FAIL sessions should appear before REWORK which appear before PASS."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # session-alpha is FAIL (verify failed), session-beta is REWORK, session-gamma is PASS
+        fail_pos = content.find("session-alpha")
+        rework_pos = content.find("session-beta")
+        pass_pos = content.find("session-gamma")
+        assert fail_pos < rework_pos < pass_pos
+
+
+class TestNeedsAttentionSection:
+    """'Needs Attention' section above full drill-down with FAIL+REWORK count badge."""
+
+    def test_needs_attention_present(self, tmp_path: Path) -> None:
+        """When FAIL or REWORK sessions exist, 'Needs Attention' section should appear."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "needs-attention" in content.lower() or "Needs Attention" in content
+
+    def test_needs_attention_count_badge(self, tmp_path: Path) -> None:
+        """Needs Attention section should show count of FAIL+REWORK sessions."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # session-alpha (FAIL) + session-beta (REWORK) = 2
+        assert "2 sessions need attention" in content.lower() or "2 session" in content.lower()
+
+    def test_needs_attention_shows_only_fail_rework(self, tmp_path: Path) -> None:
+        """Needs Attention section should only contain FAIL and REWORK sessions."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Find the Needs Attention heading in the HTML body (not CSS)
+        attention_heading = content.find("Needs Attention")
+        assert attention_heading != -1
+        # The section should end before the full drill-down starts
+        drilldown_idx = content.find("Per-Session Drill-Down", attention_heading)
+        assert drilldown_idx != -1
+        attention_section = content[attention_heading:drilldown_idx]
+        # session-gamma (PASS) should NOT be in attention section
+        assert "session-gamma" not in attention_section
+        # session-alpha (FAIL) and session-beta (REWORK) should be present
+        assert "session-alpha" in attention_section
+        assert "session-beta" in attention_section
+
+    def test_no_needs_attention_when_all_pass(self, tmp_path: Path) -> None:
+        """When all sessions pass, Needs Attention section should not appear or be empty."""
+        from raki.report.html_report import write_html_report
+
+        all_pass_sample = make_sample("s1", rework_cycles=0, cost=10.0)
+        report = EvalReport(
+            run_id="all-pass",
+            aggregate_scores={"first_pass_verify_rate": 1.0},
+            sample_results=[SampleResult(sample=all_pass_sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Either no needs-attention section, or it has an empty state
+        attention_lower = content.lower()
+        if "needs-attention" in attention_lower or "needs attention" in attention_lower:
+            # It's acceptable if the section exists but has no rows
+            assert "0 sessions" in attention_lower or "no sessions" in attention_lower
+
+
+class TestDrillDownEmptyState:
+    """Empty state when no session data."""
+
+    def test_empty_state_message(self, tmp_path: Path) -> None:
+        """When sample_results is empty, show message about --include-sessions."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_minimal_report()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "--include-sessions" in content
+
+
+class TestDrillDownExpandedView:
+    """Expanded view: phase timeline with status dots + duration, findings with severity."""
+
+    def test_phase_timeline_in_expanded_view(self, tmp_path: Path) -> None:
+        """Expanded session should show phase timeline with status dots."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Phase status dots
+        assert "phase-status" in content
+        assert "implement" in content
+        assert "verify" in content
+
+    def test_findings_with_severity_in_expanded_view(self, tmp_path: Path) -> None:
+        """Expanded session should show findings with severity badges and file location."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "SQL injection vulnerability" in content
+        assert "main.py" in content
+        assert "severity-critical" in content or "critical" in content.lower()
+
+    def test_reviewer_name_in_expanded_view(self, tmp_path: Path) -> None:
+        """Expanded session should show reviewer name for findings."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "reviewer-1" in content or "reviewer" in content.lower()
+
+
+class TestPassRowsClean:
+    """PASS rows should be visually clean -- no severity badges unless minor findings exist."""
+
+    def test_pass_row_no_badges_when_clean(self, tmp_path: Path) -> None:
+        """PASS row with no findings should have no severity badges in the summary."""
+        from raki.report.html_report import write_html_report
+
+        clean_pass = make_sample("s-clean", rework_cycles=0, cost=6.80)
+        report = EvalReport(
+            run_id="clean-pass",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=clean_pass, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Find the summary row for s-clean
+        clean_idx = content.find("s-clean")
+        assert clean_idx != -1
+        summary_end = content.find("</summary>", clean_idx)
+        row_text = content[clean_idx:summary_end]
+        # No severity pills in summary
+        assert "critical" not in row_text.lower()
+        assert "major" not in row_text.lower()
+
+    def test_pass_row_shows_minor_badge_when_minor_findings(self, tmp_path: Path) -> None:
+        """PASS row with minor findings should show minor badge."""
+        from raki.report.html_report import write_html_report
+
+        findings = [
+            ReviewFinding(reviewer="r1", severity="minor", issue="Style issue"),
+        ]
+        minor_pass = make_sample("s-minor", rework_cycles=0, cost=8.50, findings=findings)
+        report = EvalReport(
+            run_id="minor-pass",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=minor_pass, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Find the summary row for s-minor
+        minor_idx = content.find("s-minor")
+        assert minor_idx != -1
+        summary_end = content.find("</summary>", minor_idx)
+        row_text = content[minor_idx:summary_end]
+        assert "1 minor" in row_text or "minor" in row_text.lower()
