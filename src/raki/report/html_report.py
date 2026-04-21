@@ -63,16 +63,36 @@ METRIC_METADATA: dict[str, dict[str, str | bool]] = {
         "threshold": "",
         "docs_anchor": "cost-per-session",
     },
-    "knowledge_retrieval_miss_rate": {
+    "self_correction_rate": {
+        "display_name": "Self-correction rate",
+        "higher_is_better": True,
+        "display_format": "percent",
+        "description": "Ratio of rework findings resolved by the agent",
+        "subtitle": "How often the agent successfully fixes issues found during review",
+        "direction": "higher is better",
+        "threshold": "Target: >80%",
+        "docs_anchor": "self-correction-rate",
+    },
+    "knowledge_gap_rate": {
+        "display_name": "Knowledge gap rate",
+        "higher_is_better": False,
+        "display_format": "score",
+        "description": "Ratio of rework findings in domains not covered by the knowledge base",
+        "subtitle": ("How often rework happened because the KB did not cover the relevant domain"),
+        "direction": "lower is better",
+        "threshold": "Target: <0.20",
+        "docs_anchor": "knowledge-gap-rate",
+    },
+    "knowledge_miss_rate": {
         "display_name": "Knowledge miss rate",
         "higher_is_better": False,
         "display_format": "score",
-        "description": "Fraction of rework caused by missing retrieval context",
+        "description": "Ratio of rework findings in domains covered by the KB but still wrong",
         "subtitle": (
-            "How often rework happened because the agent lacked the right reference material"
+            "How often the agent got things wrong despite having the right reference material"
         ),
         "direction": "lower is better",
-        "threshold": "Target: <0.20",
+        "threshold": "Target: <0.10",
         "docs_anchor": "knowledge-miss-rate",
     },
     "phase_execution_time": {
@@ -304,8 +324,8 @@ def html_color_for_score(
 
 
 def _split_scores(
-    aggregate_scores: dict[str, float],
-) -> tuple[dict[str, float], dict[str, float]]:
+    aggregate_scores: dict[str, float | None],
+) -> tuple[dict[str, float | None], dict[str, float | None]]:
     """Split aggregate scores into operational and retrieval categories."""
     operational = {
         name: score for name, score in aggregate_scores.items() if name in OPERATIONAL_METRICS
@@ -561,7 +581,9 @@ def write_html_report(
     env = _build_jinja_env()
     template = env.get_template("report.html.j2")
 
-    def color_class_fn(score: float, metric_name: str = "") -> str:
+    def color_class_fn(score: float | None, metric_name: str = "") -> str:
+        if score is None:
+            return "color-white"
         # Special handling for rework_cycles using threshold-based coloring
         if metric_name == "rework_cycles":
             return f"color-{rework_cycles_color(score)}"
@@ -570,7 +592,9 @@ def write_html_report(
         fmt = str(meta["display_format"])
         return f"color-{html_color_for_score(score, higher, fmt)}"
 
-    def color_name_fn(score: float, metric_name: str = "") -> str:
+    def color_name_fn(score: float | None, metric_name: str = "") -> str:
+        if score is None:
+            return "white"
         if metric_name == "rework_cycles":
             return rework_cycles_color(score)
         meta = _get_metric_meta(metric_name)

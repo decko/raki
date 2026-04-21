@@ -50,7 +50,7 @@ class MetricsEngine:
 
         Only metrics that populate ``sample_scores`` with a per-session key are
         included in each :class:`SampleResult`.  Aggregate-only metrics (e.g.
-        ``ReviewSeverityDistribution``, ``KnowledgeRetrievalMissRate``) that
+        ``ReviewSeverityDistribution``) that
         leave ``sample_scores`` empty will appear in
         :attr:`EvalReport.aggregate_scores` but **not** in the per-session
         drill-down returned here.

@@ -52,7 +52,7 @@ def is_session_data_stripped(report: EvalReport) -> bool:
 
 
 def metric_stubs_from_metadata(
-    aggregate_scores: dict[str, float],
+    aggregate_scores: dict[str, float | None],
 ) -> Sequence[MetricStub]:
     """Build lightweight metric-like objects from METRIC_METADATA for print_summary.
 

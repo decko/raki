@@ -93,14 +93,16 @@ def match_sessions(baseline: EvalReport, compare: EvalReport) -> MatchResult:
 
 
 def compute_deltas(
-    baseline_scores: dict[str, float],
-    compare_scores: dict[str, float],
+    baseline_scores: dict[str, float | None],
+    compare_scores: dict[str, float | None],
 ) -> list[MetricDelta]:
     """Compute deltas for metrics present in both baseline and compare.
 
     Direction is determined by higher_is_better from METRIC_METADATA:
     - higher_is_better=True: positive delta = improved, negative = regressed
     - higher_is_better=False: negative delta = improved, positive = regressed
+
+    Metrics where either score is None (N/A) are skipped.
     """
     deltas: list[MetricDelta] = []
     # Only compute deltas for metrics present in both reports
@@ -109,6 +111,8 @@ def compute_deltas(
     for metric_name in common_metrics:
         baseline_value = baseline_scores[metric_name]
         compare_value = compare_scores[metric_name]
+        if baseline_value is None or compare_value is None:
+            continue
         delta = compare_value - baseline_value
         higher_is_better = _is_higher_is_better(metric_name)
 

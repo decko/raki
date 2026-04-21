@@ -340,220 +340,10 @@ def test_engine_sample_results_excludes_metrics_without_sample_scores():
     assert "review_severity_distribution" not in score_names
 
 
-# --- KnowledgeRetrievalMissRate ---
-
-
-def test_knowledge_miss_rate_no_rework():
-    """Sessions with zero rework should produce score 0.0."""
-    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
-
-    dataset = make_dataset(
-        make_sample("1", rework_cycles=0),
-        make_sample("2", rework_cycles=0),
-    )
-    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
-    assert result.score == 0.0
-    assert result.details["total_rework_findings"] == 0
-    assert result.details["retrieval_gaps"] == 0
-    assert result.details["capability_gaps"] == 0
-
-
-def test_knowledge_miss_rate_retrieval_gap():
-    """Finding with no related knowledge should be classified as retrieval_gap."""
-    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
-
-    meta = SessionMeta(
-        session_id="rework-1",
-        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
-        total_phases=3,
-        rework_cycles=1,
-    )
-    implement_phase = PhaseResult(
-        name="implement",
-        generation=1,
-        status="completed",
-        output="done",
-        knowledge_context="information about database schemas and migrations",
-    )
-    finding = ReviewFinding(
-        reviewer="ai-review",
-        severity="critical",
-        issue="Missing authentication check on the API endpoint",
-    )
-    sample = EvalSample(
-        session=meta,
-        phases=[implement_phase],
-        findings=[finding],
-        events=[],
-    )
-    dataset = make_dataset(sample)
-    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
-
-    assert result.score == 1.0  # all findings are retrieval gaps
-    assert result.details["retrieval_gaps"] == 1
-    assert result.details["capability_gaps"] == 0
-    assert result.details["total_rework_findings"] == 1
-
-
-def test_knowledge_miss_rate_capability_gap():
-    """Finding with related knowledge present should be classified as capability_gap."""
-    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
-
-    meta = SessionMeta(
-        session_id="rework-2",
-        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
-        total_phases=3,
-        rework_cycles=1,
-    )
-    implement_phase = PhaseResult(
-        name="implement",
-        generation=1,
-        status="completed",
-        output="done",
-        knowledge_context="Authentication must validate tokens before processing requests",
-    )
-    finding = ReviewFinding(
-        reviewer="ai-review",
-        severity="major",
-        issue="Missing authentication check on the endpoint",
-    )
-    sample = EvalSample(
-        session=meta,
-        phases=[implement_phase],
-        findings=[finding],
-        events=[],
-    )
-    dataset = make_dataset(sample)
-    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
-
-    assert result.score == 0.0  # no retrieval gaps, all capability gaps
-    assert result.details["retrieval_gaps"] == 0
-    assert result.details["capability_gaps"] == 1
-    assert result.details["total_rework_findings"] == 1
-
-
-def test_knowledge_miss_rate_mixed_gaps():
-    """Mix of retrieval and capability gaps should produce correct ratio."""
-    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
-
-    meta = SessionMeta(
-        session_id="rework-3",
-        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
-        total_phases=3,
-        rework_cycles=1,
-    )
-    implement_phase = PhaseResult(
-        name="implement",
-        generation=1,
-        status="completed",
-        output="done",
-        knowledge_context="Authentication tokens must be validated before processing",
-    )
-    finding_capability = ReviewFinding(
-        reviewer="ai-review",
-        severity="critical",
-        issue="Missing authentication token validation",
-    )
-    finding_retrieval = ReviewFinding(
-        reviewer="ai-review",
-        severity="major",
-        issue="Database connection pooling not configured properly",
-    )
-    sample = EvalSample(
-        session=meta,
-        phases=[implement_phase],
-        findings=[finding_capability, finding_retrieval],
-        events=[],
-    )
-    dataset = make_dataset(sample)
-    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
-
-    assert result.details["total_rework_findings"] == 2
-    assert result.details["capability_gaps"] == 1
-    assert result.details["retrieval_gaps"] == 1
-    assert result.score == pytest.approx(0.5)  # 1 retrieval / 2 total
-
-
-def test_knowledge_miss_rate_ignores_minor_findings():
-    """Minor findings should not be counted in the miss rate."""
-    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
-
-    meta = SessionMeta(
-        session_id="minor-only",
-        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
-        total_phases=3,
-        rework_cycles=1,
-    )
-    implement_phase = PhaseResult(
-        name="implement",
-        generation=1,
-        status="completed",
-        output="done",
-    )
-    finding = ReviewFinding(
-        reviewer="ai-review",
-        severity="minor",
-        issue="Style nit: use snake_case",
-    )
-    sample = EvalSample(
-        session=meta,
-        phases=[implement_phase],
-        findings=[finding],
-        events=[],
-    )
-    dataset = make_dataset(sample)
-    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
-
-    assert result.score == 0.0
-    assert result.details["total_rework_findings"] == 0
-
-
-def test_knowledge_miss_rate_properties():
-    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
-
-    metric = KnowledgeRetrievalMissRate()
-    assert metric.name == "knowledge_retrieval_miss_rate"
-    assert metric.requires_ground_truth is False
-    assert metric.requires_llm is False
-    assert metric.higher_is_better is False
-    assert metric.display_format == "score"
-    assert metric.display_name == "Knowledge miss rate"
-
-
-def test_knowledge_miss_rate_uses_session_phase_fallback():
-    """Should find knowledge_context from 'session' phase when 'implement' is absent."""
-    from raki.metrics.operational.knowledge_miss_rate import KnowledgeRetrievalMissRate
-
-    meta = SessionMeta(
-        session_id="session-phase",
-        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
-        total_phases=2,
-        rework_cycles=1,
-    )
-    session_phase = PhaseResult(
-        name="session",
-        generation=1,
-        status="completed",
-        output="done",
-        knowledge_context="information about authentication and authorization patterns",
-    )
-    finding = ReviewFinding(
-        reviewer="ai-review",
-        severity="critical",
-        issue="Missing authentication check",
-    )
-    sample = EvalSample(
-        session=meta,
-        phases=[session_phase],
-        findings=[finding],
-        events=[],
-    )
-    dataset = make_dataset(sample)
-    result = KnowledgeRetrievalMissRate().compute(dataset, MetricConfig())
-
-    # "authentication" appears in knowledge_context, so it's a capability gap
-    assert result.details["capability_gaps"] == 1
-    assert result.details["retrieval_gaps"] == 0
+# --- KnowledgeRetrievalMissRate (removed) ---
+# Old KnowledgeRetrievalMissRate tests removed -- metric decomposed into
+# SelfCorrectionRate (operational), KnowledgeGapRate and KnowledgeMissRate
+# (knowledge tier). See tests/test_metrics_knowledge.py for knowledge tests.
 
 
 # --- PhaseExecutionTimeMetric ---
@@ -747,3 +537,194 @@ class TestTokenEfficiency:
         assert metric.requires_ground_truth is False
         assert metric.requires_llm is False
         assert metric.display_name == "Tokens / phase"
+
+
+# --- SelfCorrectionRate ---
+
+
+class TestSelfCorrectionRate:
+    def test_resolved_findings_scores_one(self):
+        """When rework resolves all findings (final verify passes), score is 1.0."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+
+        meta = SessionMeta(
+            session_id="rework-resolved",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=4,
+            rework_cycles=1,
+        )
+        findings = [
+            ReviewFinding(reviewer="ai-review", severity="critical", issue="Missing null check"),
+            ReviewFinding(reviewer="ai-review", severity="major", issue="SQL injection risk"),
+        ]
+        phases = [
+            PhaseResult(name="implement", generation=1, status="completed", output="done"),
+            PhaseResult(name="review", generation=1, status="completed", output="findings"),
+            PhaseResult(name="implement", generation=2, status="completed", output="fixed"),
+            PhaseResult(name="verify", generation=2, status="completed", output="PASS"),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=findings, events=[])
+        dataset = make_dataset(sample)
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        assert result.score == 1.0
+        assert result.details["total_rework_findings"] == 2
+        assert result.details["resolved_findings"] == 2
+
+    def test_zero_rework_returns_na(self):
+        """No rework findings means N/A (score=None)."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+
+        dataset = make_dataset(
+            make_sample("1", rework_cycles=0),
+            make_sample("2", rework_cycles=0),
+        )
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        assert result.score is None
+        assert result.details["total_rework_findings"] == 0
+
+    def test_unresolved_findings_scores_zero(self):
+        """When rework does not resolve findings (final verify fails), score is 0.0."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+
+        meta = SessionMeta(
+            session_id="rework-unresolved",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=4,
+            rework_cycles=1,
+        )
+        findings = [
+            ReviewFinding(reviewer="ai-review", severity="critical", issue="Missing null check"),
+        ]
+        phases = [
+            PhaseResult(name="implement", generation=1, status="completed", output="done"),
+            PhaseResult(name="review", generation=1, status="completed", output="findings"),
+            PhaseResult(name="implement", generation=2, status="completed", output="attempted fix"),
+            PhaseResult(name="verify", generation=2, status="failed", output="FAIL"),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=findings, events=[])
+        dataset = make_dataset(sample)
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        assert result.score == 0.0
+        assert result.details["total_rework_findings"] == 1
+        assert result.details["resolved_findings"] == 0
+
+    def test_mixed_sessions(self):
+        """Mix of resolved and unresolved rework sessions computes correct ratio."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+
+        # Session 1: rework with 2 findings, resolved (verify passes)
+        meta_resolved = SessionMeta(
+            session_id="resolved",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=4,
+            rework_cycles=1,
+        )
+        findings_resolved = [
+            ReviewFinding(reviewer="ai", severity="critical", issue="bug A"),
+            ReviewFinding(reviewer="ai", severity="major", issue="bug B"),
+        ]
+        phases_resolved = [
+            PhaseResult(name="implement", generation=1, status="completed", output="done"),
+            PhaseResult(name="review", generation=1, status="completed", output="findings"),
+            PhaseResult(name="implement", generation=2, status="completed", output="fixed"),
+            PhaseResult(name="verify", generation=2, status="completed", output="PASS"),
+        ]
+        sample_resolved = EvalSample(
+            session=meta_resolved,
+            phases=phases_resolved,
+            findings=findings_resolved,
+            events=[],
+        )
+
+        # Session 2: rework with 1 finding, not resolved (verify fails)
+        meta_unresolved = SessionMeta(
+            session_id="unresolved",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=4,
+            rework_cycles=1,
+        )
+        findings_unresolved = [
+            ReviewFinding(reviewer="ai", severity="major", issue="bug C"),
+        ]
+        phases_unresolved = [
+            PhaseResult(name="implement", generation=1, status="completed", output="done"),
+            PhaseResult(name="review", generation=1, status="completed", output="findings"),
+            PhaseResult(name="implement", generation=2, status="completed", output="tried"),
+            PhaseResult(name="verify", generation=2, status="failed", output="FAIL"),
+        ]
+        sample_unresolved = EvalSample(
+            session=meta_unresolved,
+            phases=phases_unresolved,
+            findings=findings_unresolved,
+            events=[],
+        )
+
+        dataset = make_dataset(sample_resolved, sample_unresolved)
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        # 2 resolved out of 3 total
+        assert result.score == pytest.approx(2 / 3)
+        assert result.details["total_rework_findings"] == 3
+        assert result.details["resolved_findings"] == 2
+
+    def test_no_verify_phase_counts_as_unresolved(self):
+        """Rework session without a verify phase counts findings as unresolved."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+
+        meta = SessionMeta(
+            session_id="no-verify",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        findings = [
+            ReviewFinding(reviewer="ai", severity="major", issue="issue"),
+        ]
+        phases = [
+            PhaseResult(name="implement", generation=1, status="completed", output="done"),
+            PhaseResult(name="review", generation=1, status="completed", output="findings"),
+            PhaseResult(name="implement", generation=2, status="completed", output="fix attempt"),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=findings, events=[])
+        dataset = make_dataset(sample)
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        assert result.score == 0.0
+        assert result.details["total_rework_findings"] == 1
+        assert result.details["resolved_findings"] == 0
+
+    def test_minor_only_findings_returns_na(self):
+        """When all findings are minor severity, they are filtered out and result is N/A."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+
+        meta = SessionMeta(
+            session_id="minor-only",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=4,
+            rework_cycles=1,
+        )
+        findings = [
+            ReviewFinding(reviewer="ai-review", severity="minor", issue="Style nit"),
+            ReviewFinding(reviewer="ai-review", severity="minor", issue="Naming convention"),
+        ]
+        phases = [
+            PhaseResult(name="implement", generation=1, status="completed", output="done"),
+            PhaseResult(name="review", generation=1, status="completed", output="findings"),
+            PhaseResult(name="implement", generation=2, status="completed", output="fixed"),
+            PhaseResult(name="verify", generation=2, status="completed", output="PASS"),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=findings, events=[])
+        dataset = make_dataset(sample)
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        assert result.score is None
+        assert result.details["total_rework_findings"] == 0
+
+    def test_properties(self):
+        """Check metric protocol attributes."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+
+        metric = SelfCorrectionRate()
+        assert metric.name == "self_correction_rate"
+        assert metric.requires_llm is False
+        assert metric.requires_ground_truth is False
+        assert metric.higher_is_better is True
+        assert metric.display_format == "percent"
+        assert metric.display_name == "Self-correction rate"

@@ -1,0 +1,1 @@
+Decompose ``knowledge_miss_rate`` into three metrics: ``self_correction_rate`` (operational), ``knowledge_gap_rate`` and ``knowledge_miss_rate`` (knowledge tier). All return N/A when their denominator is zero.
