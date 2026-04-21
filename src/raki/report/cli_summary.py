@@ -19,7 +19,7 @@ OPERATIONAL_METRICS = {
     "rework_cycles",
     "review_severity_distribution",
     "cost_efficiency",
-    "knowledge_retrieval_miss_rate",
+    "self_correction_rate",
     "phase_execution_time",
     "token_efficiency",
 }
@@ -103,7 +103,7 @@ def _no_data_reason(metric_details: dict[str, dict], metric_name: str) -> str:
 
 def format_metric_line(
     name: str,
-    score: float,
+    score: float | None,
     detail: str = "",
     display_format: str = "score",
     higher_is_better: bool = True,
@@ -114,8 +114,9 @@ def format_metric_line(
 ) -> str:
     """Format a single metric line with color, display format, and sample count."""
     label = display_name or name
-    if no_data:
-        return f"[dim]  {label:<35} N/A    ({no_data_reason})[/dim]"
+    if no_data or score is None:
+        reason = no_data_reason if no_data else "no applicable data"
+        return f"[dim]  {label:<35} N/A    ({reason})[/dim]"
     color = color_for_score(score, higher_is_better, display_format)
     if display_format == "currency":
         score_str = f"${score:.2f}"

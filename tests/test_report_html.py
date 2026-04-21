@@ -631,14 +631,14 @@ class TestHtmlColorHigherIsBetter:
         assert html_color_for_score(3.0, higher_is_better=False, display_format="count") == "white"
 
     def test_inverted_metric_colors_in_report(self, tmp_path: Path) -> None:
-        """Inverted metrics like knowledge_retrieval_miss_rate should show correct colors."""
+        """Inverted metrics like knowledge_miss_rate should show correct colors."""
         from raki.report.html_report import write_html_report
 
         report = EvalReport(
             run_id="eval-inverted",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
-                "knowledge_retrieval_miss_rate": 0.1,  # Low miss rate = good = green
+                "knowledge_miss_rate": 0.1,  # Low miss rate = good = green
             },
         )
         output = tmp_path / "report.html"
@@ -908,6 +908,7 @@ class TestMetricMetadataSync:
     def test_metadata_matches_metric_classes(self) -> None:
         """Every metric class's display_name, higher_is_better, and display_format
         must match the corresponding entry in METRIC_METADATA."""
+        from raki.metrics.knowledge import ALL_KNOWLEDGE
         from raki.metrics.operational import ALL_OPERATIONAL
         from raki.metrics.ragas.faithfulness import FaithfulnessMetric
         from raki.metrics.ragas.precision import ContextPrecisionMetric
@@ -915,12 +916,16 @@ class TestMetricMetadataSync:
         from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
         from raki.report.html_report import METRIC_METADATA
 
-        all_metrics = list(ALL_OPERATIONAL) + [
-            FaithfulnessMetric(),
-            AnswerRelevancyMetric(),
-            ContextPrecisionMetric(),
-            ContextRecallMetric(),
-        ]
+        all_metrics = (
+            list(ALL_OPERATIONAL)
+            + list(ALL_KNOWLEDGE)
+            + [
+                FaithfulnessMetric(),
+                AnswerRelevancyMetric(),
+                ContextPrecisionMetric(),
+                ContextRecallMetric(),
+            ]
+        )
 
         for metric in all_metrics:
             meta = METRIC_METADATA.get(metric.name)
@@ -940,6 +945,7 @@ class TestMetricMetadataSync:
 
     def test_all_metadata_entries_have_metric_class(self) -> None:
         """Every key in METRIC_METADATA must correspond to an actual metric class."""
+        from raki.metrics.knowledge import ALL_KNOWLEDGE
         from raki.metrics.operational import ALL_OPERATIONAL
         from raki.metrics.ragas.faithfulness import FaithfulnessMetric
         from raki.metrics.ragas.precision import ContextPrecisionMetric
@@ -947,12 +953,16 @@ class TestMetricMetadataSync:
         from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
         from raki.report.html_report import METRIC_METADATA
 
-        all_metrics = list(ALL_OPERATIONAL) + [
-            FaithfulnessMetric(),
-            AnswerRelevancyMetric(),
-            ContextPrecisionMetric(),
-            ContextRecallMetric(),
-        ]
+        all_metrics = (
+            list(ALL_OPERATIONAL)
+            + list(ALL_KNOWLEDGE)
+            + [
+                FaithfulnessMetric(),
+                AnswerRelevancyMetric(),
+                ContextPrecisionMetric(),
+                ContextRecallMetric(),
+            ]
+        )
         metric_names = {metric.name for metric in all_metrics}
 
         for metadata_key in METRIC_METADATA:
@@ -1259,7 +1269,12 @@ class TestKnowledgeMissRateConditional:
     """Knowledge Miss Rate hidden when no knowledge_context."""
 
     def test_hidden_when_no_knowledge_context(self, tmp_path: Path) -> None:
-        """Knowledge Miss Rate should be hidden when no session has knowledge_context."""
+        """Knowledge Miss Rate renders as N/A when no session has knowledge_context.
+
+        With the new behavior (issue #113), knowledge_miss_rate returns
+        score=None when no knowledge_context exists, and the HTML template
+        renders None scores as "N/A".
+        """
         from raki.report.html_report import write_html_report
 
         sample = make_sample("s1")
@@ -1268,14 +1283,15 @@ class TestKnowledgeMissRateConditional:
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
                 "first_pass_verify_rate": 0.85,
-                "knowledge_retrieval_miss_rate": 0.15,
+                "knowledge_miss_rate": None,
             },
             sample_results=[SampleResult(sample=sample, scores=[])],
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        assert "Knowledge Miss Rate omitted" in content or "knowledge_miss_footnote" in content
+        # With score=None, the template should render "N/A" for the metric
+        assert "N/A" in content
 
     def test_shown_when_knowledge_context_present(self, tmp_path: Path) -> None:
         """Knowledge Miss Rate should be shown when sessions have knowledge_context."""
@@ -1298,7 +1314,7 @@ class TestKnowledgeMissRateConditional:
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
                 "first_pass_verify_rate": 0.85,
-                "knowledge_retrieval_miss_rate": 0.15,
+                "knowledge_miss_rate": 0.15,
             },
             sample_results=[SampleResult(sample=sample, scores=[])],
         )

@@ -362,7 +362,7 @@ def run(
         retrieval_scores = {
             name: score
             for name, score in report.aggregate_scores.items()
-            if name not in OPERATIONAL_METRICS
+            if name not in OPERATIONAL_METRICS and score is not None
         }
         if retrieval_scores:
             mean_retrieval = sum(retrieval_scores.values()) / len(retrieval_scores)

@@ -741,8 +741,8 @@
       <div class="score-grid">
         {% for name, score in operational_scores.items() %}
         {% set meta = get_metric_meta(name) %}
-        {# Skip knowledge_retrieval_miss_rate when no knowledge context #}
-        {% if name == "knowledge_retrieval_miss_rate" and not show_knowledge_miss %}
+        {# Skip knowledge metrics when no knowledge context #}
+        {% if name in ("knowledge_miss_rate", "knowledge_gap_rate") and not show_knowledge_miss %}
         {% elif name == "review_severity_distribution" %}
         {# Severity distribution is rendered separately below #}
         {% else %}
@@ -751,13 +751,11 @@
             {% if meta.docs_anchor %}<a href="{{ docs_base_url }}#{{ meta.docs_anchor }}">{{ meta.display_name }}</a>{% else %}{{ meta.display_name }}{% endif %}
           </div>
           {% if meta.subtitle %}<div class="metric-subtitle">{{ meta.subtitle }}</div>{% endif %}
-          {% if name in no_data_metrics %}
+          {% if score is none or name in no_data_metrics %}
           <div class="metric-value" style="color: #666;">N/A</div>
-          <div class="metric-subtitle" style="color: #888; font-size: 0.75rem;">{{ no_data_metrics[name] }}</div>
+          <div class="metric-subtitle" style="color: #888; font-size: 0.75rem;">{{ no_data_metrics.get(name, "no applicable data") }}</div>
           {% else %}
           <div class="metric-value {{ color_class(score, name) }}">{% if meta.display_format == "currency" %}${{ "%.2f"|format(score) }}{% elif meta.display_format == "count" %}{{ "%.1f"|format(score) }}{% elif meta.display_format == "percent" %}{{ "%.0f"|format(score * 100) }}%{% elif meta.display_format == "duration" %}{{ "%.1f"|format(score) }}s{% else %}{{ "%.2f"|format(score) }}{% endif %}</div>
-          {% endif %}
-          {% if name not in no_data_metrics %}
           {% if name == "cost_efficiency" and cost_range %}
           <div class="cost-range">Range: ${{ "%.2f"|format(cost_range[0]) }} &ndash; ${{ "%.2f"|format(cost_range[1]) }}</div>
           {% endif %}
@@ -817,7 +815,7 @@
       {% endif %}
 
       {# Knowledge Miss Rate omitted footnote #}
-      {% if not show_knowledge_miss and "knowledge_retrieval_miss_rate" in operational_scores %}
+      {% if not show_knowledge_miss and ("knowledge_miss_rate" in operational_scores or "knowledge_gap_rate" in operational_scores) %}
       <p class="footnote knowledge_miss_footnote">Knowledge Miss Rate omitted &mdash; no retrieval context available in sessions.</p>
       {% endif %}
     </div>
@@ -835,6 +833,10 @@
             {% if name in experimental_metrics %} <span class="metric-tag">[experimental]</span>{% endif %}
           </div>
           {% if meta.subtitle %}<div class="metric-subtitle">{{ meta.subtitle }}</div>{% endif %}
+          {% if score is none %}
+          <div class="metric-value" style="color: #666;">N/A</div>
+          <div class="metric-subtitle" style="color: #888; font-size: 0.75rem;">no applicable data</div>
+          {% else %}
           <div class="metric-value {{ color_class(score, name) }}">{{ "%.2f"|format(score) }}</div>
           {% if score <= 1.0 and score >= 0.0 %}
           <div class="metric-bar">
@@ -845,6 +847,7 @@
             {% if meta.direction %}<span class="direction-badge">{{ meta.direction }}</span>{% endif %}
             {% if meta.threshold %}<span class="threshold-label">{{ meta.threshold }}</span>{% endif %}
           </div>
+          {% endif %}
         </div>
         {% endfor %}
       </div>
