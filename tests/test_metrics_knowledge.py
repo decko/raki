@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from conftest import make_dataset, make_sample
+from raki.docs.chunker import DocChunk
 from raki.metrics.protocol import MetricConfig
 from raki.model import (
     EvalSample,
@@ -447,3 +448,304 @@ class TestKnowledgeMissRate:
         assert metric.higher_is_better is False
         assert metric.display_format == "score"
         assert metric.display_name == "Knowledge miss rate"
+
+    def test_doc_chunks_domain_aware_matching(self):
+        """With doc chunks, only findings matching a specific domain's content are covered."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        meta = SessionMeta(
+            session_id="domain-aware",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        implement_phase = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="done",
+        )
+        # Finding about authentication -- should match auth domain
+        finding_auth = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing authentication token validation on the endpoint",
+        )
+        # Finding about database -- should NOT match auth domain docs
+        finding_db = ReviewFinding(
+            reviewer="ai-review",
+            severity="major",
+            issue="Database connection pooling not configured properly",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement_phase],
+            findings=[finding_auth, finding_db],
+            events=[],
+        )
+        dataset = make_dataset(sample)
+
+        # Only auth domain docs provided -- database finding is NOT covered
+        auth_chunks = [
+            DocChunk(
+                text="Authentication tokens must be validated before processing requests",
+                source_file="auth/setup.md",
+                domain="auth",
+            ),
+        ]
+        config = MetricConfig(doc_chunks=auth_chunks)
+        result = KnowledgeMissRate().compute(dataset, config)
+
+        # Only 1 of 2 findings is in a covered domain (auth)
+        assert result.details["covered_findings"] == 1
+        assert result.details["total_rework_findings"] == 2
+        assert result.score == pytest.approx(0.5)
+
+    def test_doc_chunks_all_domains_covered(self):
+        """When doc chunks cover all finding domains, all findings are covered misses."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        meta = SessionMeta(
+            session_id="all-covered",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        implement_phase = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="done",
+        )
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing authentication token validation",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement_phase],
+            findings=[finding],
+            events=[],
+        )
+        dataset = make_dataset(sample)
+
+        auth_chunks = [
+            DocChunk(
+                text="Authentication tokens must be validated before processing",
+                source_file="auth/setup.md",
+                domain="auth",
+            ),
+        ]
+        config = MetricConfig(doc_chunks=auth_chunks)
+        result = KnowledgeMissRate().compute(dataset, config)
+        assert result.score == 1.0
+        assert result.details["covered_findings"] == 1
+
+    def test_doc_chunks_no_domains_covered(self):
+        """When doc chunks don't cover any finding domain, score is 0.0."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        meta = SessionMeta(
+            session_id="none-covered",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        implement_phase = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="done",
+        )
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing authentication check on the endpoint",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement_phase],
+            findings=[finding],
+            events=[],
+        )
+        dataset = make_dataset(sample)
+
+        # Only database docs -- auth finding should NOT be covered
+        db_chunks = [
+            DocChunk(
+                text="Database schemas and migration procedures for PostgreSQL",
+                source_file="database/schema.md",
+                domain="database",
+            ),
+        ]
+        config = MetricConfig(doc_chunks=db_chunks)
+        result = KnowledgeMissRate().compute(dataset, config)
+        assert result.score == 0.0
+        assert result.details["covered_findings"] == 0
+        assert result.details["total_rework_findings"] == 1
+
+    def test_no_doc_chunks_returns_na(self):
+        """When no doc chunks are provided, the metric returns N/A (score=None)."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        meta = SessionMeta(
+            session_id="no-docs",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        implement_phase = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="done",
+        )
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing null check on the endpoint",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement_phase],
+            findings=[finding],
+            events=[],
+        )
+        dataset = make_dataset(sample)
+
+        # No doc chunks -- metric should return None
+        config = MetricConfig(doc_chunks=[])
+        result = KnowledgeMissRate().compute(dataset, config)
+        assert result.score is None
+
+    def test_doc_chunks_override_knowledge_context(self):
+        """When doc chunks are provided, they take precedence over phase knowledge_context."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        meta = SessionMeta(
+            session_id="override",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        # Phase has knowledge_context covering auth, but doc chunks only cover database
+        implement_phase = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="done",
+            knowledge_context="Authentication tokens must be validated before processing",
+        )
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing authentication token validation",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement_phase],
+            findings=[finding],
+            events=[],
+        )
+        dataset = make_dataset(sample)
+
+        # Doc chunks cover database, NOT auth -- finding should NOT be covered
+        db_chunks = [
+            DocChunk(
+                text="Database schemas and migration procedures for PostgreSQL",
+                source_file="database/schema.md",
+                domain="database",
+            ),
+        ]
+        config = MetricConfig(doc_chunks=db_chunks)
+        result = KnowledgeMissRate().compute(dataset, config)
+        assert result.score == 0.0
+        assert result.details["covered_findings"] == 0
+
+
+# --- KnowledgeGapRate with doc_chunks ---
+
+
+class TestKnowledgeGapRateWithDocChunks:
+    def test_doc_chunks_domain_aware_matching(self):
+        """With doc chunks, only findings NOT matching any domain's content are uncovered."""
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        meta = SessionMeta(
+            session_id="gap-domain",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        implement_phase = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="done",
+        )
+        finding_auth = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing authentication token validation on the endpoint",
+        )
+        finding_db = ReviewFinding(
+            reviewer="ai-review",
+            severity="major",
+            issue="Database connection pooling not configured properly",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement_phase],
+            findings=[finding_auth, finding_db],
+            events=[],
+        )
+        dataset = make_dataset(sample)
+
+        # Only auth domain docs -- database finding is uncovered
+        auth_chunks = [
+            DocChunk(
+                text="Authentication tokens must be validated before processing requests",
+                source_file="auth/setup.md",
+                domain="auth",
+            ),
+        ]
+        config = MetricConfig(doc_chunks=auth_chunks)
+        result = KnowledgeGapRate().compute(dataset, config)
+
+        assert result.details["uncovered_findings"] == 1
+        assert result.details["total_rework_findings"] == 2
+        assert result.score == pytest.approx(0.5)
+
+    def test_no_doc_chunks_returns_na(self):
+        """When no doc chunks are provided, the metric returns N/A (score=None)."""
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        meta = SessionMeta(
+            session_id="gap-no-docs",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        implement_phase = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="done",
+        )
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing null check on the endpoint",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement_phase],
+            findings=[finding],
+            events=[],
+        )
+        dataset = make_dataset(sample)
+
+        config = MetricConfig(doc_chunks=[])
+        result = KnowledgeGapRate().compute(dataset, config)
+        assert result.score is None

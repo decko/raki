@@ -1,7 +1,9 @@
-from pathlib import Path
-from typing import Literal, Protocol, runtime_checkable
+from __future__ import annotations
 
-from pydantic import BaseModel
+from pathlib import Path
+from typing import Any, Literal, Protocol, runtime_checkable
+
+from pydantic import BaseModel, Field
 
 from raki.model import EvalDataset
 from raki.model.report import MetricResult
@@ -10,12 +12,15 @@ LLMProvider = Literal["vertex-anthropic", "anthropic", "google"]
 
 
 class MetricConfig(BaseModel):
+    model_config = {"arbitrary_types_allowed": True}
+
     llm_provider: LLMProvider = "vertex-anthropic"
     llm_model: str = "claude-sonnet-4-6"
     temperature: float = 0.0
     batch_size: int = 4
     judge_log_path: Path | None = None  # path to judge_log.jsonl for audit logging
     project_root: Path | None = None  # root directory for path validation
+    doc_chunks: list[Any] = Field(default_factory=list)  # list[DocChunk], Any to avoid import
 
 
 @runtime_checkable
