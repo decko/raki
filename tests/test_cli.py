@@ -82,25 +82,25 @@ class TestCliValidate:
         assert "error" in result.output.lower()
 
 
-class TestCliRunNoLlm:
-    def test_run_no_llm_produces_json(self, manifest_with_session, tmp_path):
+class TestCliRunDefault:
+    def test_run_default_produces_json(self, manifest_with_session, tmp_path):
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest), "--no-llm", "-o", str(output_dir)],
+            ["run", "-m", str(manifest), "-o", str(output_dir)],
         )
         assert result.exit_code == 0
         json_files = list(output_dir.glob("*.json"))
         assert len(json_files) == 1
 
-    def test_run_no_llm_shows_summary(self, manifest_with_session):
+    def test_run_default_shows_summary(self, manifest_with_session):
         manifest, _sessions = manifest_with_session
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest), "--no-llm"],
+            ["run", "-m", str(manifest)],
         )
         assert result.exit_code == 0
         assert "Operational Health" in result.output
@@ -111,7 +111,7 @@ class TestCliRunQuiet:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "-q"],
+            ["run", "-m", str(empty_manifest), "-q"],
         )
         assert result.exit_code == 0
         assert "Operational Health" not in result.output
@@ -125,7 +125,7 @@ class TestCliRunDefaultManifest:
         manifest = tmp_path / "raki.yaml"
         manifest.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "--no-llm"])
+        result = runner.invoke(main, ["run"])
         assert result.exit_code == 0
 
     def test_discovers_eval_manifest_yaml(self, tmp_path, monkeypatch):
@@ -135,7 +135,7 @@ class TestCliRunDefaultManifest:
         manifest = tmp_path / "eval-manifest.yaml"
         manifest.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "--no-llm"])
+        result = runner.invoke(main, ["run"])
         assert result.exit_code == 0
 
     def test_prints_discovered_manifest(self, tmp_path, monkeypatch):
@@ -145,13 +145,13 @@ class TestCliRunDefaultManifest:
         manifest = tmp_path / "raki.yaml"
         manifest.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "--no-llm"])
+        result = runner.invoke(main, ["run"])
         assert "raki.yaml" in result.output
 
     def test_error_when_no_manifest_found(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "--no-llm"])
+        result = runner.invoke(main, ["run"])
         assert result.exit_code == 2
 
 
@@ -160,7 +160,7 @@ class TestCliRunThreshold:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "--threshold", "0.8"],
+            ["run", "-m", str(empty_manifest), "--threshold", "0.8"],
         )
         assert "No retrieval metrics active" in result.output
 
@@ -191,7 +191,6 @@ class TestCliRunThreshold:
                     "run",
                     "-m",
                     str(manifest),
-                    "--no-llm",
                     "--threshold",
                     "0.99",
                     "-o",
@@ -207,7 +206,7 @@ class TestCliRunJson:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest), "--no-llm", "--json", "-q"],
+            ["run", "-m", str(manifest), "--json", "-q"],
         )
         assert result.exit_code == 0
         # Output should contain valid JSON with run_id
@@ -221,7 +220,7 @@ class TestCliRunJson:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest), "--no-llm", "--json", "-q"],
+            ["run", "-m", str(manifest), "--json", "-q"],
         )
         assert result.exit_code == 0
         data = json.loads(result.output)
@@ -242,7 +241,7 @@ class TestCliRunJson:
 
         manifest, _sessions = manifest_with_session
         proc = subprocess.run(
-            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--no-llm", "--json"],
+            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--json"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -259,7 +258,7 @@ class TestCliRunJson:
 
         manifest, _sessions = manifest_with_session
         proc = subprocess.run(
-            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--no-llm", "--json"],
+            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--json"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -269,14 +268,14 @@ class TestCliRunJson:
         assert len(proc.stderr) > 0, "Expected Rich output on stderr when --json is active"
 
     def test_json_pipe_roundtrip(self, manifest_with_session):
-        """Simulate `raki run --json -m manifest --no-llm | python -m json.tool`."""
+        """Simulate `raki run --json -m manifest | python -m json.tool`."""
         import subprocess
         import sys
 
         manifest, _sessions = manifest_with_session
         # First get JSON output
         raki_proc = subprocess.run(
-            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--no-llm", "--json"],
+            [sys.executable, "-m", "raki", "run", "-m", str(manifest), "--json"],
             capture_output=True,
             text=True,
             timeout=30,
@@ -306,7 +305,7 @@ class TestCliRunVerbose:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest), "--no-llm", "-v"],
+            ["run", "-m", str(manifest), "-v"],
         )
         assert result.exit_code == 0
         assert "Skipped" in result.output or "skipped" in result.output.lower()
@@ -317,7 +316,7 @@ class TestCliExitCodes:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm"],
+            ["run", "-m", str(empty_manifest)],
         )
         assert result.exit_code == 0
 
@@ -337,7 +336,7 @@ class TestAdapterFiltering:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest_path), "--no-llm", "--adapter", "session-schema", "-q"],
+            ["run", "-m", str(manifest_path), "--adapter", "session-schema", "-q"],
         )
         assert result.exit_code == 0
 
@@ -346,7 +345,7 @@ class TestAdapterFiltering:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest_path), "--no-llm", "--adapter", "nonexistent"],
+            ["run", "-m", str(manifest_path), "--adapter", "nonexistent"],
         )
         assert result.exit_code == 2
 
@@ -355,7 +354,7 @@ class TestAdapterFiltering:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest_path), "--no-llm", "--adapter", "nonexistent"],
+            ["run", "-m", str(manifest_path), "--adapter", "nonexistent"],
         )
         assert "session-schema" in result.output
         assert "alcove" in result.output
@@ -366,7 +365,7 @@ class TestAdapterFiltering:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest_path), "--no-llm", "--adapter", "session-schema"],
+            ["run", "-m", str(manifest_path), "--adapter", "session-schema"],
         )
         assert result.exit_code == 0
         assert "Warning: --adapter is not yet implemented" not in result.output
@@ -378,7 +377,7 @@ class TestMetricsFiltering:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest_path), "--no-llm", "--metrics", "cost_efficiency", "-q"],
+            ["run", "-m", str(manifest_path), "--metrics", "cost_efficiency", "-q"],
         )
         assert result.exit_code == 0
 
@@ -391,7 +390,6 @@ class TestMetricsFiltering:
                 "run",
                 "-m",
                 str(manifest_path),
-                "--no-llm",
                 "--metrics",
                 "cost_efficiency,rework_cycles",
                 "-q",
@@ -404,7 +402,7 @@ class TestMetricsFiltering:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest_path), "--no-llm", "--metrics", "nonexistent"],
+            ["run", "-m", str(manifest_path), "--metrics", "nonexistent"],
         )
         assert result.exit_code == 2
 
@@ -413,7 +411,7 @@ class TestMetricsFiltering:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest_path), "--no-llm", "--metrics", "nonexistent"],
+            ["run", "-m", str(manifest_path), "--metrics", "nonexistent"],
         )
         assert "Valid metrics" in result.output
 
@@ -428,7 +426,6 @@ class TestMetricsFiltering:
                 "run",
                 "-m",
                 str(manifest_path),
-                "--no-llm",
                 "--metrics",
                 "cost_efficiency",
                 "-o",
@@ -459,7 +456,7 @@ class TestMetricsFiltering:
                 "-q",
             ],
         )
-        # Should succeed without LLM setup even though --no-llm was not specified
+        # Should succeed without LLM setup (default behavior skips LLM)
         assert result.exit_code == 0
 
     def test_filter_with_spaces_around_names(self, manifest_with_session):
@@ -472,7 +469,6 @@ class TestMetricsFiltering:
                 "run",
                 "-m",
                 str(manifest_path),
-                "--no-llm",
                 "--metrics",
                 " cost_efficiency , rework_cycles ",
                 "-q",
@@ -480,8 +476,8 @@ class TestMetricsFiltering:
         )
         assert result.exit_code == 0
 
-    def test_combined_metrics_and_no_llm(self, manifest_with_session):
-        """--metrics with only operational names + --no-llm should work fine."""
+    def test_combined_operational_metrics_default(self, manifest_with_session):
+        """--metrics with only operational names should work with default (no LLM)."""
         manifest_path, _sessions = manifest_with_session
         runner = CliRunner()
         result = runner.invoke(
@@ -490,7 +486,6 @@ class TestMetricsFiltering:
                 "run",
                 "-m",
                 str(manifest_path),
-                "--no-llm",
                 "--metrics",
                 "first_pass_verify_rate,rework_cycles",
                 "-q",
@@ -587,7 +582,6 @@ class TestCliJudgeModel:
                 "run",
                 "-m",
                 str(empty_manifest),
-                "--no-llm",
                 "--judge-model",
                 "claude-opus-4-6",
             ],
@@ -599,7 +593,7 @@ class TestCliJudgeModel:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm"],
+            ["run", "-m", str(empty_manifest)],
         )
         assert result.exit_code == 0
 
@@ -613,7 +607,6 @@ class TestCliJudgeProvider:
                 "run",
                 "-m",
                 str(empty_manifest),
-                "--no-llm",
                 "--judge-provider",
                 "vertex-anthropic",
             ],
@@ -628,7 +621,6 @@ class TestCliJudgeProvider:
                 "run",
                 "-m",
                 str(empty_manifest),
-                "--no-llm",
                 "--judge-provider",
                 "anthropic",
             ],
@@ -643,7 +635,6 @@ class TestCliJudgeProvider:
                 "run",
                 "-m",
                 str(empty_manifest),
-                "--no-llm",
                 "--judge-provider",
                 "openai",
             ],
@@ -655,7 +646,7 @@ class TestCliJudgeProvider:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm"],
+            ["run", "-m", str(empty_manifest)],
         )
         assert result.exit_code == 0
 
@@ -666,7 +657,7 @@ class TestCliParallelWiring:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "-p", "8"],
+            ["run", "-m", str(empty_manifest), "-p", "8"],
         )
         assert result.exit_code == 0
         assert "Warning: --parallel" not in result.output
@@ -711,7 +702,7 @@ class TestCliSummaryDisplayName:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest), "--no-llm"],
+            ["run", "-m", str(manifest)],
         )
         assert result.exit_code == 0
         # Should show human-readable display names, not raw snake_case
@@ -725,7 +716,7 @@ class TestCliSummaryDisplayName:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest), "--no-llm"],
+            ["run", "-m", str(manifest)],
         )
         assert result.exit_code == 0
         # Raw snake_case names should not appear in the summary lines
@@ -741,7 +732,7 @@ class TestCliSummaryMetricDescription:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(manifest), "--no-llm"],
+            ["run", "-m", str(manifest)],
         )
         assert result.exit_code == 0
         # Metric descriptions should appear in parentheses
@@ -981,21 +972,21 @@ class TestGroundTruthWiring:
         """run() should succeed when manifest has ground_truth.path set."""
         manifest_path, _sessions, _gt = manifest_with_ground_truth
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "-m", str(manifest_path), "--no-llm", "-q"])
+        result = runner.invoke(main, ["run", "-m", str(manifest_path), "-q"])
         assert result.exit_code == 0
 
     def test_run_logs_match_count(self, manifest_with_ground_truth):
         """run() should log how many sessions matched ground truth."""
         manifest_path, _sessions, _gt = manifest_with_ground_truth
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "-m", str(manifest_path), "--no-llm"])
+        result = runner.invoke(main, ["run", "-m", str(manifest_path)])
         assert "Matched ground truth" in result.output
 
     def test_run_warns_low_match_rate(self, manifest_with_ground_truth):
         """run() should warn when match rate is below 50%."""
         manifest_path, _sessions, _gt = manifest_with_ground_truth
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "-m", str(manifest_path), "--no-llm"])
+        result = runner.invoke(main, ["run", "-m", str(manifest_path)])
         # The pass-simple fixture has no triage phase with code_area, so 0/1 match rate
         assert (
             "ground truth matching relies on" in result.output
@@ -1020,14 +1011,14 @@ class TestGroundTruthWiring:
             f"ground_truth:\n  path: {ground_truth}\n"
         )
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "-m", str(manifest), "--no-llm"])
+        result = runner.invoke(main, ["run", "-m", str(manifest)])
         assert result.exit_code == 0
 
     def test_run_quiet_suppresses_match_log(self, manifest_with_ground_truth):
         """run() in quiet mode should not log match count."""
         manifest_path, _sessions, _gt = manifest_with_ground_truth
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "-m", str(manifest_path), "--no-llm", "-q"])
+        result = runner.invoke(main, ["run", "-m", str(manifest_path), "-q"])
         assert result.exit_code == 0
         assert "Matched ground truth" not in result.output
 
@@ -1090,7 +1081,7 @@ class TestGroundTruthWiring:
             f"ground_truth:\n  path: {ground_truth}\n"
         )
         runner = CliRunner()
-        result = runner.invoke(main, ["run", "-m", str(manifest), "--no-llm"])
+        result = runner.invoke(main, ["run", "-m", str(manifest)])
         assert result.exit_code == 0
         assert "Matched ground truth for 1/1" in result.output
 
@@ -1260,6 +1251,85 @@ class TestCliReportDiff:
         assert "Improvement" in result.output or "improvement" in result.output.lower()
 
 
+class TestCLIInversion:
+    """Tests for issue #112: --judge opt-in, --no-llm deprecated."""
+
+    def test_run_defaults_to_no_llm(self, manifest_with_session, tmp_path):
+        """run without --judge should NOT run LLM metrics (skip_llm=True)."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "-o", str(output_dir), "-q"],
+        )
+        assert result.exit_code == 0
+        # Should produce only operational metrics, not LLM metrics
+        json_files = list(output_dir.glob("*.json"))
+        assert len(json_files) == 1
+        data = json.loads(json_files[0].read_text())
+        assert "faithfulness" not in data.get("aggregate_scores", {})
+
+    def test_run_with_judge_enables_llm(self, empty_manifest):
+        """run --judge should set skip_llm=False, enabling LLM metric imports."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"faithfulness": 0.9},
+        )
+        runner = CliRunner()
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report) as mock_run:
+            result = runner.invoke(
+                main,
+                ["run", "-m", str(empty_manifest), "--judge", "-q"],
+            )
+            assert result.exit_code == 0
+            # Engine.run should have been called with skip_llm=False
+            mock_run.assert_called_once()
+            _call_args, call_kwargs = mock_run.call_args
+            assert call_kwargs.get("skip_llm") is False
+
+    def test_no_llm_prints_deprecation(self, empty_manifest):
+        """--no-llm should print a deprecation warning to stderr."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(empty_manifest), "--no-llm", "-q"],
+        )
+        assert result.exit_code == 0
+        assert "--no-llm is deprecated" in result.stderr
+
+    def test_judge_and_no_llm_conflict(self, empty_manifest):
+        """--judge --no-llm should produce an error."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(empty_manifest), "--judge", "--no-llm"],
+        )
+        assert result.exit_code != 0
+        assert "--judge" in result.output and "--no-llm" in result.output
+
+    def test_report_defaults_to_no_llm(self, manifest_with_session, tmp_path):
+        """report subcommand is not affected (report doesn't have --no-llm/--judge)."""
+        # The report command re-renders from saved JSON, it doesn't run metrics.
+        # This test verifies report still works without any new flags.
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", str(report_json)])
+        assert result.exit_code == 0
+        assert "Operational Health" in result.output
+
+    def test_report_with_judge_flag_is_not_accepted(self):
+        """report subcommand should NOT accept --judge (it doesn't run metrics)."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--judge"])
+        assert result.exit_code == 2
+
+
 class TestTenantRemoved:
     def test_tenant_option_no_longer_exists(self):
         """--tenant was removed in v0.6.0 and should produce a Click error."""
@@ -1275,12 +1345,12 @@ class TestTenantRemoved:
 
 
 class TestThresholdWarningUpdated:
-    def test_threshold_with_no_llm_warns_no_retrieval_metrics_active(self, empty_manifest):
-        """--threshold + --no-llm should warn about no retrieval metrics being active."""
+    def test_threshold_without_judge_warns_no_retrieval_metrics_active(self, empty_manifest):
+        """--threshold without --judge should warn about no retrieval metrics being active."""
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "--threshold", "0.5"],
+            ["run", "-m", str(empty_manifest), "--threshold", "0.5"],
         )
         assert "No retrieval metrics active" in result.output
 
@@ -1289,7 +1359,7 @@ class TestThresholdWarningUpdated:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "--threshold", "0.5"],
+            ["run", "-m", str(empty_manifest), "--threshold", "0.5"],
         )
         assert "non-0-1 scales" in result.output
 
@@ -1298,7 +1368,7 @@ class TestThresholdWarningUpdated:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "--threshold", "0.5"],
+            ["run", "-m", str(empty_manifest), "--threshold", "0.5"],
         )
         assert "v0.7.0" in result.output
 

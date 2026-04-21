@@ -102,7 +102,10 @@ def main():
 @main.command()
 @click.option("-m", "--manifest", "manifest_path", default=None, help="Path to manifest file")
 @click.option("-o", "--output", "output_dir", default="./results", help="Output directory")
-@click.option("--no-llm", is_flag=True, help="Skip LLM-backed metrics")
+@click.option("--judge", is_flag=True, default=False, help="Enable LLM-judged analytical metrics")
+@click.option(
+    "--no-llm", is_flag=True, help="[Deprecated] Skip LLM-backed metrics (now the default)"
+)
 @click.option("-q", "--quiet", is_flag=True, help="CI mode -- minimal output")
 @click.option("--threshold", type=float, default=None, help="Min score for exit code 0")
 @click.option("--adapter", "adapter_format", default=None, help="Force adapter (default: auto)")
@@ -143,6 +146,7 @@ def main():
 def run(
     manifest_path: str | None,
     output_dir: str,
+    judge: bool,
     no_llm: bool,
     quiet: bool,
     threshold: float | None,
@@ -156,6 +160,22 @@ def run(
     verbose: bool,
 ) -> None:
     """Run evaluation against sessions."""
+    if judge and no_llm:
+        raise click.UsageError(
+            "--judge and --no-llm cannot be used together. "
+            "--no-llm is deprecated and now the default."
+        )
+
+    if no_llm:
+        click.echo(
+            "Warning: --no-llm is deprecated and now the default behavior. "
+            "Use --judge to enable LLM-judged metrics. "
+            "--no-llm will be removed in v0.8.0.",
+            err=True,
+        )
+
+    skip_llm = not judge
+
     out = _stderr_console() if json_stdout else console
 
     # Validate --metrics filter before doing any heavy loading
@@ -250,9 +270,9 @@ def run(
     all_metrics: list[Metric] = list(ALL_OPERATIONAL)
 
     # Determine whether LLM metrics are needed: only import Ragas machinery
-    # when the user has not excluded LLM metrics via --no-llm and the
-    # --metrics filter (if any) includes at least one LLM-backed metric.
-    needs_llm = not no_llm and (
+    # when the user has opted in via --judge and the --metrics filter (if any)
+    # includes at least one LLM-backed metric.
+    needs_llm = not skip_llm and (
         requested_names is None or any(name in requested_names for name in _RAGAS_METRICS)
     )
     if needs_llm:
@@ -275,7 +295,7 @@ def run(
         all_metrics = [metric for metric in all_metrics if metric.name in requested_names]
 
     engine = MetricsEngine(all_metrics, config=config)
-    report = engine.run(dataset, skip_llm=no_llm)
+    report = engine.run(dataset, skip_llm=skip_llm)
 
     if not quiet:
         from raki.report.cli_summary import print_summary
@@ -289,7 +309,7 @@ def run(
             metrics=all_metrics,
         )
 
-    if threshold is not None and no_llm:
+    if threshold is not None and skip_llm:
         out.print(
             "[yellow]Warning: No retrieval metrics active — threshold applies only to "
             "LLM-backed metrics. Operational metrics use non-0-1 scales; "
