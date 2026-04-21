@@ -2,8 +2,12 @@
 
 How to read the RAKI HTML report and understand what the metrics mean.
 
-For the full metric reference with zone tables and red-zone actions, see
-[interpretation-reference.md](interpretation-reference.md).
+RAKI organizes metrics into three tiers. For full metric details, see the dedicated references:
+- [Operational Metrics](metrics/operational.md) -- zero config, computed from session data
+- [Knowledge Metrics](metrics/knowledge.md) -- requires `--docs-path`
+- [Analytical Metrics](metrics/analytical.md) -- requires `--judge`
+
+For zone tables and red-zone actions, see [interpretation-reference.md](interpretation-reference.md).
 
 ## Operational Health
 
@@ -57,21 +61,41 @@ The **weighted severity** formula is:
 This weights critical findings three times more than minor ones. A "Severe"
 label means a disproportionate number of findings are critical or major.
 
-### Knowledge Miss Rate
+### Self-Correction Rate
 
-**What it measures:** How often rework happened because the agent lacked the
-right reference material in its retrieved context.
+**What it measures:** Ratio of rework findings (critical/major) resolved by
+the agent after review feedback.
+
+- **Target:** >80%
+- **Direction:** Higher is better
+- Shows N/A when no rework findings exist.
+
+## Knowledge Metrics
+
+These metrics appear when `--docs-path` is provided (or `docs.path` is set in the manifest).
+
+### Knowledge Gap Rate
+
+**What it measures:** Ratio of rework findings in domains NOT covered by
+the knowledge base.
 
 - **Target:** <0.20
 - **Direction:** Lower is better
-- This metric is **hidden** when no sessions have `knowledge_context` data.
-  A footnote explains: "Knowledge Miss Rate omitted -- no retrieval context
-  available in sessions."
+- Shows N/A when no rework findings exist or no docs are loaded.
 
-## Retrieval Quality
+### Knowledge Miss Rate
 
-These metrics require LLM-backed evaluation (they are hidden in `--no-llm`
-mode, with a footnote explaining why).
+**What it measures:** Ratio of rework findings in domains covered by the KB
+but the agent still got wrong.
+
+- **Target:** <0.10
+- **Direction:** Lower is better
+- Shows N/A when no rework findings exist or no docs are loaded.
+
+## Analytical Quality
+
+These metrics require `--judge` to enable LLM-backed evaluation. Without
+`--judge`, this section shows a footnote explaining why it is hidden.
 
 ### Context Precision
 
@@ -80,6 +104,7 @@ relevant to the question.
 
 - **Target:** >0.80
 - **Direction:** Higher is better
+- Requires ground truth.
 
 ### Context Recall
 
@@ -88,11 +113,19 @@ successfully found.
 
 - **Target:** >0.80
 - **Direction:** Higher is better
+- Requires ground truth.
 
 ### Faithfulness
 
 **What it measures:** How closely the agent's output sticks to the facts in
 its source material.
+
+- **Direction:** Higher is better
+- This metric is **experimental** for agentic sessions.
+
+### Answer Relevancy
+
+**What it measures:** How relevant the agent's output is to the user query.
 
 - **Direction:** Higher is better
 - This metric is **experimental** for agentic sessions.
@@ -139,5 +172,5 @@ is unavailable.
   that changes improved metrics without introducing regressions.
 - **Across evaluation batches**: compare runs on different session sets to
   spot trends in retrieval quality or operational health.
-- **CI pipelines**: use diff to gate merges -- if regressions appear, the
-  diff output shows exactly which sessions regressed and by how much.
+- **CI pipelines**: use `--fail-on-regression` to gate merges -- if regressions
+  appear, the diff output shows exactly which sessions regressed and by how much.
