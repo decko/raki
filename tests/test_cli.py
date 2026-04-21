@@ -1541,3 +1541,346 @@ class TestValidateDeep:
         assert result.exit_code == 0
         # Should contain a failure indicator
         assert "\u2717" in result.output or "fail" in result.output.lower()
+
+
+class TestGateThresholdCLI:
+    """Tests for --gate per-metric quality gates on the run command."""
+
+    def test_gate_pass(self, manifest_with_session, tmp_path):
+        """--gate with a passing threshold should exit 0."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"first_pass_verify_rate": 0.90},
+        )
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest),
+                    "--gate",
+                    "first_pass_verify_rate>0.80",
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+            assert result.exit_code == 0
+            assert "PASS" in result.output
+
+    def test_gate_violation_exits_1(self, manifest_with_session, tmp_path):
+        """--gate with a failing threshold should exit 1."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"first_pass_verify_rate": 0.70},
+        )
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest),
+                    "--gate",
+                    "first_pass_verify_rate>0.80",
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+            assert result.exit_code == 1
+            assert "FAIL" in result.output
+
+    def test_gate_na_skip(self, manifest_with_session, tmp_path):
+        """--gate with N/A metric should skip and exit 0."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"faithfulness": None},
+        )
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest),
+                    "--gate",
+                    "faithfulness>0.80",
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+            assert result.exit_code == 0
+            assert "SKIP" in result.output
+
+    def test_require_metric_fails_on_na(self, manifest_with_session, tmp_path):
+        """--require-metric with N/A metric should exit 1."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"faithfulness": None},
+        )
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest),
+                    "--gate",
+                    "faithfulness>0.80",
+                    "--require-metric",
+                    "faithfulness",
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+            assert result.exit_code == 1
+            assert "FAIL" in result.output
+
+    def test_manifest_thresholds_used_when_no_cli_gate(self, tmp_path):
+        """Manifest thresholds should be used when no --gate is specified."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        # Create a manifest with thresholds
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_path = tmp_path / "raki.yaml"
+        manifest_path.write_text(
+            f"sessions:\n  path: {sessions}\n  format: auto\n"
+            f"thresholds:\n  - first_pass_verify_rate>0.99\n"
+        )
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"first_pass_verify_rate": 0.80},
+        )
+        output_dir = tmp_path / "results"
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest_path),
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+            assert result.exit_code == 1
+            assert "FAIL" in result.output
+
+    def test_cli_gate_overrides_manifest_thresholds(self, tmp_path):
+        """CLI --gate should override manifest thresholds."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        # Manifest threshold is strict (>0.99), but CLI gate is lenient (>0.50)
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_path = tmp_path / "raki.yaml"
+        manifest_path.write_text(
+            f"sessions:\n  path: {sessions}\n  format: auto\n"
+            f"thresholds:\n  - first_pass_verify_rate>0.99\n"
+        )
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"first_pass_verify_rate": 0.80},
+        )
+        output_dir = tmp_path / "results"
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest_path),
+                    "--gate",
+                    "first_pass_verify_rate>0.50",
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+            assert result.exit_code == 0
+            assert "PASS" in result.output
+
+    def test_gate_invalid_syntax_exits_2(self, manifest_with_session, tmp_path):
+        """--gate with invalid syntax should exit 2."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"first_pass_verify_rate": 0.90},
+        )
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest),
+                    "--gate",
+                    "invalid threshold syntax",
+                    "-o",
+                    str(output_dir),
+                ],
+            )
+            assert result.exit_code == 2
+
+    def test_gate_quiet_suppresses_output(self, manifest_with_session, tmp_path):
+        """--gate with -q should suppress quality gates output."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        fake_report = EvalReport(
+            run_id="fake",
+            aggregate_scores={"first_pass_verify_rate": 0.90},
+        )
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                [
+                    "run",
+                    "-m",
+                    str(manifest),
+                    "--gate",
+                    "first_pass_verify_rate>0.80",
+                    "-o",
+                    str(output_dir),
+                    "-q",
+                ],
+            )
+            assert result.exit_code == 0
+            assert "Quality Gates" not in result.output
+
+
+class TestRegressionCLI:
+    """Tests for --fail-on-regression on the report --diff command."""
+
+    def test_fail_on_regression_detects_regression(self, tmp_path):
+        """--fail-on-regression should exit non-zero when a metric regresses."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="eval-baseline",
+            aggregate_scores={"first_pass_verify_rate": 0.90},
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="eval-compare",
+            aggregate_scores={"first_pass_verify_rate": 0.70},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "report",
+                "--diff",
+                str(baseline),
+                str(compare),
+                "--fail-on-regression",
+            ],
+        )
+        assert result.exit_code == 3
+        assert "Regressions detected" in result.output
+
+    def test_fail_on_regression_exits_0_when_no_regression(self, tmp_path):
+        """--fail-on-regression should exit 0 when no regression is detected."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="eval-baseline",
+            aggregate_scores={"first_pass_verify_rate": 0.80},
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="eval-compare",
+            aggregate_scores={"first_pass_verify_rate": 0.90},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "report",
+                "--diff",
+                str(baseline),
+                str(compare),
+                "--fail-on-regression",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_fail_on_regression_flag_accepted_without_diff(self, tmp_path):
+        """--fail-on-regression without --diff should not crash (it's ignored)."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--fail-on-regression"],
+        )
+        assert result.exit_code == 0
+
+    def test_diff_without_fail_on_regression_exits_0(self, tmp_path):
+        """--diff without --fail-on-regression should exit 0 even with regression."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="eval-baseline",
+            aggregate_scores={"first_pass_verify_rate": 0.90},
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="eval-compare",
+            aggregate_scores={"first_pass_verify_rate": 0.70},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", "--diff", str(baseline), str(compare)],
+        )
+        assert result.exit_code == 0

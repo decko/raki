@@ -56,7 +56,7 @@ class DiffReport:
 _VERDICT_RANK: dict[str, int] = {"fail": 0, "rework": 1, "pass": 2}
 
 
-def _is_higher_is_better(metric_name: str) -> bool:
+def is_higher_is_better(metric_name: str) -> bool:
     """Determine if a metric is higher_is_better from METRIC_METADATA.
 
     Defaults to True for unknown metrics.
@@ -114,7 +114,7 @@ def compute_deltas(
         if baseline_value is None or compare_value is None:
             continue
         delta = compare_value - baseline_value
-        higher_is_better = _is_higher_is_better(metric_name)
+        higher_is_better = is_higher_is_better(metric_name)
 
         if abs(delta) < 1e-9:
             direction: Literal["improved", "regressed", "flat"] = "flat"
