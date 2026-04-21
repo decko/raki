@@ -852,12 +852,12 @@
     {% elif not has_retrieval %}
     <div class="category-section">
       <div class="category-label">Retrieval Quality</div>
-      <p class="empty-state">Retrieval metrics omitted &mdash; run without --no-llm to enable LLM-backed evaluation.</p>
+      <p class="empty-state">Retrieval metrics omitted &mdash; run with --judge to enable LLM-backed evaluation.</p>
     </div>
     {% else %}
     <div class="category-section">
       <div class="category-label">Retrieval Quality</div>
-      <p class="empty-state">Retrieval metrics require LLM judge &mdash; run without --no-llm to enable.</p>
+      <p class="empty-state">Retrieval metrics require LLM judge &mdash; run with --judge to enable.</p>
     </div>
     {% endif %}
   </section>

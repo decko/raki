@@ -519,7 +519,7 @@ def write_html_report(
     the correct count even when sample_results is empty.
 
     has_retrieval controls whether the Retrieval Quality section is shown.
-    When False (--no-llm mode), a footnote is shown instead.
+    When False (default mode without --judge), a footnote is shown instead.
     """
     from raki.report.json_report import strip_session_data
 
