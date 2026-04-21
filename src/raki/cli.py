@@ -332,6 +332,7 @@ def run(
         llm_model=judge_model,
         batch_size=parallel_count,
         project_root=manifest_file.parent.resolve(),
+        doc_chunks=doc_chunks,
     )
 
     all_metrics: list[Metric] = list(ALL_OPERATIONAL)
