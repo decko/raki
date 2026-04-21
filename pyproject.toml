@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "raki"
-version = "0.6.1"
+version = "0.7.0"
 description = "Retrieval Assessment for Knowledge Impact — evaluate agentic RAG quality"
 requires-python = ">=3.12"
 license = "Apache-2.0"
