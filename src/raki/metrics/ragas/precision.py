@@ -34,7 +34,7 @@ class ContextPrecisionMetric:
         dataset: EvalDataset,
         config: MetricConfig,
     ) -> MetricResult:
-        rows = to_ragas_rows(dataset)
+        rows = to_ragas_rows(dataset, doc_chunks=config.doc_chunks or None)
         rows_with_ref = [row for row in rows if row.reference is not None]
         if not rows_with_ref:
             return MetricResult(name=self.name, score=None, details={"skipped": "no ground truth"})

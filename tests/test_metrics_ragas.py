@@ -19,6 +19,7 @@ from raki.model import (
 )
 from raki.model.ground_truth import GroundTruth
 from raki.metrics.protocol import MetricConfig
+from raki.docs.chunker import DocChunk
 from raki.metrics.ragas.adapter import RagasRow, to_ragas_rows
 from raki.metrics.ragas.llm_setup import JudgeLogger
 
@@ -204,6 +205,155 @@ class TestToRagasRows:
         assert len(rows) == 1
         assert rows[0].response == "session output"
         assert rows[0].retrieved_contexts == ["session knowledge"]
+
+
+# ---------------------------------------------------------------------------
+# Doc-chunk reference tests — doc chunks as reference for precision/recall
+# ---------------------------------------------------------------------------
+
+
+class TestToRagasRowsWithDocChunks:
+    """When doc_chunks are provided, they should serve as reference for rows without ground truth."""
+
+    def test_doc_chunks_used_as_reference_when_no_ground_truth(self):
+        """Rows without ground_truth should get reference from doc_chunks."""
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        doc_chunks = [
+            DocChunk(text="Auth requires JWT tokens", source_file="auth.md", domain="auth"),
+            DocChunk(text="Validate with pydantic", source_file="validation.md", domain="general"),
+        ]
+        rows = to_ragas_rows(EvalDataset(samples=[sample]), doc_chunks=doc_chunks)
+        assert len(rows) == 1
+        assert rows[0].reference is not None
+        assert "Auth requires JWT tokens" in rows[0].reference
+        assert "Validate with pydantic" in rows[0].reference
+
+    def test_ground_truth_takes_precedence_over_doc_chunks(self):
+        """When ground_truth has reference_answer, it should be used instead of doc_chunks."""
+        ground_truth = GroundTruth(
+            question="How to validate?",
+            reference_answer="Use pydantic",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        doc_chunks = [
+            DocChunk(text="Some doc text", source_file="doc.md", domain="general"),
+        ]
+        rows = to_ragas_rows(EvalDataset(samples=[sample]), doc_chunks=doc_chunks)
+        assert len(rows) == 1
+        assert rows[0].reference == "Use pydantic"
+
+    def test_no_doc_chunks_no_ground_truth_reference_is_none(self):
+        """Without doc_chunks or ground_truth, reference should remain None."""
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert rows[0].reference is None
+
+    def test_empty_doc_chunks_no_reference(self):
+        """Empty doc_chunks list should not set reference."""
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        rows = to_ragas_rows(EvalDataset(samples=[sample]), doc_chunks=[])
+        assert len(rows) == 1
+        assert rows[0].reference is None
+
+
+class TestPrecisionWithDocChunks:
+    """Context precision should compute real scores when doc_chunks provide reference."""
+
+    def test_computes_with_doc_chunks_no_ground_truth(self, monkeypatch: pytest.MonkeyPatch):
+        """Precision should score samples using doc_chunks as reference."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.80
+        mock_result.reason = "Precise with doc chunks"
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_precision_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_precision_class, "ContextPrecisionWithReference")
+
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+
+        doc_chunks = [
+            DocChunk(text="Reference doc content", source_file="ref.md", domain="general"),
+        ]
+        config = MetricConfig(doc_chunks=doc_chunks)
+
+        with patch(
+            "raki.metrics.ragas.precision.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextPrecisionMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.80)
+        assert result.details["samples_scored"] == 1
+        assert "skipped" not in result.details
+
+    def test_still_skips_without_doc_chunks_or_ground_truth(self):
+        """Without doc_chunks or ground_truth, precision should still return N/A."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        metric = ContextPrecisionMetric()
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+        result = metric.compute(dataset, config)
+        assert result.score is None
+        assert result.details.get("skipped") == "no ground truth"
+
+
+class TestRecallWithDocChunks:
+    """Context recall should compute real scores when doc_chunks provide reference."""
+
+    def test_computes_with_doc_chunks_no_ground_truth(self, monkeypatch: pytest.MonkeyPatch):
+        """Recall should score samples using doc_chunks as reference."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.75
+        mock_result.reason = "Good recall with doc chunks"
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_recall_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_recall_class, "ContextRecall")
+
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+
+        doc_chunks = [
+            DocChunk(text="Reference doc content", source_file="ref.md", domain="general"),
+        ]
+        config = MetricConfig(doc_chunks=doc_chunks)
+
+        with patch(
+            "raki.metrics.ragas.recall.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextRecallMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.75)
+        assert result.details["samples_scored"] == 1
+        assert "skipped" not in result.details
+
+    def test_still_skips_without_doc_chunks_or_ground_truth(self):
+        """Without doc_chunks or ground_truth, recall should still return N/A."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        metric = ContextRecallMetric()
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+        result = metric.compute(dataset, config)
+        assert result.score is None
+        assert result.details.get("skipped") == "no ground truth"
 
 
 # ---------------------------------------------------------------------------
