@@ -107,7 +107,21 @@ def main():
     "--no-llm", is_flag=True, help="[Deprecated] Skip LLM-backed metrics (now the default)"
 )
 @click.option("-q", "--quiet", is_flag=True, help="CI mode -- minimal output")
-@click.option("--threshold", type=float, default=None, help="Min score for exit code 0")
+@click.option(
+    "--threshold", type=float, default=None, help="[Deprecated] Min score for exit code 0"
+)
+@click.option(
+    "--gate",
+    "gate_thresholds",
+    multiple=True,
+    help="Quality gate: 'metric>value' (e.g. 'faithfulness>0.85')",
+)
+@click.option(
+    "--require-metric",
+    "required_metrics",
+    multiple=True,
+    help="Fail if metric is N/A instead of skipping threshold",
+)
 @click.option("--adapter", "adapter_format", default=None, help="Force adapter (default: auto)")
 @click.option(
     "--metrics",
@@ -150,6 +164,8 @@ def run(
     no_llm: bool,
     quiet: bool,
     threshold: float | None,
+    gate_thresholds: tuple[str, ...],
+    required_metrics: tuple[str, ...],
     adapter_format: str | None,
     metric_names: str | None,
     parallel_count: int,
@@ -368,6 +384,36 @@ def run(
             mean_retrieval = sum(retrieval_scores.values()) / len(retrieval_scores)
             if mean_retrieval < threshold:
                 raise SystemExit(1)
+
+    # Per-metric quality gates (--gate / manifest thresholds)
+    effective_thresholds = list(gate_thresholds)
+    if not effective_thresholds and manifest.thresholds:
+        effective_thresholds = list(manifest.thresholds)
+
+    if effective_thresholds:
+        from raki.gates.thresholds import (
+            evaluate_all,
+            format_threshold_results,
+            parse_threshold,
+        )
+
+        try:
+            parsed_thresholds = [parse_threshold(raw) for raw in effective_thresholds]
+        except ValueError as exc:
+            out.print(f"[red]Error: {exc}[/red]")
+            raise SystemExit(2) from exc
+
+        required_set = set(required_metrics) if required_metrics else None
+        gate_results = evaluate_all(
+            parsed_thresholds, report.aggregate_scores, required_metrics=required_set
+        )
+
+        if not quiet:
+            out.print(format_threshold_results(gate_results))
+
+        has_violation = any(not result.passed for result in gate_results)
+        if has_violation:
+            raise SystemExit(1)
 
 
 @main.command()
@@ -630,18 +676,25 @@ def metrics(json_output: bool) -> None:
     default=None,
     help="Output directory for diff report",
 )
+@click.option(
+    "--fail-on-regression",
+    is_flag=True,
+    default=False,
+    help="Exit non-zero on metric regression (use with --diff)",
+)
 def report(
     input_path: str | None,
     diff_paths: tuple[str, str] | None,
     html_path: str | None,
     output_dir: str | None,
+    fail_on_regression: bool,
 ) -> None:
     """Re-render CLI summary and HTML from a saved JSON report.
 
     Use --diff to compare two evaluation runs side by side.
     """
     if diff_paths is not None:
-        _handle_diff(diff_paths, html_path, output_dir)
+        _handle_diff(diff_paths, html_path, output_dir, fail_on_regression=fail_on_regression)
         return
 
     if input_path is None:
@@ -702,6 +755,8 @@ def _handle_diff(
     diff_paths: tuple[str, str],
     html_path: str | None,
     output_dir: str | None,
+    *,
+    fail_on_regression: bool = False,
 ) -> None:
     """Handle the --diff subflow of the report command."""
     from raki.report.json_report import load_json_report
@@ -756,6 +811,38 @@ def _handle_diff(
                 "[yellow]Note: jinja2 not installed — skipping HTML diff report. "
                 "Install with: uv pip install raki[html][/yellow]"
             )
+
+    # Regression detection gate (--fail-on-regression)
+    if fail_on_regression:
+        from raki.gates.regression import Direction, compute_exit_code, detect_regressions
+        from raki.report.diff import is_higher_is_better
+
+        metric_directions: dict[str, Direction] = {}
+        all_metric_names = set(baseline_report.aggregate_scores.keys()) | set(
+            compare_report.aggregate_scores.keys()
+        )
+        for metric_name in all_metric_names:
+            if is_higher_is_better(metric_name):
+                metric_directions[metric_name] = "higher_is_better"
+            else:
+                metric_directions[metric_name] = "lower_is_better"
+
+        regression_results = detect_regressions(
+            baseline_report.aggregate_scores,
+            compare_report.aggregate_scores,
+            metric_directions,
+        )
+
+        regressed_metrics = [result for result in regression_results if result.regressed]
+        if regressed_metrics:
+            console.print("\n[red]Regressions detected:[/red]")
+            for result in regressed_metrics:
+                console.print(
+                    f"  {result.metric}: {result.baseline:.4f} -> "
+                    f"{result.current:.4f} ({result.direction})"
+                )
+            exit_code = compute_exit_code(threshold_violated=False, regression_detected=True)
+            raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":

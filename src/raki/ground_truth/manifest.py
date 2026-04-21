@@ -61,6 +61,7 @@ class EvalManifest(BaseModel):
     sources: list[SourceDocument] = Field(default_factory=list)
     ground_truth: GroundTruthConfig = Field(default_factory=GroundTruthConfig)
     synthetic: SyntheticConfig = Field(default_factory=SyntheticConfig)
+    thresholds: list[str] = Field(default_factory=list)
 
 
 def _resolve_and_guard(
