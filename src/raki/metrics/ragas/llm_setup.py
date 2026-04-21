@@ -85,27 +85,35 @@ def create_ragas_llm(config: MetricConfig):
 def create_ragas_embeddings():
     """Create embeddings for answer_relevancy metric.
 
-    Uses Ragas embedding_factory with a pre-configured Google genai Client
-    for Vertex AI. Resolves project/location from VERTEXAI_PROJECT and
-    VERTEXAI_LOCATION environment variables.
+    Constructs ``GoogleEmbeddings`` directly with ``use_vertex=True`` and a
+    pre-configured ``genai.Client`` for Vertex AI.  This bypasses
+    ``embedding_factory()`` which does not forward ``use_vertex`` to the
+    constructor, causing ``_resolve_client()`` to take the Gemini path and
+    discard the pre-configured client (see #106).
+
+    Resolves project/location from GOOGLE_CLOUD_PROJECT (or VERTEXAI_PROJECT)
+    and VERTEXAI_LOCATION environment variables.
 
     Defers imports so this module can be imported without dependencies installed.
     """
     import os
 
     from google import genai  # ty: ignore[unresolved-import]
-    from ragas.embeddings.base import embedding_factory  # ty: ignore[unresolved-import]
+    from ragas.embeddings.google_provider import GoogleEmbeddings  # ty: ignore[unresolved-import]
 
     project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("VERTEXAI_PROJECT")
+    if not project:
+        raise ValueError(
+            "Embeddings require GOOGLE_CLOUD_PROJECT or VERTEXAI_PROJECT environment variable"
+        )
     location = os.environ.get("VERTEXAI_LOCATION", "us-central1")
 
     client = genai.Client(vertexai=True, project=project, location=location)
 
-    return embedding_factory(
-        "google",
-        model="text-embedding-005",
+    return GoogleEmbeddings(
         client=client,
-        interface="modern",
+        model="text-embedding-005",
+        use_vertex=True,
     )
 
 

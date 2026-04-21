@@ -1153,14 +1153,12 @@ class TestLLMProviderDispatch:
 
 
 class TestCreateRagasEmbeddings:
-    def test_uses_ragas_embedding_factory_with_google(self, monkeypatch: pytest.MonkeyPatch):
-        """create_ragas_embeddings() should use Ragas embedding_factory with Google provider."""
-        import sys
+    """Verify GoogleEmbeddings is constructed with use_vertex=True and the pre-configured client."""
 
-        mock_embeddings_result = MagicMock()
-        mock_factory = MagicMock(return_value=mock_embeddings_result)
-        mock_embeddings_base = MagicMock()
-        mock_embeddings_base.embedding_factory = mock_factory
+    def _setup_embeddings_mocks(self, monkeypatch: pytest.MonkeyPatch) -> dict:
+        """Set up common mocks for embeddings tests, returning mock objects for assertions."""
+        import importlib
+        import sys
 
         mock_genai_client = MagicMock()
         mock_genai = MagicMock()
@@ -1169,60 +1167,107 @@ class TestCreateRagasEmbeddings:
         mock_google = MagicMock()
         mock_google.genai = mock_genai
 
+        mock_google_embeddings_instance = MagicMock()
+        mock_google_embeddings_class = MagicMock(return_value=mock_google_embeddings_instance)
+        mock_google_provider = MagicMock()
+        mock_google_provider.GoogleEmbeddings = mock_google_embeddings_class
+
         monkeypatch.setitem(sys.modules, "google", mock_google)
         monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+        monkeypatch.setitem(sys.modules, "ragas", MagicMock())
         monkeypatch.setitem(sys.modules, "ragas.embeddings", MagicMock())
-        monkeypatch.setitem(sys.modules, "ragas.embeddings.base", mock_embeddings_base)
-        monkeypatch.setenv("VERTEXAI_PROJECT", "test-project")
-        monkeypatch.setenv("VERTEXAI_LOCATION", "us-east5")
-
-        import importlib
+        monkeypatch.setitem(sys.modules, "ragas.embeddings.google_provider", mock_google_provider)
 
         import raki.metrics.ragas.llm_setup
 
         importlib.reload(raki.metrics.ragas.llm_setup)
-        from raki.metrics.ragas.llm_setup import create_ragas_embeddings
 
-        result = create_ragas_embeddings()
-        mock_factory.assert_called_once()
-        call_kwargs = mock_factory.call_args
-        assert call_kwargs[0][0] == "google"
-        assert call_kwargs[1]["model"] == "text-embedding-005"
-        assert call_kwargs[1]["interface"] == "modern"
-        assert result is mock_embeddings_result
+        return {
+            "genai": mock_genai,
+            "genai_client": mock_genai_client,
+            "embeddings_class": mock_google_embeddings_class,
+            "embeddings_instance": mock_google_embeddings_instance,
+            "create_fn": raki.metrics.ragas.llm_setup.create_ragas_embeddings,
+        }
+
+    def test_embeddings_use_vertex_true(self, monkeypatch: pytest.MonkeyPatch):
+        """GoogleEmbeddings must be constructed with use_vertex=True, client, and model."""
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "vertex-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-east1")
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        result = mocks["create_fn"]()
+
+        mocks["embeddings_class"].assert_called_once_with(
+            client=mocks["genai_client"],
+            model="text-embedding-005",
+            use_vertex=True,
+        )
+        assert result is mocks["embeddings_instance"]
+
+    def test_embeddings_passes_client_through(self, monkeypatch: pytest.MonkeyPatch):
+        """The pre-configured genai.Client must not be discarded; it must reach GoogleEmbeddings."""
+        monkeypatch.setenv("VERTEXAI_PROJECT", "client-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "europe-west4")
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        mocks["create_fn"]()
+
+        mocks["genai"].Client.assert_called_once_with(
+            vertexai=True, project="client-project", location="europe-west4"
+        )
+
+        call_kwargs = mocks["embeddings_class"].call_args.kwargs
+        assert call_kwargs["client"] is mocks["genai_client"]
+        assert call_kwargs["use_vertex"] is True
 
     def test_passes_vertex_project_to_genai_client(self, monkeypatch: pytest.MonkeyPatch):
         """Verify genai.Client is created with vertexai=True and project from env."""
-        import sys
-
-        mock_genai_client = MagicMock()
-        mock_genai = MagicMock()
-        mock_genai.Client.return_value = mock_genai_client
-
-        mock_google = MagicMock()
-        mock_google.genai = mock_genai
-
-        mock_embeddings_base = MagicMock()
-        mock_embeddings_base.embedding_factory = MagicMock(return_value=MagicMock())
-
-        monkeypatch.setitem(sys.modules, "google", mock_google)
-        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-        monkeypatch.setitem(sys.modules, "ragas.embeddings", MagicMock())
-        monkeypatch.setitem(sys.modules, "ragas.embeddings.base", mock_embeddings_base)
         monkeypatch.setenv("VERTEXAI_PROJECT", "my-project")
         monkeypatch.setenv("VERTEXAI_LOCATION", "europe-west1")
 
-        import importlib
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        mocks["create_fn"]()
 
-        import raki.metrics.ragas.llm_setup
-
-        importlib.reload(raki.metrics.ragas.llm_setup)
-        from raki.metrics.ragas.llm_setup import create_ragas_embeddings
-
-        create_ragas_embeddings()
-        mock_genai.Client.assert_called_once_with(
+        mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="my-project", location="europe-west1"
         )
+
+    def test_google_cloud_project_takes_precedence(self, monkeypatch: pytest.MonkeyPatch):
+        """When both GOOGLE_CLOUD_PROJECT and VERTEXAI_PROJECT are set, GOOGLE_CLOUD_PROJECT wins."""
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "primary-project")
+        monkeypatch.setenv("VERTEXAI_PROJECT", "fallback-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        mocks["create_fn"]()
+
+        mocks["genai"].Client.assert_called_once_with(
+            vertexai=True, project="primary-project", location="us-central1"
+        )
+
+    def test_vertexai_project_fallback(self, monkeypatch: pytest.MonkeyPatch):
+        """VERTEXAI_PROJECT is used when GOOGLE_CLOUD_PROJECT is not set."""
+        monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+        monkeypatch.setenv("VERTEXAI_PROJECT", "fallback-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        mocks["create_fn"]()
+
+        mocks["genai"].Client.assert_called_once_with(
+            vertexai=True, project="fallback-project", location="us-central1"
+        )
+
+    def test_missing_project_raises_valueerror(self, monkeypatch: pytest.MonkeyPatch):
+        """When neither GOOGLE_CLOUD_PROJECT nor VERTEXAI_PROJECT is set, raise ValueError."""
+        monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+        monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+
+        with pytest.raises(ValueError, match="GOOGLE_CLOUD_PROJECT or VERTEXAI_PROJECT"):
+            mocks["create_fn"]()
 
 
 # ---------------------------------------------------------------------------
@@ -1415,8 +1460,8 @@ class TestLlmSetupIntegration:
         assert llm is not None
 
     def test_create_ragas_embeddings_returns_valid_object(self):
-        """Requires langchain-google-vertexai + credentials. Verifies embeddings setup."""
-        pytest.importorskip("langchain_google_vertexai")
+        """Requires ragas google_provider + credentials. Verifies embeddings setup."""
+        pytest.importorskip("ragas.embeddings.google_provider")
         from raki.metrics.ragas.llm_setup import create_ragas_embeddings
 
         embeddings = create_ragas_embeddings()
