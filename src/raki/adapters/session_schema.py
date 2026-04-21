@@ -11,6 +11,8 @@ from raki.model import EvalSample, PhaseResult, ReviewFinding, SessionEvent, Ses
 PHASE_NAMES = ["triage", "plan", "implement", "verify"]
 
 MAX_SESSION_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+MAX_IMPLEMENT_FALLBACK_CHARS = 10_000
+MAX_SYNTHESIZED_CONTEXT_CHARS = 50_000
 
 
 def _read_bounded(path: Path) -> str:
@@ -95,7 +97,31 @@ class SessionSchemaAdapter:
         )
         phases = self._load_phases(source, meta_raw, events)
         findings = self._load_findings(source)
-        return EvalSample(session=meta, phases=phases, findings=findings, events=events)
+        sample = EvalSample(session=meta, phases=phases, findings=findings, events=events)
+
+        # Synthesize context from phase outputs if no phase has explicit knowledge_context
+        has_explicit_context = any(phase.knowledge_context is not None for phase in sample.phases)
+        if not has_explicit_context and sample.phases:
+            synthesized = self._synthesize_context(sample.phases)
+            if synthesized:
+                # Store on the implement phase (where to_ragas_rows reads from)
+                target_phase = None
+                for phase in reversed(sample.phases):
+                    if phase.name == "implement":
+                        target_phase = phase
+                        break
+                if target_phase is None:
+                    for phase in reversed(sample.phases):
+                        if phase.name == "session":
+                            target_phase = phase
+                            break
+                if target_phase is None and sample.phases:
+                    target_phase = sample.phases[-1]
+                if target_phase:
+                    target_phase.knowledge_context = synthesized
+                    sample.context_source = "synthesized"
+
+        return sample
 
     def _load_phases(
         self,
@@ -204,6 +230,92 @@ class SessionSchemaAdapter:
                 except (KeyError, ValueError):
                     continue
         return findings
+
+    def _synthesize_context(self, phases: list[PhaseResult]) -> str | None:
+        """Synthesize retrieval context from structured phase outputs.
+
+        Extracts relevant fields from triage, plan, and implement phases:
+        - Triage: approach, code_area, files, risks
+        - Plan: approach, task descriptions and files
+        - Implement: files_changed, commits, deviations; falls back to output text
+        """
+        context_chunks: list[str] = []
+
+        for phase in phases:
+            if phase.name == "triage" and phase.output_structured:
+                triage_parts: list[str] = []
+                approach = phase.output_structured.get("approach")
+                if approach and isinstance(approach, str):
+                    triage_parts.append(f"Approach: {approach}")
+                code_area = phase.output_structured.get("code_area")
+                if code_area and isinstance(code_area, str):
+                    triage_parts.append(f"Code area: {code_area}")
+                files = phase.output_structured.get("files")
+                if files and isinstance(files, list):
+                    triage_parts.append(f"Files: {', '.join(str(filepath) for filepath in files)}")
+                risks = phase.output_structured.get("risks")
+                if risks and isinstance(risks, list):
+                    triage_parts.append(f"Risks: {', '.join(str(risk) for risk in risks)}")
+                if triage_parts:
+                    context_chunks.append(redact_sensitive("\n".join(triage_parts)))
+
+            elif phase.name == "plan" and phase.output_structured:
+                plan_parts: list[str] = []
+                approach = phase.output_structured.get("approach")
+                if approach and isinstance(approach, str):
+                    plan_parts.append(f"Plan approach: {approach}")
+                tasks = phase.output_structured.get("tasks")
+                if tasks and isinstance(tasks, list):
+                    for task_item in tasks:
+                        if isinstance(task_item, dict):
+                            description = task_item.get("description", "")
+                            task_files = task_item.get("files", [])
+                            if description:
+                                task_line = f"Task: {description}"
+                                if task_files and isinstance(task_files, list):
+                                    task_line += f" (files: {', '.join(str(filepath) for filepath in task_files)})"
+                                plan_parts.append(task_line)
+                if plan_parts:
+                    context_chunks.append(redact_sensitive("\n".join(plan_parts)))
+
+            elif phase.name == "implement" and phase.output_structured:
+                impl_parts: list[str] = []
+                files_changed = phase.output_structured.get("files_changed")
+                if files_changed and isinstance(files_changed, list):
+                    impl_parts.append(
+                        f"Files changed: {', '.join(str(filepath) for filepath in files_changed)}"
+                    )
+                commits = phase.output_structured.get("commits")
+                if commits and isinstance(commits, list):
+                    commit_messages = []
+                    for commit_item in commits:
+                        if isinstance(commit_item, dict):
+                            msg = commit_item.get("message", "")
+                            if msg:
+                                commit_messages.append(str(msg))
+                    if commit_messages:
+                        impl_parts.append(f"Commits: {'; '.join(commit_messages)}")
+                deviations = phase.output_structured.get("deviations")
+                if deviations and isinstance(deviations, str):
+                    impl_parts.append(f"Deviations: {deviations}")
+                if impl_parts:
+                    context_chunks.append(redact_sensitive("\n".join(impl_parts)))
+
+        # Fall back to implement phase output when structured fields are insufficient
+        if not context_chunks:
+            for phase in phases:
+                if phase.name == "implement" and phase.output:
+                    fallback_text = phase.output[:MAX_IMPLEMENT_FALLBACK_CHARS]
+                    context_chunks.append(redact_sensitive(fallback_text))
+                    break
+
+        if not context_chunks:
+            return None
+
+        joined = "\n---\n".join(context_chunks)
+        if len(joined) > MAX_SYNTHESIZED_CONTEXT_CHARS:
+            joined = joined[:MAX_SYNTHESIZED_CONTEXT_CHARS]
+        return joined
 
     def _load_events(self, source: Path) -> list[SessionEvent]:
         events_file = source / "events.jsonl"

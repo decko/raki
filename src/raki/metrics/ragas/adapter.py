@@ -80,3 +80,18 @@ def _extract_question(sample: EvalSample) -> str:
             if summary:
                 return summary
     return sample.session.ticket or sample.session.session_id
+
+
+def detect_context_source(dataset: EvalDataset) -> str | None:
+    """Determine the predominant context_source across dataset samples.
+
+    Returns "synthesized" if any sample used synthesized context,
+    "explicit" if all samples used explicit context, or None if no samples
+    have context_source set.
+    """
+    sources = {sample.context_source for sample in dataset.samples if sample.context_source}
+    if not sources:
+        return None
+    if "synthesized" in sources:
+        return "synthesized"
+    return "explicit"

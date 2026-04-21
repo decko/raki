@@ -246,3 +246,52 @@ def test_ground_truth():
     for valid_knowledge in ("fact", "procedure", "constraint", "context-dependent"):
         truth = GroundTruth(knowledge_type=valid_knowledge)
         assert truth.knowledge_type == valid_knowledge
+
+
+# --- context_source field tests (issue #114) ---
+
+
+def test_eval_sample_context_source_defaults_to_none():
+    meta = SessionMeta(
+        session_id="114",
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=1,
+        rework_cycles=0,
+    )
+    sample = EvalSample(session=meta, phases=[], findings=[], events=[])
+    assert sample.context_source is None
+
+
+def test_eval_sample_context_source_accepts_explicit():
+    meta = SessionMeta(
+        session_id="114",
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=1,
+        rework_cycles=0,
+    )
+    sample = EvalSample(session=meta, phases=[], findings=[], events=[], context_source="explicit")
+    assert sample.context_source == "explicit"
+
+
+def test_eval_sample_context_source_accepts_synthesized():
+    meta = SessionMeta(
+        session_id="114",
+        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        total_phases=1,
+        rework_cycles=0,
+    )
+    sample = EvalSample(
+        session=meta, phases=[], findings=[], events=[], context_source="synthesized"
+    )
+    assert sample.context_source == "synthesized"
+
+
+def test_eval_sample_context_source_rejects_invalid():
+    with pytest.raises(ValidationError):
+        meta = SessionMeta(
+            session_id="114",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=1,
+            rework_cycles=0,
+        )
+        EvalSample(session=meta, phases=[], findings=[], events=[], context_source="invalid")

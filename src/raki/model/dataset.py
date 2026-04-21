@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +26,7 @@ class EvalSample(BaseModel):
     findings: list[ReviewFinding]
     events: list[SessionEvent]
     ground_truth: GroundTruth | None = None
+    context_source: Literal["explicit", "synthesized"] | None = None
 
 
 class EvalDataset(BaseModel):

@@ -114,6 +114,51 @@ class TestJsonReportRoundTrip:
         assert loaded.timestamp.tzinfo is not None
 
 
+class TestJsonReportContextSource:
+    def test_context_source_included_in_json_output(self, tmp_path: Path) -> None:
+        """context_source field should be included in JSON report sample results."""
+        sample = make_sample("session-ctx-001")
+        sample.context_source = "synthesized"
+        metric_result = MetricResult(
+            name="faithfulness",
+            score=0.85,
+            sample_scores={"session-ctx-001": 0.85},
+        )
+        sample_result = SampleResult(sample=sample, scores=[metric_result])
+        report = EvalReport(
+            run_id="ctx-source-test",
+            config={"adapter": "alcove"},
+            aggregate_scores={"faithfulness": 0.85},
+            sample_results=[sample_result],
+        )
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path, include_sessions=True)
+        raw = json.loads(output_path.read_text())
+        sample_data = raw["sample_results"][0]["sample"]
+        assert sample_data["context_source"] == "synthesized"
+
+    def test_context_source_none_in_json_output(self, tmp_path: Path) -> None:
+        """context_source=None should appear as null in JSON output."""
+        sample = make_sample("session-no-ctx")
+        metric_result = MetricResult(
+            name="rework_cycles",
+            score=1.0,
+            sample_scores={"session-no-ctx": 1.0},
+        )
+        sample_result = SampleResult(sample=sample, scores=[metric_result])
+        report = EvalReport(
+            run_id="no-ctx-source-test",
+            config={"adapter": "session-schema"},
+            aggregate_scores={"rework_cycles": 1.0},
+            sample_results=[sample_result],
+        )
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path, include_sessions=True)
+        raw = json.loads(output_path.read_text())
+        sample_data = raw["sample_results"][0]["sample"]
+        assert sample_data["context_source"] is None
+
+
 class TestJsonReportStripping:
     def test_strips_session_data_by_default(self, tmp_path: Path) -> None:
         report = _make_report_with_samples()
@@ -415,6 +460,50 @@ class TestPrintSummary:
         print_summary(report, session_count=10, console=test_console)
         output = string_io.getvalue()
         assert "same-provider" not in output.lower()
+
+    def test_inferred_suffix_when_context_synthesized(self) -> None:
+        """Faithfulness/relevancy with synthesized context should show (inferred) tag."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="inferred-test",
+            aggregate_scores={
+                "faithfulness": 0.85,
+                "answer_relevancy": 0.72,
+            },
+            metric_details={
+                "faithfulness": {"context_source": "synthesized", "samples_scored": 5},
+                "answer_relevancy": {"context_source": "synthesized", "samples_scored": 5},
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "inferred" in output.lower()
+
+    def test_no_inferred_suffix_when_context_explicit(self) -> None:
+        """Faithfulness/relevancy with explicit context should NOT show (inferred) tag."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="explicit-test",
+            aggregate_scores={
+                "faithfulness": 0.85,
+            },
+            metric_details={
+                "faithfulness": {"context_source": "explicit", "samples_scored": 5},
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "inferred" not in output.lower()
 
 
 # --- generate_summary_sentence tests ---
