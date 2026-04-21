@@ -11,6 +11,7 @@ from raki.model.dataset import EvalSample
 from raki.model.report import EvalReport, SampleResult
 from raki.report.cli_summary import (
     EXPERIMENTAL_METRICS,
+    KNOWLEDGE_METRICS,
     OPERATIONAL_METRICS,
     generate_summary_sentence,
 )
@@ -326,12 +327,14 @@ def html_color_for_score(
 def _split_scores(
     aggregate_scores: dict[str, float | None],
 ) -> tuple[dict[str, float | None], dict[str, float | None]]:
-    """Split aggregate scores into operational and retrieval categories."""
-    operational = {
-        name: score for name, score in aggregate_scores.items() if name in OPERATIONAL_METRICS
-    }
+    """Split aggregate scores into operational and retrieval categories.
+
+    Knowledge metrics are grouped with operational for display purposes.
+    """
+    non_retrieval = OPERATIONAL_METRICS | KNOWLEDGE_METRICS
+    operational = {name: score for name, score in aggregate_scores.items() if name in non_retrieval}
     retrieval = {
-        name: score for name, score in aggregate_scores.items() if name not in OPERATIONAL_METRICS
+        name: score for name, score in aggregate_scores.items() if name not in non_retrieval
     }
     return operational, retrieval
 
@@ -497,8 +500,9 @@ def compute_worst_sessions(report: EvalReport, limit: int = 5) -> list[WorstSess
     for sample_result in report.sample_results:
         session_id = sample_result.sample.session.session_id
         session_scores = []
+        non_retrieval = OPERATIONAL_METRICS | KNOWLEDGE_METRICS
         for metric_result in sample_result.scores:
-            if metric_result.name in OPERATIONAL_METRICS:
+            if metric_result.name in non_retrieval:
                 continue
             if session_id in metric_result.sample_scores:
                 session_scores.append(metric_result.sample_scores[session_id])

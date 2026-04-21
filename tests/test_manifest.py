@@ -235,6 +235,97 @@ class TestSessionFilter:
         assert session_filter.min_phases == 3
 
 
+class TestDocsConfig:
+    """Tests for DocsConfig and docs path validation in manifests."""
+
+    def test_docs_config_defaults(self) -> None:
+        from raki.ground_truth.manifest import DocsConfig
+
+        config = DocsConfig(path=Path("/tmp/docs"))
+        assert config.path == Path("/tmp/docs")
+        assert config.extensions == [".md", ".txt"]
+
+    def test_docs_config_custom_extensions(self) -> None:
+        from raki.ground_truth.manifest import DocsConfig
+
+        config = DocsConfig(path=Path("/tmp/docs"), extensions=[".md", ".rst"])
+        assert config.extensions == [".md", ".rst"]
+
+    def test_manifest_without_docs(self, tmp_path: Path) -> None:
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.docs is None
+
+    def test_manifest_with_docs(self, tmp_path: Path) -> None:
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\ndocs:\n  path: {docs}\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.docs is not None
+        assert manifest.docs.path == docs.resolve()
+
+    def test_manifest_docs_with_extensions(self, tmp_path: Path) -> None:
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(
+            f"sessions:\n  path: {sessions}\n"
+            f"docs:\n  path: {docs}\n  extensions:\n    - .md\n    - .rst\n"
+        )
+        manifest = load_manifest(manifest_file)
+        assert manifest.docs is not None
+        assert manifest.docs.extensions == [".md", ".rst"]
+
+    def test_manifest_docs_path_traversal_rejected(self, tmp_path: Path) -> None:
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        outside = tmp_path.parent / "outside_docs"
+        outside.mkdir(exist_ok=True)
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\ndocs:\n  path: {outside}\n")
+        with pytest.raises(ValueError, match="escapes project root"):
+            load_manifest(manifest_file)
+
+    def test_manifest_docs_relative_path(self, tmp_path: Path) -> None:
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text("sessions:\n  path: sessions\ndocs:\n  path: docs\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.docs is not None
+        assert manifest.docs.path == docs.resolve()
+
+    def test_manifest_docs_nonexistent_path_rejected(self, tmp_path: Path) -> None:
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text("sessions:\n  path: sessions\ndocs:\n  path: nonexistent_docs\n")
+        with pytest.raises(ValueError, match="does not exist"):
+            load_manifest(manifest_file)
+
+
 class TestDiscoverManifest:
     """Tests for discover_manifest() function."""
 

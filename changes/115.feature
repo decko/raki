@@ -1,0 +1,1 @@
+Add ``--docs-path`` to load project documentation for knowledge metrics (``knowledge_gap_rate``, ``knowledge_miss_rate``). Supports format-aware chunking (Markdown, RST, plaintext) with symlink rejection and size limits.

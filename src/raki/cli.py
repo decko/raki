@@ -81,12 +81,16 @@ _RAGAS_METRICS: dict[str, tuple[str, bool]] = {
 def _all_metric_names() -> dict[str, str]:
     """Return a mapping of all known metric names to display names.
 
-    Includes operational metrics from ALL_OPERATIONAL and Ragas retrieval metrics.
+    Includes operational metrics from ALL_OPERATIONAL, knowledge metrics
+    from ALL_KNOWLEDGE, and Ragas retrieval metrics.
     """
+    from raki.metrics.knowledge import ALL_KNOWLEDGE
     from raki.metrics.operational import ALL_OPERATIONAL
 
     names: dict[str, str] = {}
     for metric in ALL_OPERATIONAL:
+        names[metric.name] = metric.display_name
+    for metric in ALL_KNOWLEDGE:
         names[metric.name] = metric.display_name
     for ragas_name, (display_name, _requires_llm) in _RAGAS_METRICS.items():
         names[ragas_name] = display_name
@@ -155,6 +159,13 @@ def main():
     is_flag=True,
     help="Include full session data in JSON report",
 )
+@click.option(
+    "--docs-path",
+    "docs_path",
+    type=click.Path(exists=True),
+    default=None,
+    help="Path to project docs for knowledge metrics",
+)
 @click.option("--json", "json_stdout", is_flag=True, help="Print JSON report to stdout")
 @click.option("-v", "--verbose", is_flag=True, help="Show debug output")
 def run(
@@ -171,6 +182,7 @@ def run(
     parallel_count: int,
     judge_model: str,
     judge_provider: str,
+    docs_path: str | None,
     include_sessions: bool,
     json_stdout: bool,
     verbose: bool,
@@ -272,6 +284,45 @@ def run(
                 f"{redact_sensitive(str(exc))}. Continuing without ground truth.[/yellow]"
             )
 
+    # Resolve docs path: CLI --docs-path overrides manifest docs.path
+    from raki.docs.chunker import DocChunk
+
+    effective_docs_path = Path(docs_path) if docs_path else None
+    if effective_docs_path is None and manifest.docs is not None:
+        effective_docs_path = manifest.docs.path
+
+    if effective_docs_path is not None:
+        resolved_docs = Path(effective_docs_path).resolve()
+        project_root = manifest_file.parent.resolve()
+        try:
+            resolved_docs.relative_to(project_root)
+        except ValueError:
+            raise click.UsageError(f"--docs-path must be within the project root ({project_root})")
+
+    doc_chunks: list[DocChunk] = []
+    if effective_docs_path is not None:
+        from raki.docs.chunker import load_docs
+
+        docs_extensions = None
+        if manifest.docs is not None and docs_path is None:
+            docs_extensions = manifest.docs.extensions
+        doc_chunks = load_docs(effective_docs_path, extensions=docs_extensions)
+        if not quiet:
+            covered_domains = sorted({chunk.domain for chunk in doc_chunks})
+            out.print(
+                f"Loaded [bold]{len(doc_chunks)}[/bold] doc chunks "
+                f"from {effective_docs_path} "
+                f"(domains: {', '.join(covered_domains)})"
+            )
+
+    # Wire doc chunks as knowledge_context on each sample's implement/session phase
+    if doc_chunks:
+        joined_knowledge = "\n---\n".join(chunk.text for chunk in doc_chunks)
+        for sample in dataset.samples:
+            for phase in sample.phases:
+                if phase.name in ("implement", "session") and phase.knowledge_context is None:
+                    phase.knowledge_context = joined_knowledge
+
     from raki.metrics import MetricsEngine
     from raki.metrics.operational import ALL_OPERATIONAL
     from raki.metrics.protocol import LLMProvider, Metric, MetricConfig
@@ -284,6 +335,12 @@ def run(
     )
 
     all_metrics: list[Metric] = list(ALL_OPERATIONAL)
+
+    # Add knowledge metrics when docs are loaded
+    if doc_chunks:
+        from raki.metrics.knowledge import ALL_KNOWLEDGE
+
+        all_metrics.extend(ALL_KNOWLEDGE)
 
     # Determine whether LLM metrics are needed: only import Ragas machinery
     # when the user has opted in via --judge and the --metrics filter (if any)
@@ -373,12 +430,13 @@ def run(
         out.print(report_msg)
 
     if threshold is not None:
-        from raki.report.cli_summary import OPERATIONAL_METRICS
+        from raki.report.cli_summary import KNOWLEDGE_METRICS, OPERATIONAL_METRICS
 
+        non_retrieval = OPERATIONAL_METRICS | KNOWLEDGE_METRICS
         retrieval_scores = {
             name: score
             for name, score in report.aggregate_scores.items()
-            if name not in OPERATIONAL_METRICS and score is not None
+            if name not in non_retrieval and score is not None
         }
         if retrieval_scores:
             mean_retrieval = sum(retrieval_scores.values()) / len(retrieval_scores)
