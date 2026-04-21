@@ -303,7 +303,7 @@ class TestPrecisionWithDocChunks:
         dataset = EvalDataset(samples=[sample])
         config = MetricConfig()
         result = metric.compute(dataset, config)
-        assert result.score == 0.0
+        assert result.score is None
         assert result.details.get("skipped") == "no ground truth"
 
 
@@ -352,7 +352,7 @@ class TestRecallWithDocChunks:
         dataset = EvalDataset(samples=[sample])
         config = MetricConfig()
         result = metric.compute(dataset, config)
-        assert result.score == 0.0
+        assert result.score is None
         assert result.details.get("skipped") == "no ground truth"
 
 
