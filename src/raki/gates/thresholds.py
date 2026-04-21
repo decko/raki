@@ -70,6 +70,11 @@ def evaluate_threshold(
 ) -> ThresholdResult:
     """Evaluate a single threshold against the actual scores.
 
+    If a metric is absent from scores (not computed) or is None (N/A), behavior
+    depends on whether it appears in required_metrics:
+    - Required: returns a FAIL result with an explanatory reason.
+    - Not required: returns a SKIP result (treated as passing).
+
     Args:
         threshold: The threshold to evaluate.
         scores: Map of metric names to their scores (None means N/A).
@@ -77,34 +82,38 @@ def evaluate_threshold(
 
     Returns:
         A ThresholdResult indicating pass/fail/skip.
-
-    Raises:
-        ValueError: If the metric name is not found in scores.
     """
-    if threshold.metric not in scores:
-        raise ValueError(
-            f"Unknown metric '{threshold.metric}' in threshold. "
-            f"Available metrics: {', '.join(sorted(scores.keys()))}"
-        )
+    actual = scores.get(threshold.metric)
+    metric_missing = threshold.metric not in scores
 
-    actual = scores[threshold.metric]
-
-    if actual is None:
+    if metric_missing or actual is None:
         required = required_metrics or set()
         if threshold.metric in required:
+            if metric_missing:
+                reason = (
+                    f"Metric '{threshold.metric}' was not computed "
+                    f"(did you forget --judge?). "
+                    f"Available metrics: {', '.join(sorted(scores.keys()))}"
+                )
+            else:
+                reason = f"Metric '{threshold.metric}' is N/A but required by --require-metric"
             return ThresholdResult(
                 threshold=threshold,
                 actual=None,
                 passed=False,
                 skipped=False,
-                reason=f"Metric '{threshold.metric}' is N/A but required by --require-metric",
+                reason=reason,
             )
+        if metric_missing:
+            reason = f"Metric '{threshold.metric}' was not computed — skipping threshold check"
+        else:
+            reason = f"Metric '{threshold.metric}' is N/A — skipping threshold check"
         return ThresholdResult(
             threshold=threshold,
             actual=None,
             passed=True,
             skipped=True,
-            reason=f"Metric '{threshold.metric}' is N/A — skipping threshold check",
+            reason=reason,
         )
 
     comparison_fn = _OPERATORS[threshold.operator]
