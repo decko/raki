@@ -290,7 +290,7 @@ class TestContextPrecisionMetric:
         dataset = EvalDataset(samples=[sample])
         config = MetricConfig()
         result = metric.compute(dataset, config)
-        assert result.score == 0.0
+        assert result.score is None
         assert result.details.get("skipped") == "no ground truth"
 
     def test_computes_with_mocked_ragas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -447,7 +447,7 @@ class TestContextRecallMetric:
         dataset = EvalDataset(samples=[sample])
         config = MetricConfig()
         result = metric.compute(dataset, config)
-        assert result.score == 0.0
+        assert result.score is None
         assert result.details.get("skipped") == "no ground truth"
 
     def test_computes_with_mocked_ragas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
