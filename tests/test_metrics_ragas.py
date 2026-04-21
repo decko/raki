@@ -1204,6 +1204,168 @@ class TestCreateRagasEmbeddings:
 
 
 # ---------------------------------------------------------------------------
+# Google provider tests — verify create_ragas_llm dispatches to Google
+# ---------------------------------------------------------------------------
+
+
+class TestGoogleProvider:
+    def test_google_provider_creates_llm(self, monkeypatch):
+        """Google provider dispatches to llm_factory with provider='google'."""
+        import sys
+
+        mock_client = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = mock_client
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+        monkeypatch.setattr("google.genai", mock_genai, raising=False)
+
+        mock_llm = MagicMock()
+        mock_factory = MagicMock(return_value=mock_llm)
+        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+
+        from importlib import reload
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        result = llm_setup.create_ragas_llm(config)
+
+        mock_genai.Client.assert_called_once_with(
+            vertexai=True, project="test-project", location="us-central1"
+        )
+        mock_factory.assert_called_once()
+        call_kwargs = mock_factory.call_args
+        assert call_kwargs[0][0] == "gemini-2.5-pro"
+        assert call_kwargs[1]["provider"] == "google"
+        assert call_kwargs[1]["client"] == mock_client
+        assert result is mock_llm
+
+    def test_google_in_supported_providers(self):
+        """google is listed in SUPPORTED_PROVIDERS."""
+        from raki.metrics.ragas.llm_setup import SUPPORTED_PROVIDERS
+
+        assert "google" in SUPPORTED_PROVIDERS
+
+    def test_google_provider_missing_project_raises(self, monkeypatch):
+        """When neither GOOGLE_CLOUD_PROJECT nor VERTEXAI_PROJECT is set, raise ValueError."""
+        import sys
+
+        mock_genai = MagicMock()
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+        monkeypatch.setattr("google.genai", mock_genai, raising=False)
+
+        mock_factory = MagicMock(return_value=MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+
+        from importlib import reload
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
+        monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+        monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+
+        with pytest.raises(ValueError, match="GOOGLE_CLOUD_PROJECT or VERTEXAI_PROJECT"):
+            llm_setup.create_ragas_llm(config)
+
+    def test_google_provider_vertexai_project_fallback(self, monkeypatch):
+        """VERTEXAI_PROJECT is used when GOOGLE_CLOUD_PROJECT is not set."""
+        import sys
+
+        mock_client = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = mock_client
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+        monkeypatch.setattr("google.genai", mock_genai, raising=False)
+
+        mock_llm = MagicMock()
+        mock_factory = MagicMock(return_value=mock_llm)
+        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+
+        from importlib import reload
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
+        monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+        monkeypatch.setenv("VERTEXAI_PROJECT", "fallback-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        llm_setup.create_ragas_llm(config)
+
+        mock_genai.Client.assert_called_once_with(
+            vertexai=True, project="fallback-project", location="us-central1"
+        )
+
+    def test_google_provider_forwards_temperature(self, monkeypatch):
+        """Temperature from MetricConfig is passed to llm_factory."""
+        import sys
+
+        mock_client = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = mock_client
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+        monkeypatch.setattr("google.genai", mock_genai, raising=False)
+
+        mock_llm = MagicMock()
+        mock_factory = MagicMock(return_value=mock_llm)
+        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+
+        from importlib import reload
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro", temperature=0.5)
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+
+        llm_setup.create_ragas_llm(config)
+
+        call_kwargs = mock_factory.call_args
+        assert call_kwargs[1]["temperature"] == 0.5
+
+    def test_google_provider_default_location(self, monkeypatch):
+        """When VERTEXAI_LOCATION is not set, 'us-central1' is used as default."""
+        import sys
+
+        mock_client = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = mock_client
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+        monkeypatch.setattr("google.genai", mock_genai, raising=False)
+
+        mock_llm = MagicMock()
+        mock_factory = MagicMock(return_value=mock_llm)
+        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+
+        from importlib import reload
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+        monkeypatch.delenv("VERTEXAI_LOCATION", raising=False)
+
+        llm_setup.create_ragas_llm(config)
+
+        mock_genai.Client.assert_called_once_with(
+            vertexai=True, project="test-project", location="us-central1"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Integration tests (slow, requires LLM) — marked for selective running
 # ---------------------------------------------------------------------------
 

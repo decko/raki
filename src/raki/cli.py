@@ -129,7 +129,7 @@ def main():
 @click.option(
     "--judge-provider",
     "judge_provider",
-    type=click.Choice(["vertex-anthropic", "anthropic"]),
+    type=click.Choice(["vertex-anthropic", "anthropic", "google"]),
     default="vertex-anthropic",
     help="LLM provider for judge metrics (default: vertex-anthropic)",
 )
