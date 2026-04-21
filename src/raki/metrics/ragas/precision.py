@@ -37,7 +37,7 @@ class ContextPrecisionMetric:
         rows = to_ragas_rows(dataset)
         rows_with_ref = [row for row in rows if row.reference is not None]
         if not rows_with_ref:
-            return MetricResult(name=self.name, score=0.0, details={"skipped": "no ground truth"})
+            return MetricResult(name=self.name, score=None, details={"skipped": "no ground truth"})
 
         from ragas.metrics.collections import (  # ty: ignore[unresolved-import]
             ContextPrecisionWithReference,

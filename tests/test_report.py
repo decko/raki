@@ -740,8 +740,8 @@ class TestNoDataMetricDisplay:
         report = EvalReport(
             run_id="test-skipped-ragas",
             aggregate_scores={
-                "faithfulness": 0.0,
-                "context_precision": 0.0,
+                "faithfulness": None,
+                "context_precision": None,
             },
             metric_details={
                 "faithfulness": {"skipped": "no samples"},
@@ -754,6 +754,104 @@ class TestNoDataMetricDisplay:
         output = string_io.getvalue()
         assert "N/A" in output
         assert "no samples" in output or "no ground truth" in output
+
+    def test_skipped_metric_aggregate_score_is_none_not_zero(self) -> None:
+        """Bug #140: aggregate_scores must use None (JSON null) for skipped metrics, not 0.0.
+
+        When a metric is skipped (e.g. no ground truth), the aggregate score
+        should be None so CI consumers can distinguish 'not measured' from 'zero'.
+        """
+        report = EvalReport(
+            run_id="test-null-aggregate",
+            aggregate_scores={
+                "context_precision": None,
+                "context_recall": None,
+                "first_pass_verify_rate": 0.80,
+            },
+            metric_details={
+                "context_precision": {"skipped": "no ground truth"},
+                "context_recall": {"skipped": "no ground truth"},
+            },
+        )
+        assert report.aggregate_scores["context_precision"] is None
+        assert report.aggregate_scores["context_recall"] is None
+        assert report.aggregate_scores["first_pass_verify_rate"] == 0.80
+
+    def test_skipped_metric_serializes_to_json_null(self, tmp_path: Path) -> None:
+        """Bug #140: None aggregate scores must serialize to JSON null, not 0.0."""
+        report = EvalReport(
+            run_id="test-json-null",
+            aggregate_scores={
+                "context_precision": None,
+                "context_recall": None,
+                "first_pass_verify_rate": 0.80,
+            },
+            metric_details={
+                "context_precision": {"skipped": "no ground truth"},
+                "context_recall": {"skipped": "no ground truth"},
+            },
+        )
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        raw = json.loads(output_path.read_text())
+        assert raw["aggregate_scores"]["context_precision"] is None
+        assert raw["aggregate_scores"]["context_recall"] is None
+        assert raw["aggregate_scores"]["first_pass_verify_rate"] == 0.80
+
+    def test_skipped_metric_cli_shows_na_not_null(self) -> None:
+        """Bug #140: CLI must show 'N/A' for None scores, not 'null' or 'None'."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        report = EvalReport(
+            run_id="test-cli-na",
+            aggregate_scores={
+                "context_precision": None,
+                "first_pass_verify_rate": 0.80,
+            },
+            metric_details={
+                "context_precision": {"skipped": "no ground truth"},
+            },
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "N/A" in output
+        assert "null" not in output.lower().replace("n/a", "")
+        assert "None" not in output.replace("N/A", "")
+
+    def test_skipped_metric_round_trips_as_none(self, tmp_path: Path) -> None:
+        """Bug #140: None aggregate scores must survive JSON round-trip as None."""
+        report = EvalReport(
+            run_id="test-roundtrip-null",
+            aggregate_scores={
+                "context_precision": None,
+                "first_pass_verify_rate": 0.80,
+            },
+            metric_details={
+                "context_precision": {"skipped": "no ground truth"},
+            },
+        )
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        loaded = load_json_report(output_path)
+        assert loaded.aggregate_scores["context_precision"] is None
+        assert loaded.aggregate_scores["first_pass_verify_rate"] == 0.80
+
+    def test_engine_propagates_none_score_to_aggregate(self) -> None:
+        """Bug #140: MetricsEngine must propagate None scores into aggregate_scores.
+
+        Verifies that the engine's dict comprehension preserves None from MetricResult.score.
+        """
+        results = [
+            MetricResult(name="context_precision", score=None, details={"skipped": "no gt"}),
+            MetricResult(name="first_pass_verify_rate", score=0.80),
+        ]
+        aggregate = {result.name: result.score for result in results}
+        assert aggregate["context_precision"] is None
+        assert aggregate["first_pass_verify_rate"] == 0.80
 
     def test_metric_details_populated_by_engine(self) -> None:
         from raki.metrics.engine import MetricsEngine
