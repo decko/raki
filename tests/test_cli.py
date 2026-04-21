@@ -1405,6 +1405,162 @@ class TestReportPositionalArg:
         assert result.exit_code == 2
 
 
+class TestDocsPathCLI:
+    """Tests for --docs-path flag on the run command."""
+
+    def test_docs_path_option_accepted(self, manifest_with_session, tmp_path):
+        """--docs-path should be accepted as a valid CLI option."""
+        manifest, _sessions = manifest_with_session
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# Guide\nSome documentation.\n")
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "--docs-path", str(docs_dir), "-q"],
+        )
+        assert result.exit_code == 0
+
+    def test_docs_path_nonexistent_exits_2(self, manifest_with_session, tmp_path):
+        """--docs-path pointing to nonexistent dir should fail."""
+        manifest, _sessions = manifest_with_session
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "--docs-path", str(tmp_path / "nope")],
+        )
+        assert result.exit_code == 2
+
+    def test_docs_path_adds_knowledge_metrics(self, manifest_with_session, tmp_path):
+        """--docs-path should add knowledge metrics to the output."""
+        manifest, _sessions = manifest_with_session
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# Guide\nSome documentation content.\n")
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(manifest),
+                "--docs-path",
+                str(docs_dir),
+                "-o",
+                str(output_dir),
+                "--json",
+                "-q",
+            ],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        metric_names = set(data.get("aggregate_scores", {}).keys())
+        assert "knowledge_gap_rate" in metric_names
+        assert "knowledge_miss_rate" in metric_names
+
+    def test_docs_path_logs_loaded_count(self, manifest_with_session, tmp_path):
+        """--docs-path should log how many chunks were loaded."""
+        manifest, _sessions = manifest_with_session
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# Guide\nContent.\n")
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "--docs-path", str(docs_dir)],
+        )
+        assert result.exit_code == 0
+        assert "doc" in result.output.lower()
+
+    def test_docs_path_overrides_manifest_docs(self, tmp_path, pass_simple_dir):
+        """CLI --docs-path should override manifest docs.path."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        session_dest = sessions / "101"
+        session_dest.mkdir()
+        for file_path in pass_simple_dir.iterdir():
+            (session_dest / file_path.name).write_text(file_path.read_text())
+
+        # Manifest points to one docs dir
+        manifest_docs = tmp_path / "manifest_docs"
+        manifest_docs.mkdir()
+        (manifest_docs / "old.md").write_text("# Old docs\n")
+
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\ndocs:\n  path: {manifest_docs}\n")
+
+        # CLI overrides to a different docs dir
+        cli_docs = tmp_path / "cli_docs"
+        cli_docs.mkdir()
+        (cli_docs / "new.md").write_text("# New docs\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_file), "--docs-path", str(cli_docs), "-q"],
+        )
+        assert result.exit_code == 0
+
+    def test_manifest_docs_used_when_no_cli_flag(self, tmp_path, pass_simple_dir):
+        """Manifest docs.path should be used when --docs-path is not given."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        session_dest = sessions / "101"
+        session_dest.mkdir()
+        for file_path in pass_simple_dir.iterdir():
+            (session_dest / file_path.name).write_text(file_path.read_text())
+
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# Guide\nContent here.\n")
+
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\ndocs:\n  path: {docs_dir}\n")
+
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(manifest_file),
+                "-o",
+                str(output_dir),
+                "--json",
+                "-q",
+            ],
+        )
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        metric_names = set(data.get("aggregate_scores", {}).keys())
+        assert "knowledge_gap_rate" in metric_names
+
+    def test_docs_path_outside_project_root_rejected(self, tmp_path):
+        """--docs-path pointing outside the project root should fail with UsageError."""
+        # Create project directory with manifest
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        sessions = project_dir / "sessions"
+        sessions.mkdir()
+        manifest_file = project_dir / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
+
+        # Create docs directory outside the project root
+        outside_docs = tmp_path / "outside_docs"
+        outside_docs.mkdir()
+        (outside_docs / "guide.md").write_text("# Guide\nContent.\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_file), "--docs-path", str(outside_docs), "-q"],
+        )
+        assert result.exit_code != 0
+        assert "must be within the project root" in result.output
+
+
 class TestRagasMetricsSync:
     """_RAGAS_METRICS dict keys must stay in sync with actual Ragas metric class .name attributes."""
 

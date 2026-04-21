@@ -24,6 +24,11 @@ OPERATIONAL_METRICS = {
     "token_efficiency",
 }
 
+KNOWLEDGE_METRICS = {
+    "knowledge_gap_rate",
+    "knowledge_miss_rate",
+}
+
 EXPERIMENTAL_METRICS = {
     "faithfulness",
     "answer_relevancy",
@@ -221,15 +226,12 @@ def print_summary(
 
     meta = _MetricMeta(metrics)
 
+    non_retrieval = OPERATIONAL_METRICS | KNOWLEDGE_METRICS
     operational = {
-        name: score
-        for name, score in report.aggregate_scores.items()
-        if name in OPERATIONAL_METRICS
+        name: score for name, score in report.aggregate_scores.items() if name in non_retrieval
     }
     retrieval = {
-        name: score
-        for name, score in report.aggregate_scores.items()
-        if name not in OPERATIONAL_METRICS
+        name: score for name, score in report.aggregate_scores.items() if name not in non_retrieval
     }
 
     if operational:

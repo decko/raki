@@ -41,6 +41,13 @@ class GroundTruthConfig(BaseModel):
     path: Path | None = None
 
 
+class DocsConfig(BaseModel):
+    """Configuration for project documentation used by knowledge metrics."""
+
+    path: Path
+    extensions: list[str] = Field(default_factory=lambda: [".md", ".txt"])
+
+
 class SyntheticConfig(BaseModel):
     """Configuration for synthetic test generation."""
 
@@ -60,6 +67,7 @@ class EvalManifest(BaseModel):
     sessions: SessionsConfig
     sources: list[SourceDocument] = Field(default_factory=list)
     ground_truth: GroundTruthConfig = Field(default_factory=GroundTruthConfig)
+    docs: DocsConfig | None = None
     synthetic: SyntheticConfig = Field(default_factory=SyntheticConfig)
     thresholds: list[str] = Field(default_factory=list)
 
@@ -137,6 +145,11 @@ def load_manifest(path: Path, *, project_root: Path | None = None) -> EvalManife
     for source_index, source in enumerate(manifest.sources):
         source.path = _resolve_and_guard(
             source.path, manifest_dir, root, label=f"sources[{source_index}].path"
+        )
+
+    if manifest.docs is not None:
+        manifest.docs.path = _resolve_and_guard(
+            manifest.docs.path, manifest_dir, root, label="docs.path"
         )
 
     if manifest.ground_truth.path is not None:

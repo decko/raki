@@ -1269,11 +1269,11 @@ class TestKnowledgeMissRateConditional:
     """Knowledge Miss Rate hidden when no knowledge_context."""
 
     def test_hidden_when_no_knowledge_context(self, tmp_path: Path) -> None:
-        """Knowledge Miss Rate renders as N/A when no session has knowledge_context.
+        """Knowledge Miss Rate is hidden when no session has knowledge_context.
 
-        With the new behavior (issue #113), knowledge_miss_rate returns
-        score=None when no knowledge_context exists, and the HTML template
-        renders None scores as "N/A".
+        When knowledge_miss_rate is in operational metrics and no session
+        has knowledge_context, the template hides the metric card entirely
+        and shows a footnote explaining why.
         """
         from raki.report.html_report import write_html_report
 
@@ -1290,8 +1290,9 @@ class TestKnowledgeMissRateConditional:
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        # With score=None, the template should render "N/A" for the metric
-        assert "N/A" in content
+        # Knowledge metrics are hidden (not rendered as N/A) when no context;
+        # a footnote explains the omission
+        assert "Knowledge Miss Rate omitted" in content
 
     def test_shown_when_knowledge_context_present(self, tmp_path: Path) -> None:
         """Knowledge Miss Rate should be shown when sessions have knowledge_context."""
