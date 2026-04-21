@@ -3,6 +3,11 @@
 How to read RAKI metrics and what to do when they signal problems.
 See [Getting Started](getting-started.md) for running your first evaluation.
 
+For detailed metric documentation, see the per-tier references:
+- [Operational Metrics](metrics/operational.md)
+- [Knowledge Metrics](metrics/knowledge.md)
+- [Analytical Metrics](metrics/analytical.md)
+
 ## Operational Health Metrics
 
 These metrics require no LLM -- they are computed directly from session data.
@@ -55,17 +60,17 @@ Mean USD cost per session (lower is better). Acceptable ranges depend on your co
 
 **Red zone action:** Check token counts and rework cycles. High cost usually stems from excessive rework or overly large context windows. Reducing retrieved context or improving first-pass quality brings cost down.
 
-### knowledge_retrieval_miss_rate -- Knowledge miss rate
+### self_correction_rate -- Self-correction rate
 
-Fraction of rework-triggering findings where the relevant knowledge was not in the retrieved context (lower is better).
+Ratio of rework findings (critical/major) resolved by the agent (higher is better). Returns N/A when no rework findings exist.
 
 | Zone | Range | Meaning |
 |------|-------|---------|
-| Green | < 0.15 | Knowledge base covers most failure cases |
-| Yellow | 0.15 -- 0.40 | Notable gaps in knowledge coverage |
-| Red | > 0.40 | Knowledge base is missing content for many failure modes |
+| Green | >= 0.80 | Agent fixes most issues after feedback |
+| Yellow | 0.50 -- 0.79 | Some issues persist after rework |
+| Red | < 0.50 | Agent fails to resolve most issues |
 
-**Red zone action:** Extract the topics from missed findings and add them to your knowledge base. This is the single most direct way to improve agent quality.
+**Red zone action:** Investigate whether review criteria are clear and whether the agent's fix-apply loop is working. Low self-correction with high rework cycles means the agent is churning without converging.
 
 ### phase_execution_time -- Phase execution time
 
@@ -91,7 +96,35 @@ Average tokens (input + output) consumed per phase (lower is better). Measures h
 
 **Red zone action:** Check whether phases are receiving overly large context windows or generating verbose output. Reducing retrieved context size and tightening prompts are the most effective levers. High token counts combined with high cost_per_session confirm that token volume is driving spend.
 
-## Retrieval Quality Metrics
+## Knowledge Metrics
+
+These metrics require `--docs-path` or `docs.path` in the manifest. They measure how well your documentation covers the domains where the agent makes mistakes.
+
+### knowledge_gap_rate -- Knowledge gap rate
+
+Ratio of rework findings in domains NOT covered by the knowledge base (lower is better).
+
+| Zone | Range | Meaning |
+|------|-------|---------|
+| Green | < 0.20 | KB covers most failure domains |
+| Yellow | 0.20 -- 0.40 | Notable gaps in knowledge coverage |
+| Red | > 0.40 | KB is missing content for many failure modes |
+
+**Red zone action:** Extract the topics from uncovered findings and add them to your knowledge base. This is the single most direct way to improve agent quality.
+
+### knowledge_miss_rate -- Knowledge miss rate
+
+Ratio of rework findings in domains covered by the KB but the agent still got wrong (lower is better).
+
+| Zone | Range | Meaning |
+|------|-------|---------|
+| Green | < 0.10 | Agent uses KB content effectively |
+| Yellow | 0.10 -- 0.30 | Agent sometimes ignores available knowledge |
+| Red | > 0.30 | Agent frequently fails despite having KB coverage |
+
+**Red zone action:** Review the KB content for affected domains. The information exists but is not preventing mistakes -- it may need restructuring or clearer language.
+
+## Analytical Metrics
 
 These metrics use LLM-backed evaluation via Ragas and require ground truth data.
 

@@ -1,4 +1,4 @@
-# RAKI — Retrieval Assessment for Knowledge Impact
+# RAKI -- Retrieval Assessment for Knowledge Impact
 
 A CLI tool that evaluates agentic RAG quality from session transcripts.
 
@@ -6,63 +6,85 @@ A CLI tool that evaluates agentic RAG quality from session transcripts.
 
 ![RAKI HTML Report](docs/images/report-screenshot.png)
 
+## Three tiers of metrics
+
+| Tier | What you need | Metrics |
+|------|--------------|---------|
+| **Operational** | Nothing (zero config) | Verify rate, rework cycles, cost, severity, latency, tokens, self-correction |
+| **Knowledge** | `--docs-path` | Knowledge gap rate, knowledge miss rate |
+| **Analytical** | `--judge` | Faithfulness, answer relevancy, context precision, context recall |
+
 ## Features
 
-- **Operational metrics** — verify rate, rework cycles, severity distribution, cost analysis (no LLM required)
-- **Ragas retrieval metrics** — context precision/recall, faithfulness, answer relevancy
-- **HTML reports** — interactive reports with session-level detail and color-coded thresholds
-- **Pluggable adapters** — bring any session format; built-in support for session-schema and Alcove
-- **Ground truth matching** — curated YAML entries matched by domain for retrieval evaluation
+- **Operational metrics** -- verify rate, rework cycles, severity, cost, latency, tokens, self-correction (no LLM required)
+- **Knowledge metrics** -- gap rate and miss rate based on project documentation coverage
+- **Analytical metrics** -- Ragas-backed context precision/recall, faithfulness, answer relevancy (LLM judge)
+- **HTML reports** -- interactive reports with session-level detail and color-coded thresholds
+- **Quality gates** -- per-metric `--gate` thresholds and `--fail-on-regression` for CI
+- **Pluggable adapters** -- bring any session format; built-in support for session-schema and Alcove
 
 ## Quick Start
 
 ```bash
-uv pip install raki --extra html
-uv run raki validate --manifest raki.yaml
-uv run raki run --manifest raki.yaml --no-llm
-```
+# Install
+uv pip install raki[html]
 
-The `--no-llm` flag runs operational metrics only (no API keys needed).
-To include Ragas retrieval metrics, omit the flag and configure an LLM provider.
-Use `--judge-provider anthropic` for direct Anthropic API access, or
-`--judge-provider vertex-anthropic` (default) for Vertex AI.
+# Validate manifest
+uv run raki validate --manifest raki.yaml
+
+# Run operational metrics (default, no API keys needed)
+uv run raki run --manifest raki.yaml
+
+# Add knowledge metrics
+uv run raki run --manifest raki.yaml --docs-path ./docs
+
+# Add analytical metrics (requires LLM credentials)
+uv run raki run --manifest raki.yaml --judge --judge-provider anthropic
+```
 
 ## Usage
 
 ```bash
-# Run all metrics (requires LLM provider -- Vertex AI Anthropic by default)
-uv run raki run --manifest raki.yaml
+# Run all tiers (operational + knowledge + analytical)
+uv run raki run --manifest raki.yaml --docs-path ./docs --judge
 
-# Run all metrics with direct Anthropic API
-uv run raki run --manifest raki.yaml --judge-provider anthropic
-
-# Run operational metrics only
-uv run raki run --manifest raki.yaml --no-llm
+# Run with direct Anthropic API
+uv run raki run --manifest raki.yaml --judge --judge-provider anthropic
 
 # Run specific metrics only
-uv run raki run --manifest raki.yaml --no-llm --metrics cost_efficiency,rework_cycles
+uv run raki run --manifest raki.yaml --metrics cost_efficiency,rework_cycles
+
+# Quality gates for CI
+uv run raki run --manifest raki.yaml \
+  --gate 'first_pass_verify_rate>0.85' \
+  --gate 'rework_cycles<1.5' \
+  --quiet
+
+# List available metrics
+uv run raki metrics
 
 # Validate manifest and session data
-uv run raki validate --manifest raki.yaml
+uv run raki validate --manifest raki.yaml --deep
+
+# Compare two evaluation runs
+uv run raki report --diff results/baseline.json results/compare.json --fail-on-regression
 
 # List available adapters
 uv run raki adapters
-
-# List available metrics (name, display name, LLM requirement)
-uv run raki metrics
-
-# Machine-readable metric list
-uv run raki metrics --json
 ```
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) — install, run, and understand your first report
-- [Interpretation Reference](docs/interpretation-reference.md) — what each metric means and when to act
-- [Ground Truth Curation Guide](docs/curation-guide.md) — write effective ground truth entries
-- [Adapter Guide](docs/adapter-guide.md) — integrate custom session formats
-- [Session Schema Reference](docs/session-schema.md) — field definitions for session-schema format
-- [CI Quality Gate Example](docs/examples/github-actions-quality-gate.yml) — GitHub Actions workflow for automated RAG evaluation
+- [Getting Started](docs/getting-started.md) -- install, run, and understand your first report
+- **Metric references:**
+  - [Operational Metrics](docs/metrics/operational.md) -- verify rate, rework, cost, severity, latency, tokens, self-correction
+  - [Knowledge Metrics](docs/metrics/knowledge.md) -- gap rate, miss rate, domain matching
+  - [Analytical Metrics](docs/metrics/analytical.md) -- faithfulness, relevancy, precision, recall
+- [CI Integration Guide](docs/ci-integration.md) -- quality gates, regression detection, GitHub Actions / GitLab CI
+- [Results Interpretation Reference](docs/interpretation-reference.md) -- zone tables and common patterns
+- [Ground Truth Curation Guide](docs/curation-guide.md) -- write effective ground truth entries
+- [Adapter Guide](docs/adapter-guide.md) -- integrate custom session formats
+- [Session Schema Reference](docs/session-schema.md) -- field definitions for session-schema format
 
 ## Development
 
@@ -78,4 +100,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contribution workflow.
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE) for details.
+Apache 2.0 -- see [LICENSE](LICENSE) for details.

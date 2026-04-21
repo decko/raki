@@ -1,10 +1,10 @@
-# RAKI CI Quality Gate — GitHub Actions Example
+# RAKI CI Quality Gate -- GitHub Actions Example
 #
 # This workflow shows how to integrate RAKI into your CI pipeline:
 #   1. Install RAKI
 #   2. Validate manifest and session data
-#   3. Run operational metrics (no LLM, every PR)
-#   4. Run full evaluation with Ragas metrics (nightly, with threshold)
+#   3. Run operational metrics with quality gates (every PR)
+#   4. Run full evaluation with --judge and gates (nightly)
 #   5. Upload report artifacts
 #
 # Copy this file into your repository as .github/workflows/raki-quality-gate.yml
@@ -16,12 +16,12 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Nightly at 03:00 UTC — runs full LLM-backed evaluation
+    # Nightly at 03:00 UTC -- runs full LLM-backed evaluation
     - cron: "0 3 * * *"
   workflow_dispatch:
 
 jobs:
-  # ── Step 1: Validate manifest and session data ────────────────────────
+  # -- Step 1: Validate manifest and session data --
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -37,7 +37,7 @@ jobs:
       - name: Validate manifest
         run: uv run raki validate --manifest raki.yaml
 
-  # ── Step 2: Operational gate (every PR, no LLM) ───────────────────────
+  # -- Step 2: Operational gate (every PR, no LLM) --
   operational-gate:
     needs: validate
     runs-on: ubuntu-latest
@@ -51,11 +51,12 @@ jobs:
       - name: Install RAKI
         run: uv sync --python 3.12 --all-extras
 
-      - name: Run operational metrics
+      - name: Run operational metrics with gates
         run: |
           uv run raki run \
             --manifest raki.yaml \
-            --no-llm \
+            --gate 'first_pass_verify_rate>0.85' \
+            --gate 'rework_cycles<1.5' \
             --output results/ \
             --quiet
 
@@ -67,8 +68,8 @@ jobs:
           path: results/
           retention-days: 30
 
-  # ── Step 3: Full evaluation with LLM metrics (nightly only) ───────────
-  nightly-llm-gate:
+  # -- Step 3: Full evaluation with judge metrics (nightly only) --
+  nightly-judge-gate:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest
@@ -88,12 +89,14 @@ jobs:
       - name: Install RAKI
         run: uv sync --python 3.12 --all-extras
 
-      - name: Run full evaluation with threshold
+      - name: Run full evaluation with judge and gates
         run: |
           uv run raki run \
             --manifest raki.yaml \
+            --judge \
             --judge-provider anthropic \
-            --threshold 0.7 \
+            --gate 'faithfulness>0.80' \
+            --gate 'first_pass_verify_rate>0.85' \
             --include-sessions \
             --output results/ \
             --quiet

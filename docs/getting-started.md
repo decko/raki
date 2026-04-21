@@ -10,19 +10,24 @@ Evaluate your agentic RAG sessions in under 10 minutes.
 ## Install
 
 ```bash
-git clone https://github.com/decko/raki.git
-cd raki
-uv sync --python 3.12 --extra html
+uv pip install raki
 ```
 
-> **LLM-backed metrics**: if you plan to use Ragas retrieval metrics, install
-> with `uv sync --python 3.12 --all-extras` instead. This pulls in
-> `scikit-network`, which requires a C++ compiler.
->
-> By default, RAKI uses **Vertex AI Anthropic** (`--judge-provider vertex-anthropic`)
-> for LLM judge calls. If you have a direct Anthropic API key instead, use
-> `--judge-provider anthropic`. Set the `ANTHROPIC_API_KEY` environment variable
-> for direct API access, or configure Google Cloud credentials for Vertex AI.
+For HTML reports, install the `html` extra:
+
+```bash
+uv pip install raki[html]
+```
+
+For development or analytical metrics (Ragas), install all extras:
+
+```bash
+git clone https://github.com/decko/raki.git
+cd raki
+uv sync --python 3.12 --all-extras
+```
+
+> **Note:** The `ragas` extra pulls `scikit-network`, which requires a C++ compiler (`g++`).
 
 Verify the install:
 
@@ -30,136 +35,159 @@ Verify the install:
 uv run raki --help
 ```
 
-## Quick Start
+## Three tiers of metrics
 
-RAKI ships with example session data so you can try it immediately.
+RAKI organizes metrics into three tiers, each adding more depth:
 
-Validate the example manifest:
+| Tier | What you need | What you get |
+|------|--------------|--------------|
+| **Operational** | Nothing (zero config) | Verify rate, rework cycles, cost, severity, latency, tokens, self-correction |
+| **Knowledge** | `--docs-path ./docs` | Knowledge gap rate, knowledge miss rate |
+| **Analytical** | `--judge` + LLM credentials | Faithfulness, answer relevancy, context precision, context recall |
 
-```bash
-uv run raki validate --manifest examples/raki-minimal.yaml
-```
+Start with operational metrics and add tiers as needed.
 
-For a deeper smoke test that checks adapter loading, ground truth wiring, and
-operational metrics against a single sample (no LLM calls, no full run):
+## Step 1: Operational metrics (zero config)
 
-```bash
-uv run raki validate --manifest examples/raki-minimal.yaml --deep
-```
-
-Run an evaluation using only operational metrics (no LLM required):
+Run operational metrics immediately -- no API keys, no docs, no ground truth:
 
 ```bash
-uv run raki run --manifest examples/raki-minimal.yaml --no-llm
+uv run raki run --manifest raki.yaml
 ```
 
-### Discovering Available Metrics
+This is the default mode. It computes all seven operational metrics from session transcript data alone:
 
-List all metrics RAKI can compute, including which ones require an LLM provider:
+- **Verify rate** -- % sessions passing verification on first try
+- **Rework cycles** -- mean review-fix iterations per session
+- **Severity score** -- weighted severity of review findings
+- **Cost / session** -- mean USD cost per session
+- **Self-correction rate** -- ratio of rework findings resolved
+- **Phase execution time** -- mean phase time in seconds
+- **Tokens / phase** -- mean tokens per phase
+
+### Discovering metrics
 
 ```bash
-uv run raki metrics
+uv run raki metrics          # table of all metrics
+uv run raki metrics --json   # machine-readable
 ```
 
-Use `--json` for machine-readable output:
+### Running specific metrics
 
 ```bash
-uv run raki metrics --json
+uv run raki run --manifest raki.yaml --metrics cost_efficiency,rework_cycles
 ```
 
-Run only specific metrics by name (use the internal name from `raki metrics`):
+## Step 2: Add docs for knowledge metrics
+
+Point RAKI at your project documentation to activate knowledge metrics:
 
 ```bash
-uv run raki run --manifest examples/raki-minimal.yaml --no-llm --metrics cost_efficiency,rework_cycles
+uv run raki run --manifest raki.yaml --docs-path ./docs
 ```
 
-## Prepare Your Data
+Or configure it in your manifest:
 
-RAKI evaluates session transcripts produced by agentic coding tools. Each session is a directory containing phase files (`triage.json`, `implement.json`, `verify.json`, `review.json`) and an `events.jsonl` log. See `examples/sessions/` for working examples.
+```yaml
+docs:
+  path: ./docs
+  extensions: [".md", ".rst", ".txt"]
+```
 
-If your tool produces a different format, you can write a custom adapter. See the [Adapter Authoring Guide](adapter-guide.md) for details.
+This adds two metrics:
 
-## Understanding the Output
+- **Knowledge gap rate** -- how often rework happens in domains not covered by your docs
+- **Knowledge miss rate** -- how often the agent fails despite having relevant docs
 
-The Quick Start command above produces output like this:
+See [Knowledge Metrics Reference](metrics/knowledge.md) for details.
+
+## Step 3: Add a judge for analytical metrics
+
+Enable LLM-judged retrieval quality metrics with `--judge`:
+
+```bash
+# Vertex AI Anthropic (default)
+uv run raki run --manifest raki.yaml --judge
+
+# Direct Anthropic API
+uv run raki run --manifest raki.yaml --judge --judge-provider anthropic
+
+# Google AI
+uv run raki run --manifest raki.yaml --judge --judge-provider google
+```
+
+This adds four Ragas-backed metrics:
+
+- **Faithfulness** -- is the output grounded in retrieved context?
+- **Answer relevancy** -- does the output address the question?
+- **Context precision** -- is the retrieved context relevant? (requires ground truth)
+- **Context recall** -- was all needed context retrieved? (requires ground truth)
+
+Set `ANTHROPIC_API_KEY` for direct Anthropic API, or configure Google Cloud credentials for Vertex AI.
+
+See [Analytical Metrics Reference](metrics/analytical.md) for details.
+
+## Validate before running
+
+Check your manifest and session data without running metrics:
+
+```bash
+uv run raki validate --manifest raki.yaml
+```
+
+For a deeper smoke test (adapter loading, ground truth wiring, metric computation against one sample):
+
+```bash
+uv run raki validate --manifest raki.yaml --deep
+```
+
+## Understanding the output
+
+A typical operational run produces:
 
 ```
-Loading sessions from examples/sessions...
-Loaded 6 sessions (0 skipped, 0 errors)
-
 Operational Health
-  Verify rate                         0.75  (% sessions passing verify on first try)
-  Rework cycles                       0.2  (Mean review-rework iterations per session)
-  Severity score                      0.39  (Weighted severity of review findings (1.0 = no findings))
-  Cost / session                      $10.93  (Mean USD cost per session)
-  Knowledge miss rate                 1.00  (Ratio of rework findings caused by missing knowledge retrieval)
-  ⚠ Small sample size (n=6) — scores are directional, not definitive
+  Verify rate                         0.75
+  Rework cycles                       0.2
+  Severity score                      0.39
+  Cost / session                      $10.93
+  Self-correction rate                N/A (no rework findings)
+  Phase execution time                142.3s
+  Tokens / phase                      3,241
 ```
 
-Key metrics to watch:
-
-- **Verify rate** (0.75) -- 75% of sessions passed verification on the first attempt. Higher is better; values below 0.5 suggest systemic quality issues in the implement phase.
-- **Rework cycles** (0.2) -- sessions needed an average of 0.2 review-rework iterations. Lower is better; values above 1.0 mean most sessions require at least one rework round.
-- **Severity score** (0.39) -- weighted severity of review findings, where 1.0 means no findings at all. Higher is better; low values indicate reviewers are catching serious issues.
-
-## Re-rendering Reports
-
-RAKI saves evaluation results as JSON. You can re-render the CLI summary or generate an HTML report from a saved JSON file at any time:
+Reports are saved as JSON (always) and HTML (when jinja2 is installed). Re-render anytime:
 
 ```bash
-# Re-render CLI summary from a saved report
 uv run raki report results/raki-report-20260410T120000.json
-
-# Generate an HTML report from the same JSON
-uv run raki report results/raki-report-20260410T120000.json --html results/report.html
+uv run raki report results/raki-report-20260410T120000.json --html report.html
 ```
 
-If the JSON report was generated without `--include-sessions`, RAKI will show aggregate scores only and warn that per-session drill-down is unavailable.
-
-## Comparing Runs
-
-Compare two evaluation runs side by side to see what improved and what regressed:
+Compare two runs:
 
 ```bash
-# Compare a baseline and a new run
 uv run raki report --diff results/baseline.json results/compare.json
-
-# Generate an HTML diff report
-uv run raki report --diff results/baseline.json results/compare.json --html results/diff.html
-
-# Write HTML to a specific output directory
-uv run raki report --diff results/baseline.json results/compare.json -o results/
 ```
 
-The diff output shows:
+## CI integration
 
-- **Coverage line** -- how many sessions matched between runs, plus counts of new and dropped sessions.
-- **Aggregate deltas** -- metric-by-metric comparison with direction indicators (green for improvements, red for regressions).
-- **Session transitions** -- which sessions changed verdict (e.g., REWORK to PASS), grouped by transition type with regressions listed first.
-
-For per-session transition analysis, both reports must have been generated with `--include-sessions`. Without session data, only aggregate deltas are shown.
-
-## CI Integration
-
-RAKI works well as a CI quality gate. A typical setup has two layers:
-
-1. **Operational gate (every PR)** -- runs `raki run --no-llm` to check verify rate, rework cycles, and cost without needing API keys. Fast and free.
-2. **Nightly LLM gate (scheduled)** -- runs the full evaluation including Ragas retrieval metrics with `--threshold` to catch regressions overnight.
+Use `--gate` for per-metric quality gates:
 
 ```bash
-# Operational gate (no LLM, suitable for every PR)
-uv run raki run --manifest raki.yaml --no-llm --output results/ --quiet
-
-# Nightly gate (full evaluation with threshold)
-uv run raki run --manifest raki.yaml --threshold 0.7 --output results/ --quiet
+uv run raki run --manifest raki.yaml \
+  --gate 'first_pass_verify_rate>0.85' \
+  --gate 'rework_cycles<1.5' \
+  --quiet
 ```
 
-Note that `--threshold` sets a minimum score for a zero exit code -- use it in the nightly job to fail the build on regressions, but not with `--no-llm` where the limited metric set makes a single threshold less meaningful.
+See [CI Integration Guide](ci-integration.md) for `--gate` syntax, `--fail-on-regression`, exit codes, and full GitHub Actions / GitLab CI examples.
 
-See [docs/examples/github-actions-quality-gate.yml](examples/github-actions-quality-gate.yml) for a complete GitHub Actions workflow with validation, operational gating, nightly LLM runs, and artifact upload.
+## Next steps
 
-## Next Steps
-
-- [Results Interpretation Reference](interpretation-reference.md) -- thresholds, patterns, and what to do about low scores
-- [Ground Truth Curation Guide](curation-guide.md) -- writing effective ground truth for Ragas retrieval metrics
-- [Adapter Authoring Guide](adapter-guide.md) -- integrating session formats beyond the built-in adapters
+- [Operational Metrics Reference](metrics/operational.md) -- all seven operational metrics in detail
+- [Knowledge Metrics Reference](metrics/knowledge.md) -- knowledge gap and miss rates
+- [Analytical Metrics Reference](metrics/analytical.md) -- Ragas-backed retrieval quality metrics
+- [CI Integration Guide](ci-integration.md) -- quality gates, regression detection, CI examples
+- [Results Interpretation Reference](interpretation-reference.md) -- zone tables and common patterns
+- [Ground Truth Curation Guide](curation-guide.md) -- writing ground truth for context precision/recall
+- [Adapter Guide](adapter-guide.md) -- integrating custom session formats
