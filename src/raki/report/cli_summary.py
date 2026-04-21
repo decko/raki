@@ -29,6 +29,11 @@ EXPERIMENTAL_METRICS = {
     "answer_relevancy",
 }
 
+CONTEXT_SENSITIVE_METRICS = {
+    "faithfulness",
+    "answer_relevancy",
+}
+
 
 class _MetricMeta:
     """Lookup helper for metric display metadata."""
@@ -90,6 +95,12 @@ def _has_no_data(metric_details: dict[str, dict], metric_name: str) -> bool:
         if key.startswith("sessions_with_") and value == 0:
             return True
     return False
+
+
+def _is_synthesized_context(metric_details: dict[str, dict], metric_name: str) -> bool:
+    """Check if a metric used synthesized (inferred) context."""
+    details = metric_details.get(metric_name, {})
+    return details.get("context_source") == "synthesized"
 
 
 def _no_data_reason(metric_details: dict[str, dict], metric_name: str) -> str:
@@ -251,6 +262,14 @@ def print_summary(
         for name, score in retrieval.items():
             tag = " [yellow]\\[experimental][/yellow]" if name in EXPERIMENTAL_METRICS else ""
             metric_no_data = _has_no_data(report.metric_details, name)
+            # Check if context was synthesized for this metric
+            inferred_tag = ""
+            if (
+                not metric_no_data
+                and name in CONTEXT_SENSITIVE_METRICS
+                and _is_synthesized_context(report.metric_details, name)
+            ):
+                inferred_tag = " [cyan]\\(inferred)[/cyan]"
             output_console.print(
                 format_metric_line(
                     name,
@@ -264,7 +283,7 @@ def print_summary(
                     if metric_no_data
                     else "no data",
                 )
-                + ("" if metric_no_data else tag)
+                + ("" if metric_no_data else tag + inferred_tag)
             )
         if session_count < 50:
             output_console.print(

@@ -609,6 +609,18 @@ class TestMetricConfigJudgeLogPath:
 
 
 class TestFaithfulnessMetric:
+    def test_returns_none_score_when_no_retrieval_context(self):
+        """Faithfulness should return score=None when no context is available."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        metric = FaithfulnessMetric()
+        sample = _make_sample_with_knowledge(knowledge_context=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+        result = metric.compute(dataset, config)
+        assert result.score is None
+        assert result.details.get("skipped") == "no retrieval context"
+
     def test_skips_without_samples(self):
         from raki.metrics.ragas.faithfulness import FaithfulnessMetric
 
@@ -617,8 +629,7 @@ class TestFaithfulnessMetric:
         dataset = EvalDataset(samples=[sample])
         config = MetricConfig()
         result = metric.compute(dataset, config)
-        assert result.score == 0.0
-        assert result.details.get("skipped") == "no samples"
+        assert result.score is None
 
     def test_experimental_flag(self):
         from raki.metrics.ragas.faithfulness import FaithfulnessMetric
@@ -804,6 +815,18 @@ class TestFaithfulnessMetric:
 
 
 class TestAnswerRelevancyMetric:
+    def test_returns_none_score_when_no_retrieval_context(self):
+        """AnswerRelevancy should return score=None when no context is available."""
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        metric = AnswerRelevancyMetric()
+        sample = _make_sample_with_knowledge(knowledge_context=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+        result = metric.compute(dataset, config)
+        assert result.score is None
+        assert result.details.get("skipped") == "no retrieval context"
+
     def test_skips_without_samples(self):
         from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
 
@@ -812,8 +835,7 @@ class TestAnswerRelevancyMetric:
         dataset = EvalDataset(samples=[sample])
         config = MetricConfig()
         result = metric.compute(dataset, config)
-        assert result.score == 0.0
-        assert result.details.get("skipped") == "no samples"
+        assert result.score is None
 
     def test_experimental_flag(self):
         from raki.metrics.ragas.relevancy import AnswerRelevancyMetric

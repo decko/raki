@@ -12,7 +12,7 @@ import logging
 
 from raki.adapters.redact import redact_sensitive
 from raki.metrics.protocol import MetricConfig
-from raki.metrics.ragas.adapter import to_ragas_rows
+from raki.metrics.ragas.adapter import detect_context_source, to_ragas_rows
 from raki.metrics.ragas.async_utils import run_async
 from raki.metrics.ragas.llm_setup import JudgeLogger, create_ragas_embeddings, create_ragas_llm
 from raki.model import EvalDataset
@@ -44,7 +44,16 @@ class AnswerRelevancyMetric:
     ) -> MetricResult:
         rows = to_ragas_rows(dataset)
         if not rows:
-            return MetricResult(name=self.name, score=0.0, details={"skipped": "no samples"})
+            return MetricResult(
+                name=self.name, score=None, details={"skipped": "no retrieval context"}
+            )
+
+        # Guard: if all rows have empty retrieved_contexts, return N/A
+        rows_with_contexts = [row for row in rows if row.retrieved_contexts]
+        if not rows_with_contexts:
+            return MetricResult(
+                name=self.name, score=None, details={"skipped": "no retrieval context"}
+            )
 
         from ragas.metrics.collections import (  # ty: ignore[unresolved-import]
             AnswerRelevancy as RagasAnswerRelevancy,
@@ -92,16 +101,24 @@ class AnswerRelevancyMetric:
         run_async(score_all())
 
         mean_score = sum(scores) / len(scores) if scores else 0.0
+
+        # Determine context_source from the dataset samples
+        context_source = detect_context_source(dataset)
+
+        details: dict = {
+            "samples_scored": len(scores),
+            "samples_skipped": len(rows) - len(scores),
+            "experimental": True,
+            "caveat": (
+                "Designed for NL answers, not code -- scores may be noisy for agentic sessions"
+            ),
+        }
+        if context_source is not None:
+            details["context_source"] = context_source
+
         return MetricResult(
             name=self.name,
             score=mean_score,
-            details={
-                "samples_scored": len(scores),
-                "samples_skipped": len(rows) - len(scores),
-                "experimental": True,
-                "caveat": (
-                    "Designed for NL answers, not code -- scores may be noisy for agentic sessions"
-                ),
-            },
+            details=details,
             sample_scores=sample_scores,
         )
