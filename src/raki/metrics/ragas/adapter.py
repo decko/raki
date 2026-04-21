@@ -4,10 +4,16 @@ Maps EvalSample fields to Ragas 0.4 collections API ascore() keyword arg
 names without importing ragas -- this module has no ragas dependency.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from raki.model import EvalDataset, EvalSample
 from raki.model.phases import PhaseResult
+
+if TYPE_CHECKING:
+    from raki.docs.chunker import DocChunk
 
 
 @dataclass
@@ -21,11 +27,23 @@ class RagasRow:
     reference: str | None  # maps to ascore() kwarg reference (was ground_truths in v0.3)
 
 
-def to_ragas_rows(dataset: EvalDataset) -> list[RagasRow]:
+def to_ragas_rows(
+    dataset: EvalDataset,
+    doc_chunks: list[DocChunk] | None = None,
+) -> list[RagasRow]:
     """Extract RagasRow objects from an EvalDataset.
 
     Skips samples that have no implement/session phase or no knowledge_context.
+
+    When *doc_chunks* are provided and a sample has no ground-truth
+    ``reference_answer``, the doc-chunk texts are joined and used as the
+    ``reference`` field so that precision/recall metrics can compute real
+    scores instead of returning N/A.
     """
+    doc_reference: str | None = None
+    if doc_chunks:
+        doc_reference = "\n\n".join(chunk.text for chunk in doc_chunks)
+
     rows: list[RagasRow] = []
     for sample in dataset.samples:
         implement = _find_phase(sample, "implement") or _find_phase(sample, "session")
@@ -41,6 +59,8 @@ def to_ragas_rows(dataset: EvalDataset) -> list[RagasRow]:
         reference = None
         if sample.ground_truth and sample.ground_truth.reference_answer:
             reference = sample.ground_truth.reference_answer
+        elif doc_reference:
+            reference = doc_reference
         rows.append(
             RagasRow(
                 session_id=sample.session.session_id,
