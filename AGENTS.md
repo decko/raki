@@ -187,7 +187,17 @@ Changelogs are generated from news fragments in `changes/` via towncrier.
 - **Each PR should create a fragment** describing the user-facing change
 - **At release time**: `uv run towncrier build --version X.Y.Z` generates CHANGELOG.md and removes fragments
 
-### Pre-release checklist
+### Release gating
+
+**NEVER tag or push a version tag without explicit human approval.** Automated agents (orchestrators, task agents) must NOT tag releases. The release decision belongs to the project owner.
+
+When all milestone issues are merged and CI is green, the orchestrator reports readiness and STOPS. The human owner then:
+
+1. Reviews the diff from the last release: `git log v<previous>..main --oneline`
+2. Tests against real session data
+3. Decides whether to tag
+
+### Pre-release checklist (human-driven)
 
 1. Run `uv run pytest tests/ -v` — all tests pass
 2. Run `uv run pytest tests/ -m slow -v` — LLM integration tests pass (if credentials available)
@@ -236,6 +246,7 @@ The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated develo
 - Using `str` instead of `Literal` for constrained fields.
 - Bumping version in only one of the two files (pyproject.toml / __init__.py).
 - Tagging a release without testing against real data first.
+- Tagging or pushing version tags autonomously — releases require explicit human approval.
 - Deferring doc updates to a separate task instead of shipping with the code.
 - Adding a metric to `ALL_OPERATIONAL` but forgetting `METRIC_METADATA` or `OPERATIONAL_METRICS`.
 - Showing 0.0 for metrics with no data instead of N/A (check `sessions_with_*` / `skipped` keys).
