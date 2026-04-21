@@ -1,8 +1,9 @@
 """LLM setup and judge logging for Ragas metrics.
 
-Uses Ragas 0.4 llm_factory with configurable Anthropic client:
+Uses Ragas 0.4 llm_factory with configurable LLM client:
 - vertex-anthropic (default): AsyncAnthropicVertex for Vertex AI
 - anthropic: AsyncAnthropic for direct Anthropic API
+- google: Google GenAI client via Vertex AI
 """
 
 import json
@@ -25,8 +26,9 @@ def create_ragas_llm(config: MetricConfig):
 
     - ``vertex-anthropic`` (default) -- uses ``AsyncAnthropicVertex``
     - ``anthropic`` -- uses ``AsyncAnthropic`` (direct Anthropic API)
+    - ``google`` -- uses ``google.genai.Client`` via Vertex AI
 
-    Defers ragas and anthropic imports so this module can be imported
+    Defers ragas and anthropic/google imports so this module can be imported
     without those packages installed.
 
     Raises:
@@ -40,6 +42,28 @@ def create_ragas_llm(config: MetricConfig):
         from anthropic import AsyncAnthropic  # ty: ignore[unresolved-import]
 
         client = AsyncAnthropic()
+    elif config.llm_provider == "google":
+        import os
+
+        from google import genai  # ty: ignore[unresolved-import]
+
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("VERTEXAI_PROJECT")
+        if not project:
+            raise ValueError(
+                "Google provider requires GOOGLE_CLOUD_PROJECT or VERTEXAI_PROJECT environment variable"
+            )
+        location = os.environ.get("VERTEXAI_LOCATION", "us-central1")
+        client = genai.Client(vertexai=True, project=project, location=location)
+
+        from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
+
+        llm = llm_factory(
+            config.llm_model,
+            provider="google",
+            client=client,
+            temperature=config.temperature,
+        )
+        return llm
     else:
         supported_list = ", ".join(SUPPORTED_PROVIDERS)
         raise ValueError(

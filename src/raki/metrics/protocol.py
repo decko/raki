@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from raki.model import EvalDataset
 from raki.model.report import MetricResult
 
-LLMProvider = Literal["vertex-anthropic", "anthropic"]
+LLMProvider = Literal["vertex-anthropic", "anthropic", "google"]
 
 
 class MetricConfig(BaseModel):
