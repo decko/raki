@@ -20,7 +20,13 @@ from raki.model import (
 from raki.model.ground_truth import GroundTruth
 from raki.metrics.protocol import MetricConfig
 from raki.docs.chunker import DocChunk
-from raki.metrics.ragas.adapter import RagasRow, to_ragas_rows
+from raki.metrics.ragas.adapter import (
+    MAX_CONTEXT_CHARS,
+    MAX_RESPONSE_CHARS,
+    RagasRow,
+    to_ragas_rows,
+    truncate_for_ragas,
+)
 from raki.metrics.ragas.llm_setup import JudgeLogger
 
 
@@ -1657,3 +1663,284 @@ class TestAnswerRelevancyIntegration:
 
         assert 0.0 <= result.score <= 1.0
         assert result.details["samples_scored"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Truncation tests — truncate_for_ragas and to_ragas_rows truncation
+# ---------------------------------------------------------------------------
+
+
+class TestTruncateForRagas:
+    """Tests for the truncate_for_ragas helper function."""
+
+    def test_short_text_unchanged(self):
+        """Text shorter than the limit should be returned as-is."""
+        short = "This is short text."
+        assert truncate_for_ragas(short, max_chars=100) == short
+
+    def test_text_at_limit_unchanged(self):
+        """Text exactly at the limit should be returned as-is."""
+        text = "a" * 100
+        assert truncate_for_ragas(text, max_chars=100) == text
+
+    def test_long_text_truncated_with_marker(self):
+        """Text exceeding the limit should be truncated with [truncated] marker."""
+        long_text = "word " * 5000  # ~25000 chars
+        result = truncate_for_ragas(long_text, max_chars=100)
+        assert len(result) <= 100 + len(" [truncated]")
+        assert result.endswith("[truncated]")
+
+    def test_truncation_at_word_boundary(self):
+        """Truncation should happen at a word boundary, not mid-word."""
+        # Create text with distinct words
+        text = "alpha bravo charlie delta echo foxtrot golf hotel india juliet"
+        result = truncate_for_ragas(text, max_chars=30)
+        assert result.endswith("[truncated]")
+        # The text before [truncated] should not end with a partial word
+        content_part = result.replace(" [truncated]", "")
+        assert not content_part.endswith("cha")  # should not cut mid-word
+
+    def test_truncation_uses_default_max_context_chars(self):
+        """Default max_chars should be MAX_CONTEXT_CHARS (10_000)."""
+        assert MAX_CONTEXT_CHARS == 10_000
+
+    def test_max_response_chars_constant(self):
+        """MAX_RESPONSE_CHARS should be defined for response truncation."""
+        assert MAX_RESPONSE_CHARS == 10_000
+
+    def test_empty_string_unchanged(self):
+        """Empty string should be returned as-is."""
+        assert truncate_for_ragas("", max_chars=100) == ""
+
+    def test_truncation_marker_present_only_when_truncated(self):
+        """[truncated] marker should not appear when text fits."""
+        text = "fits fine"
+        result = truncate_for_ragas(text, max_chars=100)
+        assert "[truncated]" not in result
+
+
+class TestToRagasRowsTruncation:
+    """Tests that to_ragas_rows truncates contexts and response."""
+
+    def test_truncates_large_knowledge_context(self):
+        """Each context chunk should be truncated to MAX_CONTEXT_CHARS."""
+        huge_context = "knowledge " * 5000  # ~50000 chars per chunk
+        sample = _make_sample_with_knowledge(
+            knowledge_context=huge_context,
+            output="short response",
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        for context in rows[0].retrieved_contexts:
+            assert len(context) <= MAX_CONTEXT_CHARS + len(" [truncated]")
+
+    def test_truncates_large_response(self):
+        """The response field should be truncated to MAX_RESPONSE_CHARS."""
+        huge_output = "code_line(); " * 5000  # ~65000 chars
+        sample = _make_sample_with_knowledge(
+            knowledge_context="normal context",
+            output=huge_output,
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert len(rows[0].response) <= MAX_RESPONSE_CHARS + len(" [truncated]")
+
+    def test_short_content_not_truncated(self):
+        """Short contexts and responses should pass through unchanged."""
+        sample = _make_sample_with_knowledge(
+            knowledge_context="small ctx1\n---\nsmall ctx2",
+            output="short answer",
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert rows[0].retrieved_contexts == ["small ctx1", "small ctx2"]
+        assert rows[0].response == "short answer"
+        # No truncation markers
+        for context in rows[0].retrieved_contexts:
+            assert "[truncated]" not in context
+        assert "[truncated]" not in rows[0].response
+
+    def test_multiple_large_context_chunks_each_truncated(self):
+        """When knowledge_context has multiple chunks separated by ---, each gets truncated."""
+        chunk1 = "alpha " * 5000
+        chunk2 = "bravo " * 5000
+        knowledge = f"{chunk1}\n---\n{chunk2}"
+        sample = _make_sample_with_knowledge(
+            knowledge_context=knowledge,
+            output="short",
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert len(rows[0].retrieved_contexts) == 2
+        for context in rows[0].retrieved_contexts:
+            assert context.endswith("[truncated]")
+            assert len(context) <= MAX_CONTEXT_CHARS + len(" [truncated]")
+
+
+# ---------------------------------------------------------------------------
+# max_tokens error handling tests
+# ---------------------------------------------------------------------------
+
+
+class TestMaxTokensErrorHandling:
+    """Tests that max_tokens errors return score=None instead of score=0.0."""
+
+    def _make_max_tokens_error(self) -> Exception:
+        """Create an exception that looks like a max_tokens error."""
+        return RuntimeError("max_tokens: output token limit reached")
+
+    def test_faithfulness_returns_none_on_max_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Faithfulness should return score=None on max_tokens errors."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=self._make_max_tokens_error())
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "max_tokens" in result.details.get("skipped", "")
+
+    def test_relevancy_returns_none_on_max_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """AnswerRelevancy should return score=None on max_tokens errors."""
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=self._make_max_tokens_error())
+
+        mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_relevancy_class, "AnswerRelevancy")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with (
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_embeddings",
+                return_value=MagicMock(),
+            ),
+        ):
+            metric = AnswerRelevancyMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "max_tokens" in result.details.get("skipped", "")
+
+    def test_precision_returns_none_on_max_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """ContextPrecision should return score=None on max_tokens errors."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=self._make_max_tokens_error())
+
+        mock_precision_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_precision_class, "ContextPrecisionWithReference")
+
+        ground_truth = GroundTruth(
+            question="Q?",
+            reference_answer="A",
+            domains=[],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.precision.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextPrecisionMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "max_tokens" in result.details.get("skipped", "")
+
+    def test_recall_returns_none_on_max_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """ContextRecall should return score=None on max_tokens errors."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=self._make_max_tokens_error())
+
+        mock_recall_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_recall_class, "ContextRecall")
+
+        ground_truth = GroundTruth(
+            question="Q?",
+            reference_answer="A",
+            domains=[],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.recall.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextRecallMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "max_tokens" in result.details.get("skipped", "")
+
+    def test_non_max_tokens_error_still_returns_zero(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Non-max_tokens errors should still result in score=0.0 (existing behavior)."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=RuntimeError("Connection refused"))
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == 0.0
+        assert result.details["samples_scored"] == 0

@@ -15,6 +15,38 @@ from raki.model.phases import PhaseResult
 if TYPE_CHECKING:
     from raki.docs.chunker import DocChunk
 
+# Maximum characters for each retrieved context chunk sent to Ragas.
+# Synthesized contexts from session transcripts can be 100k+ chars;
+# truncating prevents max_tokens errors during Ragas scoring.
+MAX_CONTEXT_CHARS: int = 10_000
+
+# Maximum characters for the response field sent to Ragas.
+# Implement phase output can contain thousands of lines of raw code/JSON;
+# Ragas faithfulness decomposes this into individual statements, which explodes.
+MAX_RESPONSE_CHARS: int = 10_000
+
+_TRUNCATION_MARKER = " [truncated]"
+
+
+def truncate_for_ragas(text: str, max_chars: int = MAX_CONTEXT_CHARS) -> str:
+    """Truncate text to *max_chars*, cutting at a word boundary.
+
+    When truncation occurs a ``[truncated]`` marker is appended so
+    downstream consumers know content was removed.  The marker is *not*
+    counted against the limit -- total length may be up to
+    ``max_chars + len(" [truncated]")``.
+    """
+    if len(text) <= max_chars:
+        return text
+
+    # Cut at max_chars then find the last space to avoid splitting a word.
+    truncated = text[:max_chars]
+    last_space = truncated.rfind(" ")
+    if last_space > 0:
+        truncated = truncated[:last_space]
+
+    return truncated + _TRUNCATION_MARKER
+
 
 @dataclass
 class RagasRow:
@@ -50,12 +82,14 @@ def to_ragas_rows(
         if implement is None or implement.knowledge_context is None:
             continue
         contexts = [
-            chunk.strip() for chunk in implement.knowledge_context.split("\n---\n") if chunk.strip()
+            truncate_for_ragas(chunk.strip(), max_chars=MAX_CONTEXT_CHARS)
+            for chunk in implement.knowledge_context.split("\n---\n")
+            if chunk.strip()
         ]
         if not contexts:
             continue
         user_input = _extract_question(sample)
-        response = implement.output
+        response = truncate_for_ragas(implement.output, max_chars=MAX_RESPONSE_CHARS)
         reference = None
         if sample.ground_truth and sample.ground_truth.reference_answer:
             reference = sample.ground_truth.reference_answer
@@ -100,6 +134,17 @@ def _extract_question(sample: EvalSample) -> str:
             if summary:
                 return summary
     return sample.session.ticket or sample.session.session_id
+
+
+def is_max_tokens_error(exc: Exception) -> bool:
+    """Check whether *exc* indicates the LLM hit its output token limit.
+
+    Anthropic and OpenAI surface this as ``max_tokens`` in the error
+    message or stop reason.  We do a case-insensitive substring check
+    so we catch variants across providers.
+    """
+    message = str(exc).lower()
+    return "max_tokens" in message
 
 
 def detect_context_source(dataset: EvalDataset) -> str | None:
