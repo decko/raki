@@ -45,7 +45,7 @@ def create_ragas_llm(config: MetricConfig):
     elif config.llm_provider == "google":
         import os
 
-        from google import genai
+        from google import genai  # ty: ignore[unresolved-import]
 
         project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("VERTEXAI_PROJECT")
         if not project:
@@ -55,7 +55,7 @@ def create_ragas_llm(config: MetricConfig):
         location = os.environ.get("VERTEXAI_LOCATION", "us-central1")
         client = genai.Client(vertexai=True, project=project, location=location)
 
-        from ragas.llms import llm_factory
+        from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
 
         llm = llm_factory(
             config.llm_model,

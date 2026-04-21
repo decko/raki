@@ -1216,8 +1216,10 @@ class TestGoogleProvider:
         mock_client = MagicMock()
         mock_genai = MagicMock()
         mock_genai.Client.return_value = mock_client
+        mock_google_module = MagicMock()
+        mock_google_module.genai = mock_genai
+        monkeypatch.setitem(sys.modules, "google", mock_google_module)
         monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-        monkeypatch.setattr("google.genai", mock_genai, raising=False)
 
         mock_llm = MagicMock()
         mock_factory = MagicMock(return_value=mock_llm)
@@ -1256,8 +1258,10 @@ class TestGoogleProvider:
         import sys
 
         mock_genai = MagicMock()
+        mock_google_module = MagicMock()
+        mock_google_module.genai = mock_genai
+        monkeypatch.setitem(sys.modules, "google", mock_google_module)
         monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-        monkeypatch.setattr("google.genai", mock_genai, raising=False)
 
         mock_factory = MagicMock(return_value=MagicMock())
         monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
@@ -1282,8 +1286,10 @@ class TestGoogleProvider:
         mock_client = MagicMock()
         mock_genai = MagicMock()
         mock_genai.Client.return_value = mock_client
+        mock_google_module = MagicMock()
+        mock_google_module.genai = mock_genai
+        monkeypatch.setitem(sys.modules, "google", mock_google_module)
         monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-        monkeypatch.setattr("google.genai", mock_genai, raising=False)
 
         mock_llm = MagicMock()
         mock_factory = MagicMock(return_value=mock_llm)
@@ -1313,8 +1319,10 @@ class TestGoogleProvider:
         mock_client = MagicMock()
         mock_genai = MagicMock()
         mock_genai.Client.return_value = mock_client
+        mock_google_module = MagicMock()
+        mock_google_module.genai = mock_genai
+        monkeypatch.setitem(sys.modules, "google", mock_google_module)
         monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-        monkeypatch.setattr("google.genai", mock_genai, raising=False)
 
         mock_llm = MagicMock()
         mock_factory = MagicMock(return_value=mock_llm)
@@ -1341,8 +1349,10 @@ class TestGoogleProvider:
         mock_client = MagicMock()
         mock_genai = MagicMock()
         mock_genai.Client.return_value = mock_client
+        mock_google_module = MagicMock()
+        mock_google_module.genai = mock_genai
+        monkeypatch.setitem(sys.modules, "google", mock_google_module)
         monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-        monkeypatch.setattr("google.genai", mock_genai, raising=False)
 
         mock_llm = MagicMock()
         mock_factory = MagicMock(return_value=mock_llm)
