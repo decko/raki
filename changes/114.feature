@@ -1,1 +1,0 @@
-Faithfulness and answer relevancy now work without ground truth by synthesizing retrieval context from session transcripts. Results from synthesized context are tagged with ``(inferred)`` in CLI output.
