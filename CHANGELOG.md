@@ -1,3 +1,28 @@
+## [0.7.1] — 2026-04-22
+
+### Features
+
+- Add ``google`` as a third LLM judge provider, enabling Gemini models via Vertex AI (``--judge-provider google``). (#110)
+- Invert CLI default: ``raki run`` now skips LLM metrics by default. Use ``--judge`` to enable LLM-judged analytical metrics. ``--no-llm`` is deprecated and will be removed in v0.8.0. (#112)
+- Decompose ``knowledge_miss_rate`` into three metrics: ``self_correction_rate`` (operational), ``knowledge_gap_rate`` and ``knowledge_miss_rate`` (knowledge tier). All return N/A when their denominator is zero. (#113)
+- Faithfulness and answer relevancy now work without ground truth by synthesizing retrieval context from session transcripts. Results from synthesized context are tagged with ``(inferred)`` in CLI output. (#114)
+- Add ``--docs-path`` to load project documentation for knowledge metrics (``knowledge_gap_rate``, ``knowledge_miss_rate``). Supports format-aware chunking (Markdown, RST, plaintext) with symlink rejection and size limits. (#115)
+- Add per-metric quality gates (``--gate 'metric>value'``) and CI regression detection (``--fail-on-regression``). Distinct exit codes: 0=clear, 1=threshold, 3=regression, 4=both. (#116)
+
+### Bug Fixes
+
+- Wire doc chunks from --docs-path as reference_contexts for context precision/recall. (#129)
+- Use per-domain matching for knowledge gap and miss rates. (#130)
+- Pin instructor>=1.0 to fix LLM judge crashes at runtime. (#134)
+- Truncate synthesized contexts and response text to prevent Ragas max_tokens errors. Extract triage/plan summary as response instead of raw code output. Select top-10 relevant doc chunks per session by keyword overlap. (#135)
+- Handle --require-metric gracefully when metric is not computed. (#137)
+- Store N/A metrics as null in JSON reports instead of misleading 0.0. (#140)
+
+### Documentation
+
+- Overhaul documentation with three-tier metric framework (Operational, Knowledge, Analytical) and CI integration guide. (#117)
+
+
 ## [0.6.0] — 2026-04-20
 
 ### Breaking Changes
