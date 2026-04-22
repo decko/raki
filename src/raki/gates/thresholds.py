@@ -166,11 +166,12 @@ def format_threshold_results(results: list[ThresholdResult]) -> str:
             detail = result.reason
         elif result.passed:
             status = "PASS"
-            detail = f"actual={result.actual}"
+            actual_val = result.actual
+            detail = f"actual={round(actual_val, 4)}" if actual_val is not None else ""
         else:
             status = "FAIL"
             if result.actual is not None:
-                detail = f"actual={result.actual}"
+                detail = f"actual={round(result.actual, 4)}"
             else:
                 detail = result.reason
 
