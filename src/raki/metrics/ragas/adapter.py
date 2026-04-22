@@ -6,24 +6,31 @@ names without importing ragas -- this module has no ragas dependency.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
+from raki.docs.chunker import DocChunk
 from raki.model import EvalDataset, EvalSample
 from raki.model.phases import PhaseResult
-
-if TYPE_CHECKING:
-    from raki.docs.chunker import DocChunk
 
 # Maximum characters for each retrieved context chunk sent to Ragas.
 # Synthesized contexts from session transcripts can be 100k+ chars;
 # truncating prevents max_tokens errors during Ragas scoring.
-MAX_CONTEXT_CHARS: int = 10_000
+MAX_CONTEXT_CHARS: int = 1_000
 
 # Maximum characters for the response field sent to Ragas.
 # Implement phase output can contain thousands of lines of raw code/JSON;
 # Ragas faithfulness decomposes this into individual statements, which explodes.
-MAX_RESPONSE_CHARS: int = 10_000
+MAX_RESPONSE_CHARS: int = 2_000
+
+# Maximum number of retrieved context chunks sent to Ragas.
+MAX_CONTEXT_CHUNKS: int = 10
+
+# Maximum number of reference doc chunks to include.
+MAX_REFERENCE_CHUNKS: int = 10
+
+# Maximum characters per reference doc chunk.
+MAX_REFERENCE_CHARS: int = 1_000
 
 _TRUNCATION_MARKER = " [truncated]"
 
@@ -46,6 +53,96 @@ def truncate_for_ragas(text: str, max_chars: int = MAX_CONTEXT_CHARS) -> str:
         truncated = truncated[:last_space]
 
     return truncated + _TRUNCATION_MARKER
+
+
+def _extract_response_summary(sample: EvalSample, implement_phase: PhaseResult) -> str:
+    """Extract a concise response summary from structured phase data.
+
+    Prefers structured fields (triage approach, plan tasks, implement
+    deviations/commits) over raw implement output.  Falls back to
+    truncated ``implement_phase.output`` when no structured data exists.
+
+    The result is capped at :data:`MAX_RESPONSE_CHARS`.
+    """
+    parts: list[str] = []
+
+    # Collect triage approach (latest generation only, consistent with _find_phase)
+    latest_triage = _find_phase(sample, "triage")
+    if latest_triage and latest_triage.output_structured:
+        approach = latest_triage.output_structured.get("approach", "")
+        if isinstance(approach, str) and approach:
+            parts.append(f"Approach: {approach}")
+
+    # Collect plan task descriptions (latest generation only)
+    latest_plan = _find_phase(sample, "plan")
+    if latest_plan and latest_plan.output_structured:
+        tasks = latest_plan.output_structured.get("tasks", [])
+        if isinstance(tasks, list):
+            for task in tasks:
+                if isinstance(task, dict):
+                    description = task.get("description", "")
+                    if description:
+                        parts.append(f"Task: {description}")
+
+    # Collect implement deviations and commit messages
+    if implement_phase.output_structured:
+        deviations = implement_phase.output_structured.get("deviations", [])
+        if isinstance(deviations, list):
+            for deviation in deviations:
+                if isinstance(deviation, str) and deviation:
+                    parts.append(f"Deviation: {deviation}")
+
+        commits = implement_phase.output_structured.get("commits", [])
+        if isinstance(commits, list):
+            for commit in commits:
+                if isinstance(commit, dict):
+                    message = commit.get("message", "")
+                    if message:
+                        parts.append(f"Commit: {message}")
+
+    if parts:
+        summary = "\n".join(parts)
+        return truncate_for_ragas(summary, max_chars=MAX_RESPONSE_CHARS)
+
+    # Fallback: truncated raw output
+    return truncate_for_ragas(implement_phase.output, max_chars=MAX_RESPONSE_CHARS)
+
+
+def select_relevant_chunks(
+    query: str,
+    chunks: Sequence[DocChunk],
+    top_k: int = MAX_REFERENCE_CHUNKS,
+) -> list[DocChunk]:
+    """Select the most relevant doc chunks by keyword overlap with *query*.
+
+    Scores each chunk by the number of shared tokens (case-insensitive
+    word split) with the query.  Returns the top *top_k* chunks, each
+    truncated to :data:`MAX_REFERENCE_CHARS`.
+    """
+    if not chunks:
+        return []
+
+    query_tokens = set(query.lower().split())
+
+    scored: list[tuple[int, int, DocChunk]] = []
+    for idx, chunk in enumerate(chunks):
+        chunk_tokens = set(chunk.text.lower().split())
+        overlap = len(query_tokens & chunk_tokens)
+        scored.append((overlap, idx, chunk))
+
+    # Sort by overlap descending, then by original order for ties
+    scored.sort(key=lambda item: (-item[0], item[1]))
+
+    selected = [(overlap, idx, chunk) for overlap, idx, chunk in scored[:top_k] if overlap > 0]
+
+    return [
+        DocChunk(
+            text=truncate_for_ragas(chunk.text, max_chars=MAX_REFERENCE_CHARS),
+            source_file=chunk.source_file,
+            domain=chunk.domain,
+        )
+        for _overlap, _idx, chunk in selected
+    ]
 
 
 @dataclass
@@ -72,10 +169,6 @@ def to_ragas_rows(
     ``reference`` field so that precision/recall metrics can compute real
     scores instead of returning N/A.
     """
-    doc_reference: str | None = None
-    if doc_chunks:
-        doc_reference = "\n\n".join(chunk.text for chunk in doc_chunks)
-
     rows: list[RagasRow] = []
     for sample in dataset.samples:
         implement = _find_phase(sample, "implement") or _find_phase(sample, "session")
@@ -86,15 +179,19 @@ def to_ragas_rows(
             for chunk in implement.knowledge_context.split("\n---\n")
             if chunk.strip()
         ]
+        # Cap retrieved contexts at MAX_CONTEXT_CHUNKS
+        contexts = contexts[:MAX_CONTEXT_CHUNKS]
         if not contexts:
             continue
         user_input = _extract_question(sample)
-        response = truncate_for_ragas(implement.output, max_chars=MAX_RESPONSE_CHARS)
+        response = _extract_response_summary(sample, implement)
         reference = None
         if sample.ground_truth and sample.ground_truth.reference_answer:
             reference = sample.ground_truth.reference_answer
-        elif doc_reference:
-            reference = doc_reference
+        elif doc_chunks:
+            # Per-sample chunk selection based on user_input
+            selected = select_relevant_chunks(user_input, doc_chunks)
+            reference = "\n\n".join(chunk.text for chunk in selected) if selected else None
         rows.append(
             RagasRow(
                 session_id=sample.session.session_id,
