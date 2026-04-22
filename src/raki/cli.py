@@ -667,10 +667,20 @@ def adapters() -> None:
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def metrics(json_output: bool) -> None:
     """List available metrics."""
+    from raki.metrics.knowledge import ALL_KNOWLEDGE
     from raki.metrics.operational import ALL_OPERATIONAL
 
     all_metrics_info: list[dict[str, str | bool]] = []
     for metric in ALL_OPERATIONAL:
+        all_metrics_info.append(
+            {
+                "name": metric.name,
+                "display_name": metric.display_name,
+                "requires_llm": metric.requires_llm,
+                "higher_is_better": metric.higher_is_better,
+            }
+        )
+    for metric in ALL_KNOWLEDGE:
         all_metrics_info.append(
             {
                 "name": metric.name,
