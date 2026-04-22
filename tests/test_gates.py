@@ -292,6 +292,32 @@ class TestFormatResults:
         assert "SKIP" in output
         assert "faithfulness" in output
 
+    def test_actual_value_is_rounded_not_raw_float(self):
+        """Bug #141: format_threshold_results should round actual, not show raw float."""
+        results = [
+            ThresholdResult(
+                threshold=Threshold(metric="faithfulness", operator=">", value=0.80),
+                actual=0.8333333333333334,
+                passed=True,
+            ),
+        ]
+        output = format_threshold_results(results)
+        assert "0.8333333333333334" not in output
+        assert "0.8333" in output
+
+    def test_actual_value_rounded_on_fail(self):
+        """Bug #141: FAIL line should also display a rounded actual value."""
+        results = [
+            ThresholdResult(
+                threshold=Threshold(metric="rework_cycles", operator="<", value=1.0),
+                actual=2.6666666666666665,
+                passed=False,
+            ),
+        ]
+        output = format_threshold_results(results)
+        assert "2.6666666666666665" not in output
+        assert "2.6667" in output
+
     def test_multiple_results_formatted(self):
         results = [
             ThresholdResult(
