@@ -118,11 +118,15 @@ class TestThresholdEvaluator:
         result = evaluate_threshold(threshold, scores)
         assert result.passed is True
 
-    def test_unknown_metric_raises(self):
+    def test_unknown_metric_skipped_not_raised(self):
+        """Unknown metric (not in scores, not required) is skipped gracefully."""
         threshold = Threshold(metric="nonexistent_metric", operator=">", value=0.5)
-        scores = {"faithfulness": 0.90}
-        with pytest.raises(ValueError, match="Unknown metric"):
-            evaluate_threshold(threshold, scores)
+        scores: dict[str, float | None] = {"faithfulness": 0.90}
+        result = evaluate_threshold(threshold, scores)
+        assert result.skipped is True
+        assert result.passed is True
+        assert result.actual is None
+        assert "not computed" in result.reason.lower()
 
     def test_none_score_skipped_by_default(self):
         threshold = Threshold(metric="faithfulness", operator=">", value=0.80)
@@ -144,6 +148,34 @@ class TestThresholdEvaluator:
     def test_none_score_skipped_when_not_in_required_set(self):
         threshold = Threshold(metric="faithfulness", operator=">", value=0.80)
         scores: dict[str, float | None] = {"faithfulness": None}
+        result = evaluate_threshold(threshold, scores, required_metrics={"context_precision"})
+        assert result.skipped is True
+        assert result.passed is True
+
+    def test_missing_metric_fails_when_required(self):
+        """Bug #137: --require-metric with a metric not in scores should fail gracefully."""
+        threshold = Threshold(metric="faithfulness", operator=">", value=0.80)
+        scores: dict[str, float | None] = {"rework_cycles": 1.5}
+        result = evaluate_threshold(threshold, scores, required_metrics={"faithfulness"})
+        assert result.passed is False
+        assert result.skipped is False
+        assert result.actual is None
+        assert "not computed" in result.reason.lower()
+
+    def test_missing_metric_skipped_when_not_required(self):
+        """Bug #137: metric absent from scores and not required should skip, not crash."""
+        threshold = Threshold(metric="faithfulness", operator=">", value=0.80)
+        scores: dict[str, float | None] = {"rework_cycles": 1.5}
+        result = evaluate_threshold(threshold, scores)
+        assert result.skipped is True
+        assert result.passed is True
+        assert result.actual is None
+        assert "not computed" in result.reason.lower()
+
+    def test_missing_metric_skipped_when_required_set_does_not_include_it(self):
+        """Bug #137: metric absent from scores but not in required set should skip."""
+        threshold = Threshold(metric="faithfulness", operator=">", value=0.80)
+        scores: dict[str, float | None] = {"rework_cycles": 1.5}
         result = evaluate_threshold(threshold, scores, required_metrics={"context_precision"})
         assert result.skipped is True
         assert result.passed is True
@@ -205,6 +237,18 @@ class TestEvaluateAll:
     def test_empty_thresholds(self):
         results = evaluate_all([], {"faithfulness": 0.90})
         assert results == []
+
+    def test_missing_metric_required_no_traceback(self):
+        """Bug #137: evaluate_all should not raise when required metric is absent from scores."""
+        thresholds = [
+            Threshold(metric="faithfulness", operator=">", value=0.80),
+        ]
+        scores: dict[str, float | None] = {"rework_cycles": 1.5}
+        results = evaluate_all(thresholds, scores, required_metrics={"faithfulness"})
+        assert len(results) == 1
+        assert results[0].passed is False
+        assert results[0].skipped is False
+        assert "not computed" in results[0].reason.lower()
 
 
 class TestFormatResults:

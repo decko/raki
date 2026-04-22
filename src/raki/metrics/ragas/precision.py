@@ -9,7 +9,7 @@ import logging
 
 from raki.adapters.redact import redact_sensitive
 from raki.metrics.protocol import MetricConfig
-from raki.metrics.ragas.adapter import to_ragas_rows
+from raki.metrics.ragas.adapter import is_max_tokens_error, to_ragas_rows
 from raki.metrics.ragas.async_utils import run_async
 from raki.metrics.ragas.llm_setup import JudgeLogger, create_ragas_llm
 from raki.model import EvalDataset
@@ -34,10 +34,10 @@ class ContextPrecisionMetric:
         dataset: EvalDataset,
         config: MetricConfig,
     ) -> MetricResult:
-        rows = to_ragas_rows(dataset)
+        rows = to_ragas_rows(dataset, doc_chunks=config.doc_chunks or None)
         rows_with_ref = [row for row in rows if row.reference is not None]
         if not rows_with_ref:
-            return MetricResult(name=self.name, score=0.0, details={"skipped": "no ground truth"})
+            return MetricResult(name=self.name, score=None, details={"skipped": "no ground truth"})
 
         from ragas.metrics.collections import (  # ty: ignore[unresolved-import]
             ContextPrecisionWithReference,
@@ -52,6 +52,7 @@ class ContextPrecisionMetric:
 
         sample_scores: dict[str, float] = {}
         scores: list[float] = []
+        max_tokens_failures: list[str] = []
 
         async def score_all():
             semaphore = asyncio.Semaphore(config.batch_size)
@@ -72,6 +73,8 @@ class ContextPrecisionMetric:
                             judge_logger.log(self.name, row.user_input, score, reason)
                     except Exception as exc:
                         safe_error = redact_sensitive(f"ERROR: {exc}")
+                        if is_max_tokens_error(exc):
+                            max_tokens_failures.append(row.session_id)
                         logger.warning(
                             "context_precision scoring failed for session %s: %s",
                             row.session_id,
@@ -83,6 +86,17 @@ class ContextPrecisionMetric:
             await asyncio.gather(*(score_one(row) for row in rows_with_ref))
 
         run_async(score_all())
+
+        # If all failures were max_tokens errors, return score=None
+        if not scores and max_tokens_failures:
+            return MetricResult(
+                name=self.name,
+                score=None,
+                details={
+                    "skipped": "max_tokens: all sessions exceeded output token limit",
+                    "max_tokens_sessions": len(max_tokens_failures),
+                },
+            )
 
         mean_score = sum(scores) / len(scores) if scores else 0.0
         return MetricResult(

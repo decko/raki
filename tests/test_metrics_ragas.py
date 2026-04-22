@@ -19,7 +19,19 @@ from raki.model import (
 )
 from raki.model.ground_truth import GroundTruth
 from raki.metrics.protocol import MetricConfig
-from raki.metrics.ragas.adapter import RagasRow, to_ragas_rows
+from raki.docs.chunker import DocChunk
+from raki.metrics.ragas.adapter import (
+    MAX_CONTEXT_CHARS,
+    MAX_CONTEXT_CHUNKS,
+    MAX_REFERENCE_CHARS,
+    MAX_REFERENCE_CHUNKS,
+    MAX_RESPONSE_CHARS,
+    RagasRow,
+    _extract_response_summary,
+    select_relevant_chunks,
+    to_ragas_rows,
+    truncate_for_ragas,
+)
 from raki.metrics.ragas.llm_setup import JudgeLogger
 
 
@@ -106,7 +118,8 @@ class TestToRagasRows:
         assert len(rows) == 1
         assert rows[0].retrieved_contexts == ["entry 1", "entry 2"]
         assert rows[0].user_input == "How to validate?"
-        assert rows[0].response == "The answer based on knowledge"
+        # _extract_response_summary prefers triage approach over raw output
+        assert "Add validation" in rows[0].response
         assert rows[0].reference == "Use pydantic"
 
     def test_uses_ticket_summary_when_no_ground_truth(self):
@@ -207,6 +220,171 @@ class TestToRagasRows:
 
 
 # ---------------------------------------------------------------------------
+# Doc-chunk reference tests — doc chunks as reference for precision/recall
+# ---------------------------------------------------------------------------
+
+
+class TestToRagasRowsWithDocChunks:
+    """When doc_chunks are provided, they should serve as reference for rows without ground truth."""
+
+    def test_doc_chunks_used_as_reference_when_no_ground_truth(self):
+        """Rows without ground_truth should get reference from doc_chunks."""
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        doc_chunks = [
+            DocChunk(
+                text="Add authentication with JWT tokens",
+                source_file="auth.md",
+                domain="auth",
+            ),
+            DocChunk(
+                text="Add validation with pydantic models",
+                source_file="validation.md",
+                domain="general",
+            ),
+        ]
+        rows = to_ragas_rows(EvalDataset(samples=[sample]), doc_chunks=doc_chunks)
+        assert len(rows) == 1
+        assert rows[0].reference is not None
+        assert "authentication with JWT tokens" in rows[0].reference
+        assert "validation with pydantic models" in rows[0].reference
+
+    def test_ground_truth_takes_precedence_over_doc_chunks(self):
+        """When ground_truth has reference_answer, it should be used instead of doc_chunks."""
+        ground_truth = GroundTruth(
+            question="How to validate?",
+            reference_answer="Use pydantic",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        doc_chunks = [
+            DocChunk(text="Some doc text", source_file="doc.md", domain="general"),
+        ]
+        rows = to_ragas_rows(EvalDataset(samples=[sample]), doc_chunks=doc_chunks)
+        assert len(rows) == 1
+        assert rows[0].reference == "Use pydantic"
+
+    def test_no_doc_chunks_no_ground_truth_reference_is_none(self):
+        """Without doc_chunks or ground_truth, reference should remain None."""
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert rows[0].reference is None
+
+    def test_empty_doc_chunks_no_reference(self):
+        """Empty doc_chunks list should not set reference."""
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        rows = to_ragas_rows(EvalDataset(samples=[sample]), doc_chunks=[])
+        assert len(rows) == 1
+        assert rows[0].reference is None
+
+
+class TestPrecisionWithDocChunks:
+    """Context precision should compute real scores when doc_chunks provide reference."""
+
+    def test_computes_with_doc_chunks_no_ground_truth(self, monkeypatch: pytest.MonkeyPatch):
+        """Precision should score samples using doc_chunks as reference."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.80
+        mock_result.reason = "Precise with doc chunks"
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_precision_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_precision_class, "ContextPrecisionWithReference")
+
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+
+        doc_chunks = [
+            DocChunk(
+                text="Add validation for reference doc content",
+                source_file="ref.md",
+                domain="general",
+            ),
+        ]
+        config = MetricConfig(doc_chunks=doc_chunks)
+
+        with patch(
+            "raki.metrics.ragas.precision.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextPrecisionMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.80)
+        assert result.details["samples_scored"] == 1
+        assert "skipped" not in result.details
+
+    def test_still_skips_without_doc_chunks_or_ground_truth(self):
+        """Without doc_chunks or ground_truth, precision should still return N/A."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        metric = ContextPrecisionMetric()
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+        result = metric.compute(dataset, config)
+        assert result.score is None
+        assert result.details.get("skipped") == "no ground truth"
+
+
+class TestRecallWithDocChunks:
+    """Context recall should compute real scores when doc_chunks provide reference."""
+
+    def test_computes_with_doc_chunks_no_ground_truth(self, monkeypatch: pytest.MonkeyPatch):
+        """Recall should score samples using doc_chunks as reference."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.75
+        mock_result.reason = "Good recall with doc chunks"
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_recall_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_recall_class, "ContextRecall")
+
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+
+        doc_chunks = [
+            DocChunk(
+                text="Add validation for reference doc content",
+                source_file="ref.md",
+                domain="general",
+            ),
+        ]
+        config = MetricConfig(doc_chunks=doc_chunks)
+
+        with patch(
+            "raki.metrics.ragas.recall.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextRecallMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.75)
+        assert result.details["samples_scored"] == 1
+        assert "skipped" not in result.details
+
+    def test_still_skips_without_doc_chunks_or_ground_truth(self):
+        """Without doc_chunks or ground_truth, recall should still return N/A."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        metric = ContextRecallMetric()
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+        result = metric.compute(dataset, config)
+        assert result.score is None
+        assert result.details.get("skipped") == "no ground truth"
+
+
+# ---------------------------------------------------------------------------
 # JudgeLogger tests — no ragas dependency needed
 # ---------------------------------------------------------------------------
 
@@ -290,7 +468,7 @@ class TestContextPrecisionMetric:
         dataset = EvalDataset(samples=[sample])
         config = MetricConfig()
         result = metric.compute(dataset, config)
-        assert result.score == 0.0
+        assert result.score is None
         assert result.details.get("skipped") == "no ground truth"
 
     def test_computes_with_mocked_ragas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -447,7 +625,7 @@ class TestContextRecallMetric:
         dataset = EvalDataset(samples=[sample])
         config = MetricConfig()
         result = metric.compute(dataset, config)
-        assert result.score == 0.0
+        assert result.score is None
         assert result.details.get("skipped") == "no ground truth"
 
     def test_computes_with_mocked_ragas(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -723,7 +901,8 @@ class TestFaithfulnessMetric:
         mock_metric_instance.ascore.assert_called_once()
         call_kwargs = mock_metric_instance.ascore.call_args.kwargs
         assert call_kwargs["user_input"] == "How to validate?"
-        assert call_kwargs["response"] == "The answer based on knowledge"
+        # _extract_response_summary picks up triage approach from the sample
+        assert "Add validation" in call_kwargs["response"]
         assert call_kwargs["retrieved_contexts"] == ["entry 1", "entry 2"]
 
     def test_handles_float_return_from_ascore(self, monkeypatch: pytest.MonkeyPatch):
@@ -941,7 +1120,8 @@ class TestAnswerRelevancyMetric:
         mock_metric_instance.ascore.assert_called_once()
         call_kwargs = mock_metric_instance.ascore.call_args.kwargs
         assert call_kwargs["user_input"] == "How to validate?"
-        assert call_kwargs["response"] == "The answer based on knowledge"
+        # _extract_response_summary picks up triage approach from the sample
+        assert "Add validation" in call_kwargs["response"]
         assert "retrieved_contexts" not in call_kwargs
 
     def test_handles_float_return_from_ascore(self, monkeypatch: pytest.MonkeyPatch):
@@ -1507,3 +1687,793 @@ class TestAnswerRelevancyIntegration:
 
         assert 0.0 <= result.score <= 1.0
         assert result.details["samples_scored"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Truncation tests — truncate_for_ragas and to_ragas_rows truncation
+# ---------------------------------------------------------------------------
+
+
+class TestTruncateForRagas:
+    """Tests for the truncate_for_ragas helper function."""
+
+    def test_short_text_unchanged(self):
+        """Text shorter than the limit should be returned as-is."""
+        short = "This is short text."
+        assert truncate_for_ragas(short, max_chars=100) == short
+
+    def test_text_at_limit_unchanged(self):
+        """Text exactly at the limit should be returned as-is."""
+        text = "a" * 100
+        assert truncate_for_ragas(text, max_chars=100) == text
+
+    def test_long_text_truncated_with_marker(self):
+        """Text exceeding the limit should be truncated with [truncated] marker."""
+        long_text = "word " * 5000  # ~25000 chars
+        result = truncate_for_ragas(long_text, max_chars=100)
+        assert len(result) <= 100 + len(" [truncated]")
+        assert result.endswith("[truncated]")
+
+    def test_truncation_at_word_boundary(self):
+        """Truncation should happen at a word boundary, not mid-word."""
+        # Create text with distinct words
+        text = "alpha bravo charlie delta echo foxtrot golf hotel india juliet"
+        result = truncate_for_ragas(text, max_chars=30)
+        assert result.endswith("[truncated]")
+        # The text before [truncated] should not end with a partial word
+        content_part = result.replace(" [truncated]", "")
+        assert not content_part.endswith("cha")  # should not cut mid-word
+
+    def test_truncation_uses_default_max_context_chars(self):
+        """Default max_chars should be MAX_CONTEXT_CHARS (1_000)."""
+        assert MAX_CONTEXT_CHARS == 1_000
+
+    def test_max_response_chars_constant(self):
+        """MAX_RESPONSE_CHARS should be defined for response truncation."""
+        assert MAX_RESPONSE_CHARS == 2_000
+
+    def test_empty_string_unchanged(self):
+        """Empty string should be returned as-is."""
+        assert truncate_for_ragas("", max_chars=100) == ""
+
+    def test_truncation_marker_present_only_when_truncated(self):
+        """[truncated] marker should not appear when text fits."""
+        text = "fits fine"
+        result = truncate_for_ragas(text, max_chars=100)
+        assert "[truncated]" not in result
+
+
+class TestToRagasRowsTruncation:
+    """Tests that to_ragas_rows truncates contexts and response."""
+
+    def test_truncates_large_knowledge_context(self):
+        """Each context chunk should be truncated to MAX_CONTEXT_CHARS."""
+        huge_context = "knowledge " * 5000  # ~50000 chars per chunk
+        sample = _make_sample_with_knowledge(
+            knowledge_context=huge_context,
+            output="short response",
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        for context in rows[0].retrieved_contexts:
+            assert len(context) <= MAX_CONTEXT_CHARS + len(" [truncated]")
+
+    def test_truncates_large_response(self):
+        """The response field should be truncated to MAX_RESPONSE_CHARS."""
+        huge_output = "code_line(); " * 5000  # ~65000 chars
+        # Use a sample without triage to force fallback to raw output truncation
+        meta = SessionMeta(
+            session_id="large-resp",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=1,
+            rework_cycles=0,
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output=huge_output,
+            knowledge_context="normal context",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement],
+            findings=[],
+            events=[],
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert len(rows[0].response) <= MAX_RESPONSE_CHARS + len(" [truncated]")
+        assert rows[0].response.endswith("[truncated]")
+
+    def test_short_content_not_truncated(self):
+        """Short contexts and responses should pass through unchanged."""
+        # Use a sample without triage phase to test raw output passthrough
+        meta = SessionMeta(
+            session_id="short-test",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=1,
+            rework_cycles=0,
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="short answer",
+            knowledge_context="small ctx1\n---\nsmall ctx2",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement],
+            findings=[],
+            events=[],
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert rows[0].retrieved_contexts == ["small ctx1", "small ctx2"]
+        assert rows[0].response == "short answer"
+        # No truncation markers
+        for context in rows[0].retrieved_contexts:
+            assert "[truncated]" not in context
+        assert "[truncated]" not in rows[0].response
+
+    def test_multiple_large_context_chunks_each_truncated(self):
+        """When knowledge_context has multiple chunks separated by ---, each gets truncated."""
+        chunk1 = "alpha " * 5000
+        chunk2 = "bravo " * 5000
+        knowledge = f"{chunk1}\n---\n{chunk2}"
+        sample = _make_sample_with_knowledge(
+            knowledge_context=knowledge,
+            output="short",
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert len(rows[0].retrieved_contexts) == 2
+        for context in rows[0].retrieved_contexts:
+            assert context.endswith("[truncated]")
+            assert len(context) <= MAX_CONTEXT_CHARS + len(" [truncated]")
+
+
+# ---------------------------------------------------------------------------
+# _extract_response_summary tests
+# ---------------------------------------------------------------------------
+
+
+class TestExtractResponseSummary:
+    """Tests for the _extract_response_summary helper function."""
+
+    def test_prefers_triage_plan_over_raw_output(self):
+        """When triage approach, plan tasks, and implement deviations exist, use them."""
+        meta = SessionMeta(
+            session_id="summary-1",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=0,
+        )
+        triage = PhaseResult(
+            name="triage",
+            generation=1,
+            status="completed",
+            output="triage output",
+            output_structured={"approach": "Add input validation to the CLI"},
+        )
+        plan = PhaseResult(
+            name="plan",
+            generation=1,
+            status="completed",
+            output="plan output",
+            output_structured={
+                "tasks": [
+                    {"description": "Create validator module"},
+                    {"description": "Add CLI flag --validate"},
+                ]
+            },
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="x" * 50_000,  # Very large raw output
+            output_structured={
+                "deviations": ["Skipped edge case for empty input"],
+                "commits": [{"message": "feat: add validation"}],
+            },
+            knowledge_context="some context",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[triage, plan, implement],
+            findings=[],
+            events=[],
+        )
+        result = _extract_response_summary(sample, implement)
+
+        # Should contain structured content, not raw output
+        assert "Add input validation to the CLI" in result
+        assert "Create validator module" in result
+        assert "Add CLI flag --validate" in result
+        assert "Skipped edge case for empty input" in result
+        assert "feat: add validation" in result
+        # Should NOT be the raw 50k output
+        assert len(result) <= MAX_RESPONSE_CHARS
+
+    def test_falls_back_to_truncated_output(self):
+        """When no structured fields exist, fall back to truncated implement output."""
+        meta = SessionMeta(
+            session_id="summary-2",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=1,
+            rework_cycles=0,
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="word " * 1000,  # 5000 chars
+            knowledge_context="some context",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement],
+            findings=[],
+            events=[],
+        )
+        result = _extract_response_summary(sample, implement)
+
+        # Should be the truncated raw output
+        assert len(result) <= MAX_RESPONSE_CHARS + len(" [truncated]")
+        assert result.endswith("[truncated]")
+
+    def test_caps_at_max_response_chars(self):
+        """Even structured summary should be capped at MAX_RESPONSE_CHARS."""
+        meta = SessionMeta(
+            session_id="summary-3",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=0,
+        )
+        triage = PhaseResult(
+            name="triage",
+            generation=1,
+            status="completed",
+            output="triage",
+            output_structured={"approach": "very long approach " * 200},
+        )
+        plan = PhaseResult(
+            name="plan",
+            generation=1,
+            status="completed",
+            output="plan",
+            output_structured={"tasks": [{"description": "task desc " * 200}]},
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="output",
+            knowledge_context="ctx",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[triage, plan, implement],
+            findings=[],
+            events=[],
+        )
+        result = _extract_response_summary(sample, implement)
+        assert len(result) <= MAX_RESPONSE_CHARS + len(" [truncated]")
+
+    def test_short_output_returned_as_is_when_no_structured(self):
+        """Short implement output returned without truncation when no structured data."""
+        meta = SessionMeta(
+            session_id="summary-4",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=1,
+            rework_cycles=0,
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="short answer",
+            knowledge_context="ctx",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[implement],
+            findings=[],
+            events=[],
+        )
+        result = _extract_response_summary(sample, implement)
+        assert result == "short answer"
+
+
+# ---------------------------------------------------------------------------
+# select_relevant_chunks tests
+# ---------------------------------------------------------------------------
+
+
+class TestSelectRelevantChunks:
+    """Tests for the select_relevant_chunks function."""
+
+    def test_returns_most_relevant_chunks(self):
+        """Chunks with more keyword overlap should be ranked higher."""
+        chunks = [
+            DocChunk(
+                text="unrelated content about cooking recipes", source_file="a.md", domain="x"
+            ),
+            DocChunk(
+                text="validation using pydantic models and fields",
+                source_file="b.md",
+                domain="y",
+            ),
+            DocChunk(
+                text="pydantic validation with Field validators for input",
+                source_file="c.md",
+                domain="z",
+            ),
+        ]
+        result = select_relevant_chunks("How to validate input with pydantic?", chunks)
+        # The chunk with more overlapping words should come first
+        assert "pydantic validation" in result[0].text or "pydantic models" in result[0].text
+
+    def test_respects_top_k_limit(self):
+        """Should return at most top_k chunks."""
+        chunks = [
+            DocChunk(text=f"chunk number {idx} with keyword", source_file=f"{idx}.md", domain="d")
+            for idx in range(20)
+        ]
+        result = select_relevant_chunks("keyword", chunks, top_k=5)
+        assert len(result) == 5
+
+    def test_default_top_k_is_max_reference_chunks(self):
+        """Default top_k should be MAX_REFERENCE_CHUNKS (10)."""
+        chunks = [
+            DocChunk(text=f"chunk {idx} keyword", source_file=f"{idx}.md", domain="d")
+            for idx in range(20)
+        ]
+        result = select_relevant_chunks("keyword", chunks)
+        assert len(result) == MAX_REFERENCE_CHUNKS
+
+    def test_handles_empty_query(self):
+        """Empty query should return empty list (all chunks have zero overlap)."""
+        chunks = [
+            DocChunk(text="some content", source_file="a.md", domain="d"),
+        ]
+        result = select_relevant_chunks("", chunks)
+        assert len(result) == 0
+
+    def test_handles_empty_chunks(self):
+        """Empty chunk list should return empty list."""
+        result = select_relevant_chunks("some query", [])
+        assert result == []
+
+    def test_truncates_each_chunk_to_max_reference_chars(self):
+        """Each returned chunk should be truncated to MAX_REFERENCE_CHARS."""
+        long_text = "keyword " * 500  # 4000 chars
+        chunks = [
+            DocChunk(text=long_text, source_file="big.md", domain="d"),
+        ]
+        result = select_relevant_chunks("keyword", chunks)
+        assert len(result) == 1
+        assert len(result[0].text) <= MAX_REFERENCE_CHARS + len(" [truncated]")
+
+    def test_fewer_chunks_than_top_k(self):
+        """When fewer chunks than top_k exist, return all of them."""
+        chunks = [
+            DocChunk(text="keyword text", source_file="a.md", domain="d"),
+            DocChunk(text="keyword stuff", source_file="b.md", domain="d"),
+        ]
+        result = select_relevant_chunks("keyword", chunks, top_k=10)
+        assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# to_ragas_rows context caps tests
+# ---------------------------------------------------------------------------
+
+
+class TestToRagasRowsContextCaps:
+    """Tests for retrieved context capping in to_ragas_rows."""
+
+    def test_caps_retrieved_contexts_at_max_context_chunks(self):
+        """Retrieved contexts should be sliced to MAX_CONTEXT_CHUNKS."""
+        # Create knowledge_context with many chunks
+        many_chunks = "\n---\n".join(f"chunk {idx}" for idx in range(25))
+        sample = _make_sample_with_knowledge(
+            knowledge_context=many_chunks,
+            output="short response",
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        assert len(rows[0].retrieved_contexts) == MAX_CONTEXT_CHUNKS
+
+    def test_truncates_reference_per_chunk_not_whole_join(self):
+        """When doc_chunks are provided, each should be truncated individually."""
+        long_chunk_text = "validation input " * 250  # 4250 chars each, overlaps with user_input
+        doc_chunks = [
+            DocChunk(text=long_chunk_text, source_file=f"doc{idx}.md", domain="d")
+            for idx in range(3)
+        ]
+        sample = _make_sample_with_knowledge(ground_truth=None)
+        rows = to_ragas_rows(EvalDataset(samples=[sample]), doc_chunks=doc_chunks)
+        assert len(rows) == 1
+        assert rows[0].reference is not None
+        # Reference should be a join of individually truncated chunks
+        # Each chunk should be at most MAX_REFERENCE_CHARS (not the full 4000)
+        ref_parts = rows[0].reference.split("\n\n")
+        for part in ref_parts:
+            assert len(part) <= MAX_REFERENCE_CHARS + len(" [truncated]")
+
+
+class TestToRagasRowsResponseSummary:
+    """Tests that to_ragas_rows uses _extract_response_summary."""
+
+    def test_uses_structured_summary_instead_of_raw_output(self):
+        """to_ragas_rows should call _extract_response_summary, not raw truncation."""
+        meta = SessionMeta(
+            session_id="resp-summary",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=0,
+        )
+        triage = PhaseResult(
+            name="triage",
+            generation=1,
+            status="completed",
+            output="triage out",
+            output_structured={"approach": "Refactor authentication module"},
+        )
+        plan = PhaseResult(
+            name="plan",
+            generation=1,
+            status="completed",
+            output="plan out",
+            output_structured={"tasks": [{"description": "Update auth tokens"}]},
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="x" * 50_000,
+            knowledge_context="entry 1\n---\nentry 2",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[triage, plan, implement],
+            findings=[],
+            events=[],
+        )
+        rows = to_ragas_rows(EvalDataset(samples=[sample]))
+        assert len(rows) == 1
+        # Should contain the structured approach, not the 50k raw output
+        assert "Refactor authentication module" in rows[0].response
+        assert len(rows[0].response) <= MAX_RESPONSE_CHARS + len(" [truncated]")
+
+
+# ---------------------------------------------------------------------------
+# Updated truncation constant tests
+# ---------------------------------------------------------------------------
+
+
+class TestUpdatedConstants:
+    """Tests that constants have been updated to new values."""
+
+    def test_max_context_chars(self):
+        assert MAX_CONTEXT_CHARS == 1_000
+
+    def test_max_response_chars(self):
+        assert MAX_RESPONSE_CHARS == 2_000
+
+    def test_max_context_chunks(self):
+        assert MAX_CONTEXT_CHUNKS == 10
+
+    def test_max_reference_chunks(self):
+        assert MAX_REFERENCE_CHUNKS == 10
+
+    def test_max_reference_chars(self):
+        assert MAX_REFERENCE_CHARS == 1_000
+
+
+# ---------------------------------------------------------------------------
+# max_tokens error handling tests
+# ---------------------------------------------------------------------------
+
+
+class TestMaxTokensErrorHandling:
+    """Tests that max_tokens errors return score=None instead of score=0.0."""
+
+    def _make_max_tokens_error(self) -> Exception:
+        """Create an exception that looks like a max_tokens error."""
+        return RuntimeError("max_tokens: output token limit reached")
+
+    def test_faithfulness_returns_none_on_max_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Faithfulness should return score=None on max_tokens errors."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=self._make_max_tokens_error())
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "max_tokens" in result.details.get("skipped", "")
+
+    def test_relevancy_returns_none_on_max_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """AnswerRelevancy should return score=None on max_tokens errors."""
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=self._make_max_tokens_error())
+
+        mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_relevancy_class, "AnswerRelevancy")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with (
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_embeddings",
+                return_value=MagicMock(),
+            ),
+        ):
+            metric = AnswerRelevancyMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "max_tokens" in result.details.get("skipped", "")
+
+    def test_precision_returns_none_on_max_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """ContextPrecision should return score=None on max_tokens errors."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=self._make_max_tokens_error())
+
+        mock_precision_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_precision_class, "ContextPrecisionWithReference")
+
+        ground_truth = GroundTruth(
+            question="Q?",
+            reference_answer="A",
+            domains=[],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.precision.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextPrecisionMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "max_tokens" in result.details.get("skipped", "")
+
+    def test_recall_returns_none_on_max_tokens(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """ContextRecall should return score=None on max_tokens errors."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=self._make_max_tokens_error())
+
+        mock_recall_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_recall_class, "ContextRecall")
+
+        ground_truth = GroundTruth(
+            question="Q?",
+            reference_answer="A",
+            domains=[],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.recall.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextRecallMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "max_tokens" in result.details.get("skipped", "")
+
+    def test_non_max_tokens_error_still_returns_zero(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Non-max_tokens errors should still result in score=0.0 (existing behavior)."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        monkeypatch.chdir(tmp_path)
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(side_effect=RuntimeError("Connection refused"))
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig()
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == 0.0
+        assert result.details["samples_scored"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Edge-case tests for _extract_response_summary and select_relevant_chunks
+# ---------------------------------------------------------------------------
+
+
+class TestExtractResponseSummaryEdgeCases:
+    """Edge-case tests for _extract_response_summary."""
+
+    def _make_sample_with_phases(self, phases: list[PhaseResult]) -> EvalSample:
+        meta = SessionMeta(
+            session_id="edge-case",
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=len(phases),
+            rework_cycles=0,
+        )
+        return EvalSample(
+            session=meta,
+            phases=phases,
+            findings=[],
+            events=[],
+        )
+
+    def test_extract_summary_missing_approach_key(self):
+        """Triage with output_structured that has no 'approach' key should not crash."""
+        triage = PhaseResult(
+            name="triage",
+            generation=1,
+            status="completed",
+            output="triage output",
+            output_structured={"severity": "high"},
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="fallback output",
+            knowledge_context="ctx",
+        )
+        sample = self._make_sample_with_phases([triage, implement])
+        result = _extract_response_summary(sample, implement)
+        # Should fall back to raw output since no approach was found
+        assert result == "fallback output"
+
+    def test_extract_summary_non_string_approach(self):
+        """Triage with approach as a dict should skip it."""
+        triage = PhaseResult(
+            name="triage",
+            generation=1,
+            status="completed",
+            output="triage output",
+            output_structured={"approach": {"nested": "value"}},
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="fallback output",
+            knowledge_context="ctx",
+        )
+        sample = self._make_sample_with_phases([triage, implement])
+        result = _extract_response_summary(sample, implement)
+        # approach is a dict, not a string, so it should be skipped
+        assert result == "fallback output"
+
+    def test_extract_summary_plan_tasks_non_dict_entries(self):
+        """Plan with tasks as list of strings should skip non-dict entries."""
+        triage = PhaseResult(
+            name="triage",
+            generation=1,
+            status="completed",
+            output="triage output",
+            output_structured={"approach": "Fix the bug"},
+        )
+        plan = PhaseResult(
+            name="plan",
+            generation=1,
+            status="completed",
+            output="plan output",
+            output_structured={"tasks": ["string task 1", "string task 2"]},
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=1,
+            status="completed",
+            output="impl output",
+            knowledge_context="ctx",
+        )
+        sample = self._make_sample_with_phases([triage, plan, implement])
+        result = _extract_response_summary(sample, implement)
+        # Should have approach but no tasks (strings are skipped, only dicts accepted)
+        assert "Fix the bug" in result
+        assert "string task 1" not in result
+
+    def test_extract_summary_latest_generation_only(self):
+        """Session with multiple triage phases should use only the latest generation."""
+        triage_gen1 = PhaseResult(
+            name="triage",
+            generation=1,
+            status="completed",
+            output="old triage",
+            output_structured={"approach": "Old approach from gen 1"},
+        )
+        triage_gen2 = PhaseResult(
+            name="triage",
+            generation=2,
+            status="completed",
+            output="new triage",
+            output_structured={"approach": "New approach from gen 2"},
+        )
+        implement = PhaseResult(
+            name="implement",
+            generation=2,
+            status="completed",
+            output="impl output",
+            knowledge_context="ctx",
+        )
+        sample = self._make_sample_with_phases([triage_gen1, triage_gen2, implement])
+        result = _extract_response_summary(sample, implement)
+        # Should use only the latest generation (gen 2)
+        assert "New approach from gen 2" in result
+        assert "Old approach from gen 1" not in result
+
+
+class TestSelectRelevantChunksEdgeCases:
+    """Edge-case tests for select_relevant_chunks."""
+
+    def test_select_relevant_chunks_zero_overlap_returns_empty(self):
+        """Query with no overlapping words should return empty list."""
+        chunks = [
+            DocChunk(text="alpha bravo charlie", source_file="a.md", domain="d"),
+            DocChunk(text="delta echo foxtrot", source_file="b.md", domain="d"),
+        ]
+        result = select_relevant_chunks("xylophone zebra quantum", chunks)
+        assert result == []
