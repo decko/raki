@@ -62,6 +62,7 @@ def create_ragas_llm(config: MetricConfig):
             provider="google",
             client=client,
             temperature=config.temperature,
+            max_tokens=4096,
         )
         return llm
     else:
@@ -77,6 +78,7 @@ def create_ragas_llm(config: MetricConfig):
         provider="anthropic",
         client=client,
         temperature=config.temperature,
+        max_tokens=4096,
     )
     llm.model_args.pop("top_p", None)
     return llm
