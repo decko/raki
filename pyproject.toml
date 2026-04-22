@@ -83,10 +83,3 @@ showcontent = true
 testpaths = ["tests"]
 pythonpath = ["tests"]
 markers = ["slow: marks tests requiring LLM calls"]
-
-[dependency-groups]
-dev = [
-    "pytest>=9.0.3",
-    "ruff>=0.15.11",
-    "ty>=0.0.32",
-]
