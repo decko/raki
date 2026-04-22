@@ -1950,6 +1950,88 @@ class TestGateThresholdCLI:
             assert result.exit_code == 0
             assert "Quality Gates" not in result.output
 
+    def test_gate_unknown_metric_exits_2(self, empty_manifest):
+        """--gate with a completely unknown metric name should exit 2 (not silently skip)."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "completely_fake_metric>0.5",
+            ],
+        )
+        assert result.exit_code == 2
+
+    def test_gate_unknown_metric_shows_error_message(self, empty_manifest):
+        """--gate with an unknown metric name should show a friendly error message."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "completely_fake_metric>0.5",
+            ],
+        )
+        assert "completely_fake_metric" in result.output
+        assert "unknown" in result.output.lower() or "invalid" in result.output.lower()
+
+    def test_gate_unknown_metric_lists_valid_metrics(self, empty_manifest):
+        """--gate with an unknown metric name should list valid metric names."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "completely_fake_metric>0.5",
+            ],
+        )
+        assert "first_pass_verify_rate" in result.output
+        assert "faithfulness" in result.output
+
+    def test_gate_known_but_uncomputed_metric_still_skips(self, empty_manifest):
+        """--gate with a known-but-not-computed metric (e.g. faithfulness without --judge)
+        should SKIP gracefully (exit 0), not exit 2."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "faithfulness>0.85",
+                "-q",
+            ],
+        )
+        # faithfulness is a valid metric name, so no error
+        assert result.exit_code == 0
+
+    def test_gate_validation_happens_before_evaluation(self, empty_manifest):
+        """--gate validation of metric names should happen before heavy evaluation."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "typo_metricc>0.5",
+            ],
+        )
+        assert result.exit_code == 2
+        # The error message should mention --gate
+        assert "--gate" in result.output or "gate" in result.output.lower()
+
 
 class TestRegressionCLI:
     """Tests for --fail-on-regression on the report --diff command."""

@@ -219,6 +219,24 @@ def run(
                 param_hint="'--metrics'",
             )
 
+    # Validate --gate metric names before doing any heavy loading
+    if gate_thresholds:
+        from raki.gates.thresholds import parse_threshold
+
+        all_known = _all_metric_names()
+        try:
+            parsed_gates_early = [parse_threshold(raw) for raw in gate_thresholds]
+        except ValueError as exc:
+            raise click.BadParameter(str(exc), param_hint="'--gate'") from exc
+        unknown_gate_metrics = {thr.metric for thr in parsed_gates_early} - set(all_known.keys())
+        if unknown_gate_metrics:
+            valid_list = ", ".join(sorted(all_known.keys()))
+            raise click.BadParameter(
+                f"Unknown metric(s) in --gate: {', '.join(sorted(unknown_gate_metrics))}. "
+                f"Valid metrics: {valid_list}",
+                param_hint="'--gate'",
+            )
+
     manifest_file = _resolve_manifest(manifest_path, quiet=quiet, con=out)
 
     try:
