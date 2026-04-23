@@ -1209,6 +1209,146 @@ def test_session_schema_no_token_counts_from_either_source(tmp_path):
     assert impl_phases[0].tokens_out is None
 
 
+# --- Alcove bridge format tests ---
+
+
+def _bridge_session(tmp_path, overrides=None):
+    """Create a minimal bridge-format session file and return its path."""
+    data = {
+        "id": "bridge-001",
+        "task_id": "task-abc",
+        "submitter": "workflow",
+        "task_name": "Upgrade Dependencies",
+        "status": "completed",
+        "started_at": "2026-04-22T10:00:00Z",
+        "duration": "2m30s",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-6", "session_id": "task-abc"},
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "usage": {"input_tokens": 100, "output_tokens": 50},
+                    "content": [{"type": "text", "text": "I will upgrade deps."}],
+                },
+            },
+            {
+                "type": "result",
+                "total_cost_usd": 0.42,
+                "duration_ms": 150000,
+                "modelUsage": {"claude-sonnet-4-6": {"inputTokens": 100, "outputTokens": 50}},
+            },
+        ],
+    }
+    if overrides:
+        data.update(overrides)
+    session_file = tmp_path / "bridge-session.json"
+    session_file.write_text(json.dumps(data))
+    return session_file
+
+
+def test_bridge_format_detected(tmp_path):
+    source = _bridge_session(tmp_path)
+    adapter = AlcoveAdapter()
+    assert adapter.detect(source) is True
+
+
+def test_bridge_session_id_from_id_field(tmp_path):
+    source = _bridge_session(tmp_path)
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.session_id == "bridge-001"
+
+
+def test_bridge_task_name_as_ticket(tmp_path):
+    source = _bridge_session(tmp_path)
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.ticket == "Upgrade Dependencies"
+
+
+def test_bridge_started_at_from_top_level(tmp_path):
+    source = _bridge_session(tmp_path)
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.started_at.year == 2026
+    assert sample.session.started_at.hour == 10
+
+
+def test_bridge_cost_from_result(tmp_path):
+    source = _bridge_session(tmp_path)
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.total_cost_usd == 0.42
+
+
+def test_bridge_model_from_system(tmp_path):
+    source = _bridge_session(tmp_path)
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.model_id == "claude-sonnet-4-6"
+
+
+def test_bridge_failed_status(tmp_path):
+    source = _bridge_session(tmp_path, overrides={"status": "failed"})
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.phases[0].status == "failed"
+
+
+def test_bridge_no_task_name_no_ticket(tmp_path):
+    data = {
+        "id": "bridge-002",
+        "task_id": "task-xyz",
+        "submitter": "workflow",
+        "status": "completed",
+        "started_at": "2026-04-22T10:00:00Z",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-6"},
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [{"type": "text", "text": "done"}],
+                },
+            },
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+    }
+    session_file = tmp_path / "no-task-name.json"
+    session_file.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(session_file)
+    assert sample.session.ticket is None
+
+
+def test_bridge_classic_format_still_works(tmp_path):
+    """Classic session_id format must continue working."""
+    data = {
+        "session_id": "classic-001",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-6"},
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [{"type": "text", "text": "hello"}],
+                },
+            },
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+    }
+    session_file = tmp_path / "classic.json"
+    session_file.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    assert adapter.detect(session_file) is True
+    sample = adapter.load(session_file)
+    assert sample.session.session_id == "classic-001"
+    assert sample.session.ticket is None
+
+
 # --- Alcove context synthesis tests (issue #114) ---
 
 
