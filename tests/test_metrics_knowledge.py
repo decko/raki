@@ -928,6 +928,71 @@ class TestKnowledgeMissRate:
         assert result.details["covered_findings"] == 0
 
 
+# --- KnowledgeMissRate: strict path+word doc-chunk matching ---
+
+
+class TestKnowledgeMissRateStrictDocChunks:
+    """Verify miss_rate uses path matching so word-only overlap is not a 'miss'."""
+
+    def _meta(self, session_id: str) -> SessionMeta:
+        return SessionMeta(
+            session_id=session_id,
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+
+    def _sample(self, session_id: str, finding: ReviewFinding) -> EvalSample:
+        return EvalSample(
+            session=self._meta(session_id),
+            phases=[PhaseResult(name="implement", generation=1, status="completed", output="done")],
+            findings=[finding],
+            events=[],
+        )
+
+    def test_word_only_overlap_does_not_count_as_miss(self):
+        """Finding without file path is NOT a covered-miss even with word overlap."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            file=None,  # no path → 'content' tier → not covered
+            issue="Missing authentication token validation endpoint configuration",
+        )
+        chunk = DocChunk(
+            text="Authentication token validation endpoint configuration must be checked",
+            source_file="auth/setup.md",
+            domain="auth",
+        )
+        dataset = make_dataset(self._sample("miss-strict-content", finding))
+        result = KnowledgeMissRate().compute(dataset, MetricConfig(doc_chunks=[chunk]))
+        # 'content' tier → not covered → not a miss
+        assert result.details["covered_findings"] == 0
+        assert result.score == 0.0
+
+    def test_path_match_alone_counts_as_miss(self):
+        """Finding with matching file path is a covered-miss even with < 3 word overlap."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            file="src/auth/views.py",  # shares 'auth' → 'domain' tier
+            issue="Missing null pointer check",  # too few words for word_match
+        )
+        chunk = DocChunk(
+            text="Authentication token validation must be processed before request",
+            source_file="auth/setup.md",
+            domain="auth",
+        )
+        dataset = make_dataset(self._sample("miss-strict-domain", finding))
+        result = KnowledgeMissRate().compute(dataset, MetricConfig(doc_chunks=[chunk]))
+        # 'domain' tier → covered → counts as a miss
+        assert result.details["covered_findings"] == 1
+        assert result.score == 1.0
+
+
 # --- KnowledgeGapRate with doc_chunks ---
 
 
