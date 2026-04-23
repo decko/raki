@@ -1,0 +1,20 @@
+The `first_pass_verify_rate` metric has been renamed to `first_pass_success_rate`
+and its algorithm has changed.
+
+**Old behaviour:** Counted sessions where the `verify` phase had `generation=1`
+and `status=completed`. This could show 1.00 even when `rework_cycles` showed
+a non-zero average, producing contradictory signals.
+
+**New behaviour:** Counts sessions where `session.rework_cycles == 0`. The metric
+is now guaranteed to be consistent with `rework_cycles`.
+
+**Migration:**
+
+- Replace `first_pass_verify_rate` with `first_pass_success_rate` in any
+  `--gate` expressions, manifests, or saved report files you reference.
+- Python code importing `FirstPassVerifyRate` should import `FirstPassSuccessRate`
+  from `raki.metrics.operational.verify_rate` instead.
+- The class `FirstPassVerifyRate` has been removed; `FirstPassSuccessRate`
+  is its replacement.
+- Empty datasets now return `score=None` (was `0.0`) — consistent with
+  `SelfCorrectionRate`.
