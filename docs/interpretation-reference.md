@@ -12,9 +12,10 @@ For detailed metric documentation, see the per-tier references:
 
 These metrics require no LLM -- they are computed directly from session data.
 
-### first_pass_verify_rate -- Verify rate
+### first_pass_success_rate -- First-pass success rate
 
-Fraction of sessions that pass verification on the first attempt.
+Fraction of sessions that completed without any rework cycles (`session.rework_cycles == 0`).
+Consistent with the `rework_cycles` metric — both read from the same `SessionMeta` field.
 
 | Zone | Range | Meaning |
 |------|-------|---------|
@@ -22,7 +23,7 @@ Fraction of sessions that pass verification on the first attempt.
 | Yellow | 0.60 -- 0.84 | Noticeable first-attempt failures |
 | Red | < 0.60 | Majority of sessions need rework before passing |
 
-**Red zone action:** Examine failing sessions for common root causes. Low verify rates often indicate unclear requirements or missing constraints in the knowledge base.
+**Red zone action:** Examine failing sessions for common root causes. Low first-pass rates often indicate unclear requirements or missing constraints in the knowledge base.
 
 ### rework_cycles -- Rework cycles
 
@@ -184,7 +185,7 @@ When individual metrics don't tell the full story, look at combinations.
 
 **High knowledge_miss_rate + high severity_score:** Retrieval gaps exist but happen to land on easy questions where the agent can still produce acceptable output. Add the missing knowledge now -- these gaps will eventually cause failures on harder variants.
 
-**Low verify_rate + high rework_cycles:** Systemic quality issues. The agent consistently produces work that fails verification, and multiple rework rounds don't fully resolve problems. Investigate whether review criteria are clear and whether the knowledge base covers the relevant domains.
+**Low first_pass_success_rate + high rework_cycles:** Systemic quality issues. The agent consistently requires rework, and multiple rework rounds don't fully resolve problems. Investigate whether review criteria are clear and whether the knowledge base covers the relevant domains.
 
 **High cost_per_session + low rework_cycles:** Sessions are expensive but correct on the first pass. The cost likely comes from large context windows or verbose tool usage rather than iteration. Optimize context size or retrieval precision to reduce token consumption.
 
