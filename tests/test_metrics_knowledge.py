@@ -749,3 +749,26 @@ class TestKnowledgeGapRateWithDocChunks:
         config = MetricConfig(doc_chunks=[])
         result = KnowledgeGapRate().compute(dataset, config)
         assert result.score is None
+
+
+# --- Rationale attribute ---
+
+
+class TestKnowledgeMetricRationale:
+    """Each knowledge metric must have a non-empty rationale string."""
+
+    def test_knowledge_gap_rate_has_rationale(self):
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        metric = KnowledgeGapRate()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50
+
+    def test_knowledge_miss_rate_has_rationale(self):
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        metric = KnowledgeMissRate()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50

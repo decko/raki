@@ -30,6 +30,7 @@ class MetricStub:
     description: str
     display_format: str
     higher_is_better: bool
+    rationale: str = ""
     requires_ground_truth: bool = False
     requires_llm: bool = False
 

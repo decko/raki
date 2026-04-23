@@ -13,6 +13,17 @@ class PhaseExecutionTimeMetric:
     display_format: str = "duration"
     display_name: str = "Phase execution time"
     description: str = "Mean total phase execution time per session (seconds)"
+    rationale: str = (
+        "Phase execution time captures the sum of duration_ms across all phases in a session, "
+        "converted to seconds. It measures the time the agent actively spent processing, "
+        "excluding inter-phase gaps, orchestration overhead, and human-in-the-loop pauses. "
+        "This makes it a reliable proxy for LLM call duration rather than total wall-clock "
+        "time. High execution time combined with high token counts confirms that expensive "
+        "LLM calls are the latency bottleneck; high time with low tokens suggests slow "
+        "tool calls or API rate limiting. The metric reports p50 and p95 in the details dict "
+        "to distinguish typical performance from tail latency. "
+        "Target: <60s mean total phase time per session."
+    )
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         sample_scores: dict[str, float] = {}

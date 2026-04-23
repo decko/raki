@@ -728,3 +728,66 @@ class TestSelfCorrectionRate:
         assert metric.higher_is_better is True
         assert metric.display_format == "percent"
         assert metric.display_name == "Self-correction rate"
+
+
+# --- Rationale attribute ---
+
+
+class TestOperationalMetricRationale:
+    """Each non-Ragas metric must have a non-empty rationale string."""
+
+    def test_first_pass_verify_rate_has_rationale(self):
+        metric = FirstPassVerifyRate()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50
+
+    def test_rework_cycles_has_rationale(self):
+        metric = ReworkCycles()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50
+
+    def test_review_severity_distribution_has_rationale(self):
+        metric = ReviewSeverityDistribution()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50
+
+    def test_cost_efficiency_has_rationale(self):
+        from raki.metrics.operational.cost import CostEfficiency
+
+        metric = CostEfficiency()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50
+
+    def test_self_correction_rate_has_rationale(self):
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+
+        metric = SelfCorrectionRate()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50
+
+    def test_phase_execution_time_has_rationale(self):
+        from raki.metrics.operational.latency import PhaseExecutionTimeMetric
+
+        metric = PhaseExecutionTimeMetric()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50
+
+    def test_token_efficiency_has_rationale(self):
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+
+        metric = TokenEfficiencyMetric()
+        assert hasattr(metric, "rationale")
+        assert isinstance(metric.rationale, str)
+        assert len(metric.rationale) > 50
+
+    def test_rationale_is_in_protocol(self):
+        """Metric protocol must declare rationale as a required property."""
+        from raki.metrics.protocol import Metric
+
+        assert hasattr(Metric, "rationale")
