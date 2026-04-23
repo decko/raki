@@ -1,0 +1,1 @@
+``raki report`` now accepts ``--gate`` and ``--require-metric`` flags (matching ``raki run``), allowing per-metric quality gates to be applied against a saved JSON report without re-running the evaluation. Also adds ``-q``/``--quiet`` to suppress summary and gate output.
