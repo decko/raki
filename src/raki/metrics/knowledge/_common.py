@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from raki.model import EvalSample
@@ -204,6 +205,26 @@ def word_match(finding_text: str, chunk_text: str) -> bool:
     Overlap is computed on lower-cased alphabetic tokens after removing STOP_WORDS.
     """
     return len(tokenize(finding_text) & tokenize(chunk_text)) >= 3
+
+
+def path_match(finding_file: str | None, chunk_source: str) -> bool:
+    """Return True when *finding_file* shares at least one path component with *chunk_source*.
+
+    Path components are derived via :class:`pathlib.Path`.  Returns False
+    immediately when *finding_file* is None so callers can pass
+    ``finding.file`` directly without a prior None-check.
+
+    Examples::
+
+        path_match("src/auth/views.py", "auth/setup.md")   # True  — "auth"
+        path_match("src/auth/views.py", "database/schema.md")  # False
+        path_match(None, "auth/setup.md")                  # False
+    """
+    if finding_file is None:
+        return False
+    finding_parts = set(Path(finding_file).parts)
+    chunk_parts = set(Path(chunk_source).parts)
+    return bool(finding_parts & chunk_parts)
 
 
 def extract_knowledge_context(sample: EvalSample) -> str | None:

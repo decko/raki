@@ -75,6 +75,41 @@ class TestWordMatch:
         assert "database" not in STOP_WORDS
 
 
+# --- path_match ---
+
+
+class TestPathMatch:
+    def test_shared_directory_component_returns_true(self):
+        """A common directory segment in both paths → True."""
+        from raki.metrics.knowledge._common import path_match
+
+        assert path_match("src/auth/views.py", "auth/setup.md") is True
+
+    def test_no_shared_component_returns_false(self):
+        """No overlapping path segment → False."""
+        from raki.metrics.knowledge._common import path_match
+
+        assert path_match("src/auth/views.py", "database/schema.md") is False
+
+    def test_none_finding_file_always_returns_false(self):
+        """When finding.file is None, path_match cannot match any chunk."""
+        from raki.metrics.knowledge._common import path_match
+
+        assert path_match(None, "auth/setup.md") is False
+
+    def test_same_top_level_directory_matches(self):
+        """Identical top-level directory suffix is enough for a match."""
+        from raki.metrics.knowledge._common import path_match
+
+        assert path_match("auth/endpoint.py", "auth/setup.md") is True
+
+    def test_deep_nested_shared_component(self):
+        """Match on a shared subdirectory even when paths are deep."""
+        from raki.metrics.knowledge._common import path_match
+
+        assert path_match("project/src/auth/service/views.py", "auth/setup.md") is True
+
+
 # --- KnowledgeGapRate ---
 
 
