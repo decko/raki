@@ -68,8 +68,8 @@ class TestThresholdParser:
         assert result == Threshold(metric="some_metric", operator=">", value=-0.5)
 
     def test_parse_metric_with_underscores(self):
-        result = parse_threshold("first_pass_verify_rate>0.8")
-        assert result.metric == "first_pass_verify_rate"
+        result = parse_threshold("first_pass_success_rate>0.8")
+        assert result.metric == "first_pass_success_rate"
 
     def test_parse_whitespace_is_rejected(self):
         with pytest.raises(ValueError, match="Invalid threshold"):

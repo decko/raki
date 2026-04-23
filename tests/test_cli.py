@@ -177,7 +177,7 @@ class TestCliRunThreshold:
         fake_report = EvalReport(
             run_id="fake",
             aggregate_scores={
-                "first_pass_verify_rate": 1.0,
+                "first_pass_success_rate": 1.0,
                 "context_precision": 0.50,
                 "context_recall": 0.40,
             },
@@ -439,7 +439,7 @@ class TestMetricsFiltering:
         metric_names = set(data.get("aggregate_scores", {}).keys())
         assert "cost_efficiency" in metric_names
         # Other operational metrics should not appear
-        assert "first_pass_verify_rate" not in metric_names
+        assert "first_pass_success_rate" not in metric_names
 
     def test_filter_avoids_llm_import_when_only_operational(self, manifest_with_session):
         """When --metrics selects only operational metrics, LLM imports should not happen."""
@@ -487,7 +487,7 @@ class TestMetricsFiltering:
                 "-m",
                 str(manifest_path),
                 "--metrics",
-                "first_pass_verify_rate,rework_cycles",
+                "first_pass_success_rate,rework_cycles",
                 "-q",
             ],
         )
@@ -526,7 +526,8 @@ class TestMetricsSubcommand:
         runner = CliRunner()
         result = runner.invoke(main, ["metrics"])
         assert result.exit_code == 0
-        assert "Verify rate" in result.output
+        # Rich table wraps long display names; check for the un-wrapped prefix
+        assert "First-pass success" in result.output
 
     def test_metrics_shows_requires_llm_column(self):
         runner = CliRunner()
@@ -547,7 +548,7 @@ class TestMetricsSubcommand:
         data = json.loads(result.output)
         assert "metrics" in data
         metric_names = {metric_info["name"] for metric_info in data["metrics"]}
-        assert "first_pass_verify_rate" in metric_names
+        assert "first_pass_success_rate" in metric_names
         assert "context_precision" in metric_names
 
     def test_metrics_json_includes_all_fields(self):
@@ -758,7 +759,7 @@ class TestCliSummaryDisplayName:
         )
         assert result.exit_code == 0
         # Should show human-readable display names, not raw snake_case
-        assert "Verify rate" in result.output
+        assert "First-pass success rate" in result.output
         assert "Rework cycles" in result.output
         assert "Cost / session" in result.output
 
@@ -772,7 +773,7 @@ class TestCliSummaryDisplayName:
         )
         assert result.exit_code == 0
         # Raw snake_case names should not appear in the summary lines
-        assert "first_pass_verify_rate" not in result.output
+        assert "first_pass_success_rate" not in result.output
         assert "rework_cycles" not in result.output
         assert "cost_efficiency" not in result.output
 
@@ -788,7 +789,7 @@ class TestCliSummaryMetricDescription:
         )
         assert result.exit_code == 0
         # Metric descriptions should appear in parentheses
-        assert "% sessions passing verify" in result.output
+        assert "% sessions with no rework" in result.output
 
 
 def _write_report_json(path, *, include_sessions: bool = False) -> None:
@@ -798,7 +799,7 @@ def _write_report_json(path, *, include_sessions: bool = False) -> None:
     report = EvalReport(
         run_id="test-report-001",
         aggregate_scores={
-            "first_pass_verify_rate": 0.85,
+            "first_pass_success_rate": 0.85,
             "rework_cycles": 0.3,
             "cost_efficiency": 7.50,
         },
@@ -834,7 +835,7 @@ def _write_report_json(path, *, include_sessions: bool = False) -> None:
                     "events": [],
                 },
                 "scores": [
-                    {"name": "first_pass_verify_rate", "score": 1.0},
+                    {"name": "first_pass_success_rate", "score": 1.0},
                 ],
             }
         ]
@@ -868,7 +869,7 @@ def _write_report_json(path, *, include_sessions: bool = False) -> None:
                     "events": [],
                 },
                 "scores": [
-                    {"name": "first_pass_verify_rate", "score": 1.0},
+                    {"name": "first_pass_success_rate", "score": 1.0},
                 ],
             }
         ]
@@ -959,7 +960,7 @@ class TestCliReport:
         result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
         # Should use display names from METRIC_METADATA, not raw metric keys
-        assert "Verify rate" in result.output
+        assert "First-pass success rate" in result.output
 
 
 def _write_diff_report_json(
@@ -973,7 +974,7 @@ def _write_diff_report_json(
 ) -> None:
     """Write a minimal EvalReport JSON file for diff testing."""
     scores = aggregate_scores or {
-        "first_pass_verify_rate": 0.85,
+        "first_pass_success_rate": 0.85,
         "rework_cycles": 0.3,
         "cost_efficiency": 7.50,
     }
@@ -1146,12 +1147,12 @@ class TestCliReportDiff:
         _write_diff_report_json(
             baseline,
             run_id="eval-baseline",
-            aggregate_scores={"first_pass_verify_rate": 0.78, "rework_cycles": 1.2},
+            aggregate_scores={"first_pass_success_rate": 0.78, "rework_cycles": 1.2},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-compare",
-            aggregate_scores={"first_pass_verify_rate": 0.91, "rework_cycles": 0.4},
+            aggregate_scores={"first_pass_success_rate": 0.91, "rework_cycles": 0.4},
         )
         runner = CliRunner()
         result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
@@ -1214,12 +1215,12 @@ class TestCliReportDiff:
         _write_diff_report_json(
             baseline,
             run_id="base",
-            aggregate_scores={"first_pass_verify_rate": 0.78},
+            aggregate_scores={"first_pass_success_rate": 0.78},
         )
         _write_diff_report_json(
             compare,
             run_id="comp",
-            aggregate_scores={"first_pass_verify_rate": 0.91},
+            aggregate_scores={"first_pass_success_rate": 0.91},
         )
         runner = CliRunner()
         result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
@@ -1260,12 +1261,12 @@ class TestCliReportDiff:
         _write_diff_report_json(
             baseline,
             run_id="eval-base",
-            aggregate_scores={"first_pass_verify_rate": 0.78},
+            aggregate_scores={"first_pass_success_rate": 0.78},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-comp",
-            aggregate_scores={"first_pass_verify_rate": 0.91},
+            aggregate_scores={"first_pass_success_rate": 0.91},
         )
         runner = CliRunner()
         result = runner.invoke(
@@ -1769,7 +1770,9 @@ class TestValidateDeep:
         result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
         assert result.exit_code == 0
         # Should show at least one metric name or display name
-        assert "Verify rate" in result.output or "first_pass_verify_rate" in result.output
+        assert (
+            "First-pass success rate" in result.output or "first_pass_success_rate" in result.output
+        )
 
     def test_deep_adapter_failure_shows_fail(self, tmp_path):
         """--deep should show a failure indicator when an adapter fails to load."""
@@ -1801,7 +1804,7 @@ class TestGateThresholdCLI:
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -1814,7 +1817,7 @@ class TestGateThresholdCLI:
                     "-m",
                     str(manifest),
                     "--gate",
-                    "first_pass_verify_rate>0.80",
+                    "first_pass_success_rate>0.80",
                     "-o",
                     str(output_dir),
                 ],
@@ -1830,7 +1833,7 @@ class TestGateThresholdCLI:
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.70},
+            aggregate_scores={"first_pass_success_rate": 0.70},
         )
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -1843,7 +1846,7 @@ class TestGateThresholdCLI:
                     "-m",
                     str(manifest),
                     "--gate",
-                    "first_pass_verify_rate>0.80",
+                    "first_pass_success_rate>0.80",
                     "-o",
                     str(output_dir),
                 ],
@@ -1923,12 +1926,12 @@ class TestGateThresholdCLI:
         manifest_path = tmp_path / "raki.yaml"
         manifest_path.write_text(
             f"sessions:\n  path: {sessions}\n  format: auto\n"
-            f"thresholds:\n  - first_pass_verify_rate>0.99\n"
+            f"thresholds:\n  - first_pass_success_rate>0.99\n"
         )
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.80},
+            aggregate_scores={"first_pass_success_rate": 0.80},
         )
         output_dir = tmp_path / "results"
         with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
@@ -1958,12 +1961,12 @@ class TestGateThresholdCLI:
         manifest_path = tmp_path / "raki.yaml"
         manifest_path.write_text(
             f"sessions:\n  path: {sessions}\n  format: auto\n"
-            f"thresholds:\n  - first_pass_verify_rate>0.99\n"
+            f"thresholds:\n  - first_pass_success_rate>0.99\n"
         )
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.80},
+            aggregate_scores={"first_pass_success_rate": 0.80},
         )
         output_dir = tmp_path / "results"
         with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
@@ -1975,7 +1978,7 @@ class TestGateThresholdCLI:
                     "-m",
                     str(manifest_path),
                     "--gate",
-                    "first_pass_verify_rate>0.50",
+                    "first_pass_success_rate>0.50",
                     "-o",
                     str(output_dir),
                 ],
@@ -1991,7 +1994,7 @@ class TestGateThresholdCLI:
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -2019,7 +2022,7 @@ class TestGateThresholdCLI:
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -2032,7 +2035,7 @@ class TestGateThresholdCLI:
                     "-m",
                     str(manifest),
                     "--gate",
-                    "first_pass_verify_rate>0.80",
+                    "first_pass_success_rate>0.80",
                     "-o",
                     str(output_dir),
                     "-q",
@@ -2134,12 +2137,12 @@ class TestRegressionCLI:
         _write_diff_report_json(
             baseline,
             run_id="eval-baseline",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-compare",
-            aggregate_scores={"first_pass_verify_rate": 0.70},
+            aggregate_scores={"first_pass_success_rate": 0.70},
         )
         runner = CliRunner()
         result = runner.invoke(
@@ -2162,12 +2165,12 @@ class TestRegressionCLI:
         _write_diff_report_json(
             baseline,
             run_id="eval-baseline",
-            aggregate_scores={"first_pass_verify_rate": 0.80},
+            aggregate_scores={"first_pass_success_rate": 0.80},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-compare",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         runner = CliRunner()
         result = runner.invoke(
@@ -2200,12 +2203,12 @@ class TestRegressionCLI:
         _write_diff_report_json(
             baseline,
             run_id="eval-baseline",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-compare",
-            aggregate_scores={"first_pass_verify_rate": 0.70},
+            aggregate_scores={"first_pass_success_rate": 0.70},
         )
         runner = CliRunner()
         result = runner.invoke(

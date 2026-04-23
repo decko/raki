@@ -21,7 +21,7 @@ def _make_minimal_report() -> EvalReport:
         timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
         config={"adapter": "session-schema", "metrics": ["rework_cycles"]},
         aggregate_scores={
-            "first_pass_verify_rate": 0.58,
+            "first_pass_success_rate": 0.58,
             "rework_cycles": 1.3,
             "review_severity_distribution": 0.85,
             "cost_efficiency": 18.4,
@@ -97,7 +97,7 @@ def _make_report_with_samples() -> EvalReport:
         },
     )
     metric_verify = MetricResult(
-        name="first_pass_verify_rate",
+        name="first_pass_success_rate",
         score=0.67,
         sample_scores={
             "session-alpha": 0.0,
@@ -127,7 +127,7 @@ def _make_report_with_samples() -> EvalReport:
         timestamp=datetime(2026, 4, 18, 14, 30, 0, tzinfo=timezone.utc),
         config={"adapter": "session-schema"},
         aggregate_scores={
-            "first_pass_verify_rate": 0.67,
+            "first_pass_success_rate": 0.67,
             "rework_cycles": 1.0,
             "review_severity_distribution": 0.85,
             "cost_efficiency": 16.0,
@@ -272,7 +272,7 @@ class TestHtmlSections:
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        assert "Verify rate" in content
+        assert "First-pass success rate" in content
         assert "Rework cycles" in content
 
     def test_retrieval_quality_displayed(self, tmp_path: Path) -> None:
@@ -704,7 +704,7 @@ class TestProgressBarOmission:
         report = EvalReport(
             run_id="eval-verify",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.85},
+            aggregate_scores={"first_pass_success_rate": 0.85},
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
@@ -722,7 +722,7 @@ class TestSessionCount:
         report = EvalReport(
             run_id="eval-count",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.85},
+            aggregate_scores={"first_pass_success_rate": 0.85},
             config={"session_count": 42},
         )
         output = tmp_path / "report.html"
@@ -753,7 +753,7 @@ class TestEmptyStates:
             run_id="eval-no-retrieval",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
-                "first_pass_verify_rate": 0.85,
+                "first_pass_success_rate": 0.85,
                 "rework_cycles": 1.0,
             },
         )
@@ -800,14 +800,14 @@ class TestDisplayNames:
     """display_name used on score cards, raw metric names in JSON only."""
 
     def test_display_name_on_score_card(self, tmp_path: Path) -> None:
-        """Score cards should show display_name (e.g., 'Verify rate') not raw name."""
+        """Score cards should show display_name (e.g., 'First-pass success rate') not raw name."""
         from raki.report.html_report import write_html_report
 
         report = EvalReport(
             run_id="eval-display",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
-                "first_pass_verify_rate": 0.85,
+                "first_pass_success_rate": 0.85,
                 "cost_efficiency": 7.74,
             },
         )
@@ -815,7 +815,7 @@ class TestDisplayNames:
         write_html_report(report, output)
         content = output.read_text()
         # Should show display names
-        assert "Verify rate" in content
+        assert "First-pass success rate" in content
         assert "Cost / session" in content
 
     def test_metric_description_subtitle(self, tmp_path: Path) -> None:
@@ -825,13 +825,13 @@ class TestDisplayNames:
         report = EvalReport(
             run_id="eval-desc",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.85},
+            aggregate_scores={"first_pass_success_rate": 0.85},
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        # Subtitle text (Jinja2 autoescape converts ' to &#39;)
-        assert "passes all checks on the first try" in content
+        # Subtitle from METRIC_METADATA["first_pass_success_rate"]["subtitle"]
+        assert "without requiring any rework" in content
 
 
 class TestAccessibility:
@@ -974,14 +974,14 @@ class TestMetricMetadataSync:
 class TestPercentFormat:
     """display_format='percent' renders as '85%' not '0.85'."""
 
-    def test_verify_rate_shows_percentage(self, tmp_path: Path) -> None:
-        """first_pass_verify_rate (display_format=percent) should render as percentage."""
+    def test_first_pass_success_rate_shows_percentage(self, tmp_path: Path) -> None:
+        """first_pass_success_rate (display_format=percent) should render as percentage."""
         from raki.report.html_report import write_html_report
 
         report = EvalReport(
             run_id="eval-percent",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.85},
+            aggregate_scores={"first_pass_success_rate": 0.85},
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
@@ -989,7 +989,7 @@ class TestPercentFormat:
         assert "85%" in content
         # Should NOT show raw 0.85 in the metric value
         # (0.85 may appear elsewhere, e.g. in a bar width, so we check the metric-value div)
-        verify_idx = content.find("Verify rate")
+        verify_idx = content.find("First-pass success rate")
         assert verify_idx != -1
         value_start = content.find("metric-value", verify_idx)
         value_end = content.find("</div>", value_start)
@@ -1023,8 +1023,8 @@ class TestSummarySentenceInHtml:
         content = output.read_text()
         assert "summary-sentence" in content
 
-    def test_summary_sentence_contains_verify_rate(self, tmp_path: Path) -> None:
-        """Summary sentence in HTML should contain the verify rate percentage."""
+    def test_summary_sentence_contains_success_rate(self, tmp_path: Path) -> None:
+        """Summary sentence in HTML should contain the first-pass success rate percentage."""
         from raki.report.html_report import write_html_report
 
         report = _make_report_with_samples()
@@ -1036,16 +1036,16 @@ class TestSummarySentenceInHtml:
 
 
 class TestHeroCard:
-    """Verify rate should render as a hero card (wider, larger)."""
+    """First-pass success rate should render as a hero card (wider, larger)."""
 
     def test_hero_card_class_present(self, tmp_path: Path) -> None:
-        """Verify rate card should have a hero-card CSS class."""
+        """First-pass success rate card should have a hero-card CSS class."""
         from raki.report.html_report import write_html_report
 
         report = EvalReport(
             run_id="eval-hero",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.91},
+            aggregate_scores={"first_pass_success_rate": 0.91},
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
@@ -1056,19 +1056,19 @@ class TestHeroCard:
 class TestPlainEnglishSubtitles:
     """Every card has a plain-English subtitle."""
 
-    def test_verify_rate_subtitle(self, tmp_path: Path) -> None:
-        """Verify rate card should have the plain-English subtitle."""
+    def test_first_pass_success_rate_subtitle(self, tmp_path: Path) -> None:
+        """First-pass success rate card should have the plain-English subtitle."""
         from raki.report.html_report import write_html_report
 
         report = EvalReport(
             run_id="eval-subtitles",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.85},
+            aggregate_scores={"first_pass_success_rate": 0.85},
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        assert "passes all checks on the first try" in content
+        assert "without requiring any rework" in content
 
     def test_rework_cycles_subtitle(self, tmp_path: Path) -> None:
         """Rework cycles card should have the plain-English subtitle."""
@@ -1102,14 +1102,14 @@ class TestPlainEnglishSubtitles:
 class TestDirectionBadges:
     """Direction badges on directional metrics (higher/lower is better)."""
 
-    def test_verify_rate_shows_higher_is_better(self, tmp_path: Path) -> None:
-        """Verify rate should show 'higher is better' direction badge."""
+    def test_first_pass_success_rate_shows_higher_is_better(self, tmp_path: Path) -> None:
+        """First-pass success rate should show 'higher is better' direction badge."""
         from raki.report.html_report import write_html_report
 
         report = EvalReport(
             run_id="eval-direction",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.85},
+            aggregate_scores={"first_pass_success_rate": 0.85},
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
@@ -1130,14 +1130,14 @@ class TestDirectionBadges:
         content = output.read_text()
         assert "lower is better" in content.lower()
 
-    def test_verify_rate_shows_target_threshold(self, tmp_path: Path) -> None:
-        """Verify rate card should show target threshold of >85%."""
+    def test_first_pass_success_rate_shows_target_threshold(self, tmp_path: Path) -> None:
+        """First-pass success rate card should show target threshold of >85%."""
         from raki.report.html_report import write_html_report
 
         report = EvalReport(
             run_id="eval-threshold",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.85},
+            aggregate_scores={"first_pass_success_rate": 0.85},
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
@@ -1282,7 +1282,7 @@ class TestKnowledgeMissRateConditional:
             run_id="eval-no-knowledge",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
-                "first_pass_verify_rate": 0.85,
+                "first_pass_success_rate": 0.85,
                 "knowledge_miss_rate": None,
             },
             sample_results=[SampleResult(sample=sample, scores=[])],
@@ -1314,7 +1314,7 @@ class TestKnowledgeMissRateConditional:
             run_id="eval-with-knowledge",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
-                "first_pass_verify_rate": 0.85,
+                "first_pass_success_rate": 0.85,
                 "knowledge_miss_rate": 0.15,
             },
             sample_results=[SampleResult(sample=sample, scores=[])],
@@ -1336,7 +1336,7 @@ class TestRetrievalQualityConditional:
             run_id="eval-no-llm",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
-                "first_pass_verify_rate": 0.85,
+                "first_pass_success_rate": 0.85,
             },
         )
         output = tmp_path / "report.html"
@@ -1479,7 +1479,7 @@ class TestMetricLinksToInterpretingDocs:
         report = EvalReport(
             run_id="eval-links",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
-            aggregate_scores={"first_pass_verify_rate": 0.85},
+            aggregate_scores={"first_pass_success_rate": 0.85},
         )
         output = tmp_path / "report.html"
         write_html_report(report, output)
@@ -1857,7 +1857,7 @@ class TestNeedsAttentionSection:
         all_pass_sample = make_sample("s1", rework_cycles=0, cost=10.0)
         report = EvalReport(
             run_id="all-pass",
-            aggregate_scores={"first_pass_verify_rate": 1.0},
+            aggregate_scores={"first_pass_success_rate": 1.0},
             sample_results=[SampleResult(sample=all_pass_sample, scores=[])],
         )
         output = tmp_path / "report.html"

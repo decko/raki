@@ -41,7 +41,7 @@ RAKI organizes metrics into three tiers, each adding more depth:
 
 | Tier | What you need | What you get |
 |------|--------------|--------------|
-| **Operational** | Nothing (zero config) | Verify rate, rework cycles, cost, severity, latency, tokens, self-correction |
+| **Operational** | Nothing (zero config) | First-pass success rate, rework cycles, cost, severity, latency, tokens, self-correction |
 | **Knowledge** | `--docs-path ./docs` | Knowledge gap rate, knowledge miss rate |
 | **Analytical** | `--judge` + LLM credentials | Faithfulness, answer relevancy, context precision, context recall |
 
@@ -57,7 +57,7 @@ uv run raki run --manifest raki.yaml
 
 This is the default mode. It computes all seven operational metrics from session transcript data alone:
 
-- **Verify rate** -- % sessions passing verification on first try
+- **First-pass success rate** -- % sessions with no rework cycles
 - **Rework cycles** -- mean review-fix iterations per session
 - **Severity score** -- weighted severity of review findings
 - **Cost / session** -- mean USD cost per session
@@ -147,7 +147,7 @@ A typical operational run produces:
 
 ```
 Operational Health
-  Verify rate                         0.75
+  First-pass success rate              0.75
   Rework cycles                       0.2
   Severity score                      0.39
   Cost / session                      $10.93
@@ -175,7 +175,7 @@ Use `--gate` for per-metric quality gates:
 
 ```bash
 uv run raki run --manifest raki.yaml \
-  --gate 'first_pass_verify_rate>0.85' \
+  --gate 'first_pass_success_rate>0.85' \
   --gate 'rework_cycles<1.5' \
   --quiet
 ```

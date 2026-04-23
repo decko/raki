@@ -25,7 +25,7 @@ def _make_report() -> EvalReport:
         run_id="eval-test-001",
         config={"adapter": "session-schema", "metrics": ["rework_cycles"]},
         aggregate_scores={
-            "first_pass_verify_rate": 0.58,
+            "first_pass_success_rate": 0.58,
             "rework_cycles": 1.3,
             "review_severity_distribution": 0.85,
             "cost_efficiency": 18.4,
@@ -261,17 +261,17 @@ class TestColorForScore:
 
 class TestFormatMetricLine:
     def test_contains_name_and_score(self) -> None:
-        line = format_metric_line("first_pass_verify_rate", 0.85, "(32/38 passed)")
-        assert "first_pass_verify_rate" in line
+        line = format_metric_line("first_pass_success_rate", 0.85, "(32/38 passed)")
+        assert "first_pass_success_rate" in line
         assert "0.85" in line
 
     def test_red_for_low_score(self) -> None:
-        line = format_metric_line("first_pass_verify_rate", 0.45, "(17/38 passed)")
+        line = format_metric_line("first_pass_success_rate", 0.45, "(17/38 passed)")
         assert "0.45" in line
         assert "[red]" in line
 
     def test_green_for_high_score(self) -> None:
-        line = format_metric_line("first_pass_verify_rate", 0.85)
+        line = format_metric_line("first_pass_success_rate", 0.85)
         assert "[green]" in line
 
     def test_currency_display_format(self) -> None:
@@ -293,17 +293,17 @@ class TestFormatMetricLine:
         assert "1.3" in line
 
     def test_sample_count_shown(self) -> None:
-        line = format_metric_line("first_pass_verify_rate", 0.85, sample_count=38)
+        line = format_metric_line("first_pass_success_rate", 0.85, sample_count=38)
         assert "(n=38)" in line
 
     def test_display_name_used_when_provided(self) -> None:
         line = format_metric_line(
-            "first_pass_verify_rate",
+            "first_pass_success_rate",
             0.85,
             display_name="First-Pass Verify Rate",
         )
         assert "First-Pass Verify Rate" in line
-        assert "first_pass_verify_rate" not in line
+        assert "first_pass_success_rate" not in line
 
     def test_percent_display_format(self) -> None:
         line = format_metric_line(
@@ -382,7 +382,7 @@ class TestPrintSummary:
         report = EvalReport(
             run_id="both-categories",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "faithfulness": 0.92,
             },
         )
@@ -519,12 +519,12 @@ def _make_finding(severity: Literal["critical", "major", "minor"]) -> ReviewFind
 
 
 class TestGenerateSummarySentence:
-    def test_includes_verify_rate_percentage(self) -> None:
-        """Summary sentence should include verify rate as a percentage."""
+    def test_includes_success_rate_percentage(self) -> None:
+        """Summary sentence should include first-pass success rate as a percentage."""
         report = EvalReport(
             run_id="summary-test",
             aggregate_scores={
-                "first_pass_verify_rate": 0.91,
+                "first_pass_success_rate": 0.91,
                 "rework_cycles": 0.4,
                 "cost_efficiency": 7.42,
             },
@@ -537,7 +537,7 @@ class TestGenerateSummarySentence:
         report = EvalReport(
             run_id="summary-test",
             aggregate_scores={
-                "first_pass_verify_rate": 0.91,
+                "first_pass_success_rate": 0.91,
                 "rework_cycles": 0.4,
                 "cost_efficiency": 7.42,
             },
@@ -550,7 +550,7 @@ class TestGenerateSummarySentence:
         report = EvalReport(
             run_id="summary-test",
             aggregate_scores={
-                "first_pass_verify_rate": 0.91,
+                "first_pass_success_rate": 0.91,
                 "rework_cycles": 0.4,
                 "cost_efficiency": 7.42,
             },
@@ -575,7 +575,7 @@ class TestGenerateSummarySentence:
         report = EvalReport(
             run_id="summary-findings",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "rework_cycles": 1.0,
                 "cost_efficiency": 10.0,
             },
@@ -594,7 +594,7 @@ class TestGenerateSummarySentence:
         report = EvalReport(
             run_id="summary-partial",
             aggregate_scores={
-                "first_pass_verify_rate": 0.75,
+                "first_pass_success_rate": 0.75,
             },
         )
         sentence = generate_summary_sentence(report, session_count=10)
@@ -647,11 +647,11 @@ class TestNoDataMetricDisplay:
         report = EvalReport(
             run_id="test-no-data",
             aggregate_scores={
-                "first_pass_verify_rate": 0.8,
+                "first_pass_success_rate": 0.8,
                 "token_efficiency": 0.0,
             },
             metric_details={
-                "first_pass_verify_rate": {"passed": 8, "total": 10},
+                "first_pass_success_rate": {"passed": 8, "total": 10},
                 "token_efficiency": {
                     "mean_tokens_per_phase": 0.0,
                     "sessions_with_tokens": 0,
@@ -766,7 +766,7 @@ class TestNoDataMetricDisplay:
             aggregate_scores={
                 "context_precision": None,
                 "context_recall": None,
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
             },
             metric_details={
                 "context_precision": {"skipped": "no ground truth"},
@@ -775,7 +775,7 @@ class TestNoDataMetricDisplay:
         )
         assert report.aggregate_scores["context_precision"] is None
         assert report.aggregate_scores["context_recall"] is None
-        assert report.aggregate_scores["first_pass_verify_rate"] == 0.80
+        assert report.aggregate_scores["first_pass_success_rate"] == 0.80
 
     def test_skipped_metric_serializes_to_json_null(self, tmp_path: Path) -> None:
         """Bug #140: None aggregate scores must serialize to JSON null, not 0.0."""
@@ -784,7 +784,7 @@ class TestNoDataMetricDisplay:
             aggregate_scores={
                 "context_precision": None,
                 "context_recall": None,
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
             },
             metric_details={
                 "context_precision": {"skipped": "no ground truth"},
@@ -796,7 +796,7 @@ class TestNoDataMetricDisplay:
         raw = json.loads(output_path.read_text())
         assert raw["aggregate_scores"]["context_precision"] is None
         assert raw["aggregate_scores"]["context_recall"] is None
-        assert raw["aggregate_scores"]["first_pass_verify_rate"] == 0.80
+        assert raw["aggregate_scores"]["first_pass_success_rate"] == 0.80
 
 
 # --- Three-tier section headers tests (bug #133) ---
@@ -997,7 +997,7 @@ class TestNoDataMetricDisplayExtended:
             run_id="test-cli-na",
             aggregate_scores={
                 "context_precision": None,
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
             },
             metric_details={
                 "context_precision": {"skipped": "no ground truth"},
@@ -1017,7 +1017,7 @@ class TestNoDataMetricDisplayExtended:
             run_id="test-roundtrip-null",
             aggregate_scores={
                 "context_precision": None,
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
             },
             metric_details={
                 "context_precision": {"skipped": "no ground truth"},
@@ -1027,7 +1027,7 @@ class TestNoDataMetricDisplayExtended:
         write_json_report(report, output_path)
         loaded = load_json_report(output_path)
         assert loaded.aggregate_scores["context_precision"] is None
-        assert loaded.aggregate_scores["first_pass_verify_rate"] == 0.80
+        assert loaded.aggregate_scores["first_pass_success_rate"] == 0.80
 
     def test_engine_propagates_none_score_to_aggregate(self) -> None:
         """Bug #140: MetricsEngine must propagate None scores into aggregate_scores.
@@ -1036,11 +1036,11 @@ class TestNoDataMetricDisplayExtended:
         """
         results = [
             MetricResult(name="context_precision", score=None, details={"skipped": "no gt"}),
-            MetricResult(name="first_pass_verify_rate", score=0.80),
+            MetricResult(name="first_pass_success_rate", score=0.80),
         ]
         aggregate = {result.name: result.score for result in results}
         assert aggregate["context_precision"] is None
-        assert aggregate["first_pass_verify_rate"] == 0.80
+        assert aggregate["first_pass_success_rate"] == 0.80
 
     def test_metric_details_populated_by_engine(self) -> None:
         from raki.metrics.engine import MetricsEngine

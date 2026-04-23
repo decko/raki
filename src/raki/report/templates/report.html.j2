@@ -746,7 +746,7 @@
         {% elif name == "review_severity_distribution" %}
         {# Severity distribution is rendered separately below #}
         {% else %}
-        <div class="score-card{% if name == 'first_pass_verify_rate' %} hero-card{% endif %}">
+        <div class="score-card{% if name == 'first_pass_success_rate' %} hero-card{% endif %}">
           <div class="metric-name">
             {% if meta.docs_anchor %}<a href="{{ docs_base_url }}#{{ meta.docs_anchor }}">{{ meta.display_name }}</a>{% else %}{{ meta.display_name }}{% endif %}
           </div>
