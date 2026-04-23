@@ -293,7 +293,7 @@ def run(
 
     if effective_docs_path is not None:
         resolved_docs = Path(effective_docs_path).resolve()
-        project_root = manifest_file.parent.resolve()
+        project_root = Path.cwd().resolve()
         try:
             resolved_docs.relative_to(project_root)
         except ValueError:
