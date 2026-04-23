@@ -1013,3 +1013,68 @@ class TestKnowledgeGapRateWithDocChunks:
         config = MetricConfig(doc_chunks=[])
         result = KnowledgeGapRate().compute(dataset, config)
         assert result.score is None
+
+
+# --- KnowledgeGapRate: strict path+word doc-chunk matching ---
+
+
+class TestKnowledgeGapRateStrictDocChunks:
+    """Verify gap_rate uses path matching so word-only overlap does not hide gaps."""
+
+    def _meta(self, session_id: str) -> SessionMeta:
+        return SessionMeta(
+            session_id=session_id,
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+
+    def _sample(self, session_id: str, finding: ReviewFinding) -> EvalSample:
+        return EvalSample(
+            session=self._meta(session_id),
+            phases=[PhaseResult(name="implement", generation=1, status="completed", output="done")],
+            findings=[finding],
+            events=[],
+        )
+
+    def test_word_only_overlap_does_not_cover_finding(self):
+        """Finding without a file path is NOT covered even with word overlap (strict mode)."""
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            file=None,  # no path → content tier at most → not covered
+            issue="Missing authentication token validation endpoint configuration",
+        )
+        chunk = DocChunk(
+            text="Authentication token validation endpoint configuration must be checked",
+            source_file="auth/setup.md",
+            domain="auth",
+        )
+        dataset = make_dataset(self._sample("gap-strict-content", finding))
+        result = KnowledgeGapRate().compute(dataset, MetricConfig(doc_chunks=[chunk]))
+        # "content" tier → not covered → uncovered
+        assert result.details["uncovered_findings"] == 1
+        assert result.score == 1.0
+
+    def test_path_match_alone_covers_finding(self):
+        """Finding with a matching file path is covered even with < 3 word overlap ('domain' tier)."""
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            file="src/auth/views.py",  # shares 'auth' with chunk source
+            issue="Missing null pointer check",  # too few words for word_match
+        )
+        chunk = DocChunk(
+            text="Authentication token validation must be processed before request",
+            source_file="auth/setup.md",
+            domain="auth",
+        )
+        dataset = make_dataset(self._sample("gap-strict-domain", finding))
+        result = KnowledgeGapRate().compute(dataset, MetricConfig(doc_chunks=[chunk]))
+        # 'domain' tier → covered → not uncovered
+        assert result.details["uncovered_findings"] == 0
+        assert result.score == 0.0
