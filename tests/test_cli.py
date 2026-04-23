@@ -1537,17 +1537,19 @@ class TestDocsPathCLI:
         metric_names = set(data.get("aggregate_scores", {}).keys())
         assert "knowledge_gap_rate" in metric_names
 
-    def test_docs_path_outside_project_root_rejected(self, tmp_path):
-        """--docs-path pointing outside the project root should fail with UsageError."""
-        # Create project directory with manifest
+    def test_docs_path_outside_project_root_rejected(self, tmp_path, monkeypatch):
+        """--docs-path pointing outside the CWD (project root) should fail with UsageError."""
+        # Create project directory — this is the CWD (project root)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
         sessions = project_dir / "sessions"
         sessions.mkdir()
         manifest_file = project_dir / "raki.yaml"
         manifest_file.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
 
-        # Create docs directory outside the project root
+        # Create docs directory outside the CWD (project root)
         outside_docs = tmp_path / "outside_docs"
         outside_docs.mkdir()
         (outside_docs / "guide.md").write_text("# Guide\nContent.\n")
@@ -1559,6 +1561,38 @@ class TestDocsPathCLI:
         )
         assert result.exit_code != 0
         assert "must be within the project root" in result.output
+
+    def test_docs_path_within_cwd_but_outside_manifest_parent_accepted(self, tmp_path, monkeypatch):
+        """--docs-path within CWD but outside manifest parent directory should be accepted.
+
+        Regression test for bug where the guard used manifest_file.parent as the
+        project root instead of CWD.  When the manifest lives in a subdirectory
+        (e.g. discovered from a nested config/ folder), docs at the repo root must
+        still be accepted.
+        """
+        # CWD is the project root (tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Manifest is in a subdirectory — simulates auto-discovery from a nested location
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        sessions = config_dir / "sessions"
+        sessions.mkdir()
+        manifest_file = config_dir / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
+
+        # docs is at the project root — within CWD but NOT within manifest parent (config/)
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# Guide\nContent.\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_file), "--docs-path", str(docs_dir), "-q"],
+        )
+        # Should succeed: docs_dir is within CWD even though it's outside config/
+        assert result.exit_code == 0
 
 
 class TestRagasMetricsSync:
