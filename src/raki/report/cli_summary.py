@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from raki.report.diff import DiffReport, SessionTransition
 
 OPERATIONAL_METRICS = {
-    "first_pass_verify_rate",
+    "first_pass_success_rate",
     "rework_cycles",
     "review_severity_distribution",
     "cost_efficiency",
@@ -158,10 +158,10 @@ def generate_summary_sentence(report: EvalReport, session_count: int) -> str:
     parts: list[str] = []
     scores = report.aggregate_scores
 
-    verify_rate = scores.get("first_pass_verify_rate")
-    if verify_rate is not None:
-        pct = f"{verify_rate * 100:.0f}%"
-        parts.append(f"{pct} of sessions passed on first try")
+    success_rate = scores.get("first_pass_success_rate")
+    if success_rate is not None:
+        pct = f"{success_rate * 100:.0f}%"
+        parts.append(f"{pct} of sessions completed without rework")
 
     rework = scores.get("rework_cycles")
     if rework is not None:
