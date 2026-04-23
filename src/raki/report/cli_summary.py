@@ -205,6 +205,59 @@ def generate_summary_sentence(report: EvalReport, session_count: int) -> str:
     return ". ".join(sentence_parts) + "."
 
 
+def _print_metric_section(
+    output_console: Console,
+    section_scores: dict[str, float | None],
+    report: EvalReport,
+    meta: _MetricMeta,
+    session_count: int,
+    *,
+    experimental_tag: bool = False,
+    calibration_caveat: bool = False,
+) -> None:
+    """Render a single metrics section: metric lines + optional caveats."""
+    for name, score in section_scores.items():
+        tag = (
+            " [yellow]\\[experimental][/yellow]"
+            if experimental_tag and name in EXPERIMENTAL_METRICS
+            else ""
+        )
+        metric_no_data = _has_no_data(report.metric_details, name)
+        inferred_tag = ""
+        if (
+            experimental_tag
+            and not metric_no_data
+            and name in CONTEXT_SENSITIVE_METRICS
+            and _is_synthesized_context(report.metric_details, name)
+        ):
+            inferred_tag = " [cyan]\\(inferred)[/cyan]"
+        output_console.print(
+            format_metric_line(
+                name,
+                score,
+                detail=meta.description(name),
+                display_format=meta.display_format(name),
+                higher_is_better=meta.higher_is_better(name),
+                display_name=meta.display_name(name),
+                no_data=metric_no_data,
+                no_data_reason=_no_data_reason(report.metric_details, name)
+                if metric_no_data
+                else "no data",
+            )
+            + ("" if metric_no_data else tag + inferred_tag)
+        )
+    if session_count < 50:
+        output_console.print(
+            f"[dim]  \u26a0 Small sample size (n={session_count}) \u2014 "
+            "scores are directional, not definitive[/dim]"
+        )
+    if calibration_caveat:
+        output_console.print(
+            "[dim]  \u26a0 Scores produced by same-provider LLM judge "
+            "\u2014 calibration caveat applies[/dim]"
+        )
+
+
 def print_summary(
     report: EvalReport,
     session_count: int,
@@ -215,8 +268,9 @@ def print_summary(
 ) -> None:
     """Print a Rich CLI summary of the evaluation report.
 
-    Metrics are split into two categories: Operational Health and Retrieval Quality.
-    A small sample caveat is shown alongside scores when n < 50.
+    Metrics are split into three categories: Operational Health, Knowledge Quality,
+    and Retrieval Quality. A small sample caveat is shown alongside scores when n < 50.
+    Progression nudges guide the user toward unlocking the next metric tier.
 
     When *metrics* is provided, human-readable ``display_name`` and
     ``description`` values are shown instead of raw metric names.
@@ -226,75 +280,48 @@ def print_summary(
 
     meta = _MetricMeta(metrics)
 
-    non_retrieval = OPERATIONAL_METRICS | KNOWLEDGE_METRICS
     operational = {
-        name: score for name, score in report.aggregate_scores.items() if name in non_retrieval
+        name: score
+        for name, score in report.aggregate_scores.items()
+        if name in OPERATIONAL_METRICS
+    }
+    knowledge = {
+        name: score for name, score in report.aggregate_scores.items() if name in KNOWLEDGE_METRICS
     }
     retrieval = {
-        name: score for name, score in report.aggregate_scores.items() if name not in non_retrieval
+        name: score
+        for name, score in report.aggregate_scores.items()
+        if name not in OPERATIONAL_METRICS and name not in KNOWLEDGE_METRICS
     }
 
     if operational:
         output_console.print("[bold]Operational Health[/bold]")
-        for name, score in operational.items():
-            metric_no_data = _has_no_data(report.metric_details, name)
+        _print_metric_section(output_console, operational, report, meta, session_count)
+        if not knowledge:
             output_console.print(
-                format_metric_line(
-                    name,
-                    score,
-                    detail=meta.description(name),
-                    display_format=meta.display_format(name),
-                    higher_is_better=meta.higher_is_better(name),
-                    display_name=meta.display_name(name),
-                    no_data=metric_no_data,
-                    no_data_reason=_no_data_reason(report.metric_details, name)
-                    if metric_no_data
-                    else "no data",
-                )
+                "[dim]  \u2192 Add --docs-path to unlock Knowledge Quality metrics[/dim]"
             )
-        if session_count < 50:
+        output_console.print()
+
+    if knowledge:
+        output_console.print("[bold]Knowledge Quality[/bold]")
+        _print_metric_section(output_console, knowledge, report, meta, session_count)
+        if not retrieval:
             output_console.print(
-                f"[dim]  \u26a0 Small sample size (n={session_count}) \u2014 "
-                "scores are directional, not definitive[/dim]"
+                "[dim]  \u2192 Add --judge to unlock Retrieval Quality metrics[/dim]"
             )
         output_console.print()
 
     if retrieval:
         output_console.print("[bold]Retrieval Quality[/bold]")
-        for name, score in retrieval.items():
-            tag = " [yellow]\\[experimental][/yellow]" if name in EXPERIMENTAL_METRICS else ""
-            metric_no_data = _has_no_data(report.metric_details, name)
-            # Check if context was synthesized for this metric
-            inferred_tag = ""
-            if (
-                not metric_no_data
-                and name in CONTEXT_SENSITIVE_METRICS
-                and _is_synthesized_context(report.metric_details, name)
-            ):
-                inferred_tag = " [cyan]\\(inferred)[/cyan]"
-            output_console.print(
-                format_metric_line(
-                    name,
-                    score,
-                    detail=meta.description(name),
-                    display_format=meta.display_format(name),
-                    higher_is_better=meta.higher_is_better(name),
-                    display_name=meta.display_name(name),
-                    no_data=metric_no_data,
-                    no_data_reason=_no_data_reason(report.metric_details, name)
-                    if metric_no_data
-                    else "no data",
-                )
-                + ("" if metric_no_data else tag + inferred_tag)
-            )
-        if session_count < 50:
-            output_console.print(
-                f"[dim]  \u26a0 Small sample size (n={session_count}) \u2014 "
-                "scores are directional, not definitive[/dim]"
-            )
-        output_console.print(
-            "[dim]  \u26a0 Scores produced by same-provider LLM judge "
-            "\u2014 calibration caveat applies[/dim]"
+        _print_metric_section(
+            output_console,
+            retrieval,
+            report,
+            meta,
+            session_count,
+            experimental_tag=True,
+            calibration_caveat=True,
         )
         output_console.print()
 
