@@ -70,11 +70,58 @@ def _resolve_manifest(
 
 
 # LLM metric names that are always known (Ragas-backed retrieval metrics)
-_RAGAS_METRICS: dict[str, tuple[str, bool]] = {
-    "context_precision": ("Context precision", True),
-    "context_recall": ("Context recall", True),
-    "faithfulness": ("Faithfulness", True),
-    "answer_relevancy": ("Answer relevancy", True),
+# tuple: (display_name, requires_llm, rationale)
+_RAGAS_METRICS: dict[str, tuple[str, bool, str]] = {
+    "context_precision": (
+        "Context precision",
+        True,
+        (
+            "Context precision measures how much of what the retriever returned was actually "
+            "useful. A retriever with high precision surfaces relevant content and discards "
+            "noise; low precision means the agent's context window is flooded with irrelevant "
+            "material, wasting tokens and potentially confusing the model. Requires ground "
+            "truth to define what 'relevant' means. Use this metric to evaluate and tune "
+            "your retrieval pipeline's ranking and chunking strategies."
+        ),
+    ),
+    "context_recall": (
+        "Context recall",
+        True,
+        (
+            "Context recall measures how much of the needed information the retriever "
+            "successfully found. Low recall means the agent is missing critical knowledge — "
+            "either it does not exist in the knowledge base, or search is failing to surface "
+            "it. Requires ground truth to define what information is 'needed'. Complementary "
+            "to context_precision: high precision with low recall means the retriever is "
+            "selective but incomplete; low precision with high recall means it over-retrieves "
+            "but does find the relevant content."
+        ),
+    ),
+    "faithfulness": (
+        "Faithfulness",
+        True,
+        (
+            "Faithfulness measures whether the agent's claims are grounded in the retrieved "
+            "context rather than hallucinated. An LLM judge decomposes the response into "
+            "individual claims and checks each against the retrieved contexts. Scores below "
+            "1.0 mean some claims lack context support. Experimental for agentic sessions — "
+            "agents that synthesize across multiple tool calls may legitimately produce lower "
+            "scores without indicating a real problem. Inspect low-scoring sessions manually."
+        ),
+    ),
+    "answer_relevancy": (
+        "Answer relevancy",
+        True,
+        (
+            "Answer relevancy measures whether the agent's output actually addresses the "
+            "user's question. An LLM generates synthetic questions from the response and "
+            "compares them to the original using embedding similarity. Low relevancy "
+            "indicates the agent is going off-track — typically a prompt or routing issue "
+            "rather than a retrieval problem. Experimental: multi-step agentic workflows "
+            "may address the question indirectly, yielding lower scores without indicating "
+            "a real problem."
+        ),
+    ),
 }
 
 
@@ -92,7 +139,7 @@ def _all_metric_names() -> dict[str, str]:
         names[metric.name] = metric.display_name
     for metric in ALL_KNOWLEDGE:
         names[metric.name] = metric.display_name
-    for ragas_name, (display_name, _requires_llm) in _RAGAS_METRICS.items():
+    for ragas_name, (display_name, _requires_llm, _rationale) in _RAGAS_METRICS.items():
         names[ragas_name] = display_name
     return names
 
@@ -677,15 +724,17 @@ def metrics(json_output: bool) -> None:
                 "display_name": metric.display_name,
                 "requires_llm": metric.requires_llm,
                 "higher_is_better": metric.higher_is_better,
+                "rationale": metric.rationale,
             }
         )
-    for ragas_name, (display_name, requires_llm) in _RAGAS_METRICS.items():
+    for ragas_name, (display_name, requires_llm, ragas_rationale) in _RAGAS_METRICS.items():
         all_metrics_info.append(
             {
                 "name": ragas_name,
                 "display_name": display_name,
                 "requires_llm": requires_llm,
                 "higher_is_better": True,
+                "rationale": ragas_rationale,
             }
         )
 

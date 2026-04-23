@@ -572,6 +572,40 @@ class TestMetricsSubcommand:
             assert isinstance(metric_info["requires_llm"], bool)
             assert isinstance(metric_info["higher_is_better"], bool)
 
+    def test_metrics_json_includes_rationale(self):
+        """raki metrics --json should include rationale for every metric."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        for metric_info in data["metrics"]:
+            assert "rationale" in metric_info, (
+                f"metric {metric_info['name']} is missing 'rationale' in --json output"
+            )
+            assert isinstance(metric_info["rationale"], str)
+            assert len(metric_info["rationale"]) > 0
+
+    def test_metrics_json_rationale_non_empty_for_operational(self):
+        """Operational metrics must have non-empty rationale strings."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        operational_names = {
+            "first_pass_verify_rate",
+            "rework_cycles",
+            "review_severity_distribution",
+            "cost_efficiency",
+            "self_correction_rate",
+            "phase_execution_time",
+            "token_efficiency",
+        }
+        for metric_info in data["metrics"]:
+            if metric_info["name"] in operational_names:
+                assert len(metric_info["rationale"]) > 50, (
+                    f"operational metric {metric_info['name']} has too-short rationale"
+                )
+
 
 class TestCliJudgeModel:
     def test_judge_model_option_accepted(self, empty_manifest):
