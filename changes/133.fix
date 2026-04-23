@@ -1,1 +1,0 @@
-Fix CLI output to show three-tier section headers (Operational Health / Knowledge Quality / Retrieval Quality) and progression nudges guiding users toward the next metric tier.

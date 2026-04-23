@@ -1,4 +1,0 @@
-Fixed ``--docs-path`` guard using ``manifest_file.parent`` as the project root
-instead of the current working directory.  Docs paths within CWD but outside the
-manifest's parent directory (e.g. repo-root ``docs/`` with the manifest in a
-``config/`` subdirectory) are now accepted correctly.

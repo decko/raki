@@ -1,3 +1,52 @@
+## [0.8.0] — 2026-04-23
+
+### Breaking Changes
+
+- The `first_pass_verify_rate` metric has been renamed to `first_pass_success_rate`
+  and its algorithm has changed.
+
+  **Old behaviour:** Counted sessions where the `verify` phase had `generation=1`
+  and `status=completed`. This could show 1.00 even when `rework_cycles` showed
+  a non-zero average, producing contradictory signals.
+
+  **New behaviour:** Counts sessions where `session.rework_cycles == 0`. The metric
+  is now guaranteed to be consistent with `rework_cycles`.
+
+  **Migration:**
+
+  - Replace `first_pass_verify_rate` with `first_pass_success_rate` in any
+    `--gate` expressions, manifests, or saved report files you reference.
+  - Python code importing `FirstPassVerifyRate` should import `FirstPassSuccessRate`
+    from `raki.metrics.operational.verify_rate` instead.
+  - The class `FirstPassVerifyRate` has been removed; `FirstPassSuccessRate`
+    is its replacement.
+  - Empty datasets now return `score=None` (was `0.0`) — consistent with
+    `SelfCorrectionRate`.
+
+  (#150)
+
+### Features
+
+- AlcoveAdapter now supports the bridge/alcove session format (id + task_id + transcript) in addition to the classic format (session_id + transcript). Bridge fields like task_name, status, and started_at are mapped to SessionMeta. (#163)
+
+### Bug Fixes
+
+- Fixed ``--docs-path`` guard using ``manifest_file.parent`` as the project root
+  instead of the current working directory.  Docs paths within CWD but outside the
+  manifest's parent directory (e.g. repo-root ``docs/`` with the manifest in a
+  ``config/`` subdirectory) are now accepted correctly. (#131)
+- Fix CLI output to show three-tier section headers (Operational Health / Knowledge Quality / Retrieval Quality) and progression nudges guiding users toward the next metric tier. (#133)
+- ``--gate`` now rejects completely unknown metric names with exit code 2 and a helpful error listing valid metrics, instead of silently skipping the gate check. (#136)
+- Knowledge metrics (knowledge_gap_rate, knowledge_miss_rate) now appear in raki metrics and raki metrics --json output. (#138)
+- ``raki report`` now accepts ``--gate`` and ``--require-metric`` flags (matching ``raki run``), allowing per-metric quality gates to be applied against a saved JSON report without re-running the evaluation. Also adds ``-q``/``--quiet`` to suppress summary and gate output. (#139)
+- Quality gate output now rounds actual values to 4 decimal places instead of showing raw floats. (#141)
+- Knowledge matching now uses hybrid path + word matching with stop-word filtering and confidence tiers (strong/domain/content). Requires >=3 non-stop-word overlap instead of single word match. Produces actionable gap and miss rates on real data. (#151)
+
+### Documentation
+
+- Added detailed `rationale` attribute to every non-Ragas metric class (7 operational + 2 knowledge) and exposed it in `raki metrics --json` output. Added new `docs/metrics/rationale-and-interpretation.md` with per-metric design rationale, interpretation tables, pitfall warnings, and combined metric pattern analysis. Cross-referenced from `docs/metrics/operational.md`, `docs/metrics/knowledge.md`, and `docs/interpretation-reference.md`. (#152)
+
+
 ## [0.7.1] — 2026-04-22
 
 ### Features
