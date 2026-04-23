@@ -798,6 +798,195 @@ class TestNoDataMetricDisplay:
         assert raw["aggregate_scores"]["context_recall"] is None
         assert raw["aggregate_scores"]["first_pass_verify_rate"] == 0.80
 
+
+# --- Three-tier section headers tests (bug #133) ---
+
+
+class TestThreeTierSectionHeaders:
+    """Bug #133: CLI output must show three separate section headers."""
+
+    def _make_console(self) -> tuple:
+        from io import StringIO
+
+        from rich.console import Console
+
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        return string_io, test_console
+
+    def test_knowledge_metrics_appear_under_knowledge_quality_heading(self) -> None:
+        """Knowledge metrics must appear under 'Knowledge Quality', not 'Operational Health'."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="three-tier-test",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Knowledge Quality" in output
+
+    def test_knowledge_metrics_not_under_operational_heading(self) -> None:
+        """Knowledge metrics must NOT be grouped under Operational Health."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="three-tier-separation",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        # The heading "Operational Health" must appear before "Knowledge Quality"
+        op_pos = output.find("Operational Health")
+        kq_pos = output.find("Knowledge Quality")
+        assert op_pos != -1, "Operational Health heading missing"
+        assert kq_pos != -1, "Knowledge Quality heading missing"
+        assert op_pos < kq_pos, "Operational Health must precede Knowledge Quality"
+
+    def test_three_tier_all_sections_displayed(self) -> None:
+        """When all three metric categories exist, all three headings must appear."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="all-three-tiers",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+                "faithfulness": 0.90,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Operational Health" in output
+        assert "Knowledge Quality" in output
+        assert "Retrieval Quality" in output
+
+    def test_three_sections_appear_in_order(self) -> None:
+        """Three sections must appear in the order: Operational → Knowledge → Retrieval."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="order-test",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+                "faithfulness": 0.90,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        op_pos = output.find("Operational Health")
+        kq_pos = output.find("Knowledge Quality")
+        rq_pos = output.find("Retrieval Quality")
+        assert op_pos < kq_pos < rq_pos
+
+    def test_only_operational_metrics_shows_one_heading(self) -> None:
+        """When only operational metrics are present, only the Operational Health heading shown."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="op-only",
+            aggregate_scores={"first_pass_verify_rate": 0.80},
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Operational Health" in output
+        # Knowledge Quality and Retrieval Quality must not appear as bold section headings.
+        # Nudge text may mention "Knowledge Quality" so check no knowledge metric is listed.
+        assert "knowledge_gap_rate" not in output
+        assert "knowledge_miss_rate" not in output
+        # No retrieval-tier metric should appear either
+        assert "faithfulness" not in output
+
+    def test_only_knowledge_metrics_shows_knowledge_heading(self) -> None:
+        """When only knowledge metrics are present, only Knowledge Quality heading is shown."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="kq-only",
+            aggregate_scores={"knowledge_gap_rate": 0.10},
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Knowledge Quality" in output
+        assert "Operational Health" not in output
+        # Nudge text may mention "Retrieval Quality" — assert no retrieval metric is listed
+        assert "faithfulness" not in output
+        assert "context_precision" not in output
+
+
+# --- Progression nudge tests (bug #133) ---
+
+
+class TestProgressionNudges:
+    """Bug #133: Each section should show a nudge toward the next tier when it is absent."""
+
+    def _make_console(self) -> tuple:
+        from io import StringIO
+
+        from rich.console import Console
+
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        return string_io, test_console
+
+    def test_nudge_shown_after_operational_when_no_knowledge_metrics(self) -> None:
+        """When only operational metrics are present, show nudge for --docs-path."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="nudge-op-only",
+            aggregate_scores={"first_pass_verify_rate": 0.80},
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "--docs-path" in output
+
+    def test_nudge_shown_after_knowledge_when_no_retrieval_metrics(self) -> None:
+        """When operational + knowledge metrics are present but no retrieval, show --judge nudge."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="nudge-kq-only",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "--judge" in output
+
+    def test_no_docs_path_nudge_when_knowledge_metrics_present(self) -> None:
+        """When knowledge metrics are present, the --docs-path nudge must NOT appear."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="nudge-suppressed",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "--docs-path" not in output
+
+    def test_no_judge_nudge_when_retrieval_metrics_present(self) -> None:
+        """When retrieval metrics are present, the --judge nudge must NOT appear."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="nudge-judge-suppressed",
+            aggregate_scores={
+                "first_pass_verify_rate": 0.80,
+                "faithfulness": 0.90,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "--judge" not in output
+
+
+class TestNoDataMetricDisplayExtended:
+    """Additional no-data / null score tests carried from TestNoDataMetricDisplay."""
+
     def test_skipped_metric_cli_shows_na_not_null(self) -> None:
         """Bug #140: CLI must show 'N/A' for None scores, not 'null' or 'None'."""
         from io import StringIO
