@@ -12,10 +12,6 @@ if TYPE_CHECKING:
     from raki.docs.chunker import DocChunk
     from raki.model import ReviewFinding
 
-# Minimum word length to consider for overlap matching.
-# Short words like "the", "and", "with" produce false-positive overlaps.
-_MIN_WORD_LENGTH = 5
-
 # Common English stop words that carry no domain signal.
 STOP_WORDS: frozenset[str] = frozenset(
     {
@@ -271,33 +267,18 @@ def extract_knowledge_context(sample: EvalSample) -> str | None:
     return phase.knowledge_context.lower()
 
 
-def build_domain_word_sets(doc_chunks: list[DocChunk]) -> dict[str, set[str]]:
-    """Build per-domain word sets from doc chunks.
+def is_finding_covered_by_chunks(finding: ReviewFinding, doc_chunks: list[DocChunk]) -> bool:
+    """Return True when *finding* is covered by at least one chunk at 'strong' or 'domain' tier.
 
-    Groups chunks by domain, then collects all words (>= _MIN_WORD_LENGTH chars)
-    from each domain's chunk texts. Returns a mapping of domain -> set of words.
+    A finding is covered when :func:`match_finding_to_chunk` returns
+    ``"strong"`` or ``"domain"`` for any chunk in *doc_chunks*.
 
-    Used by knowledge metrics for domain-aware overlap matching.
+    ``"content"`` (word overlap only, no path match) is explicitly excluded:
+    single-word matches against a merged blob of docs produced too many
+    false positives in the original implementation.
+
+    Returns False for an empty *doc_chunks* list.
     """
-    domain_words: dict[str, set[str]] = {}
-    for chunk in doc_chunks:
-        words = {word for word in chunk.text.lower().split() if len(word) >= _MIN_WORD_LENGTH}
-        if chunk.domain not in domain_words:
-            domain_words[chunk.domain] = words
-        else:
-            domain_words[chunk.domain] |= words
-    return domain_words
-
-
-def is_finding_covered_by_chunks(issue_text: str, domain_word_sets: dict[str, set[str]]) -> bool:
-    """Check whether a finding's issue text overlaps with any domain's word set.
-
-    A finding is "covered" when its significant words (>= _MIN_WORD_LENGTH chars)
-    have a non-empty intersection with at least one domain's word set.
-
-    This produces domain-aware matching: a finding about "authentication" will only
-    match if some domain's docs contain authentication-related words, rather than
-    matching against a merged blob of all docs.
-    """
-    issue_words = {word for word in issue_text.lower().split() if len(word) >= _MIN_WORD_LENGTH}
-    return any(issue_words & words for words in domain_word_sets.values())
+    return any(
+        match_finding_to_chunk(finding, chunk) in ("strong", "domain") for chunk in doc_chunks
+    )

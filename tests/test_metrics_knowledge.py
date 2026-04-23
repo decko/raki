@@ -187,6 +187,98 @@ class TestMatchFindingToChunk:
         assert result in ("strong", "domain", "content", "none")
 
 
+# --- is_finding_covered_by_chunks (new signature) ---
+
+
+class TestIsFindingCoveredByChunks:
+    def _make_finding(self, issue: str, file: str | None = None) -> ReviewFinding:
+        return ReviewFinding(reviewer="test", severity="critical", file=file, issue=issue)
+
+    def _make_auth_chunk(self, text: str = "Authentication token setup required") -> DocChunk:
+        return DocChunk(text=text, source_file="auth/setup.md", domain="auth")
+
+    def test_strong_tier_finding_is_covered(self):
+        """Path+word match ('strong') → covered."""
+        from raki.metrics.knowledge._common import is_finding_covered_by_chunks
+
+        finding = self._make_finding(
+            file="src/auth/views.py",
+            issue="Missing authentication token validation on the endpoint",
+        )
+        chunk = self._make_auth_chunk(
+            "Authentication token validation endpoint must be checked before processing"
+        )
+        assert is_finding_covered_by_chunks(finding, [chunk]) is True
+
+    def test_domain_tier_finding_is_covered(self):
+        """Path-only match ('domain') → covered even without word overlap."""
+        from raki.metrics.knowledge._common import is_finding_covered_by_chunks
+
+        finding = self._make_finding(
+            file="src/auth/views.py",
+            issue="Missing null pointer check",  # word overlap < 3
+        )
+        chunk = self._make_auth_chunk(
+            "Authentication token validation must be processed before request"
+        )
+        assert is_finding_covered_by_chunks(finding, [chunk]) is True
+
+    def test_content_tier_finding_is_not_covered(self):
+        """Word-only match ('content') → NOT covered (the key tightening)."""
+        from raki.metrics.knowledge._common import is_finding_covered_by_chunks
+
+        finding = self._make_finding(
+            file=None,  # no file path → path_match always False
+            issue="Missing authentication token validation endpoint configuration",
+        )
+        chunk = self._make_auth_chunk(
+            "Authentication token validation endpoint configuration must be set"
+        )
+        # Word overlap ≥ 3 but no path → "content" → not covered
+        assert is_finding_covered_by_chunks(finding, [chunk]) is False
+
+    def test_none_tier_finding_is_not_covered(self):
+        """No match at all ('none') → not covered."""
+        from raki.metrics.knowledge._common import is_finding_covered_by_chunks
+
+        finding = self._make_finding(file=None, issue="Missing null check")
+        chunk = DocChunk(
+            text="Database schemas migration procedures postgresql",
+            source_file="database/schema.md",
+            domain="database",
+        )
+        assert is_finding_covered_by_chunks(finding, [chunk]) is False
+
+    def test_covered_when_any_chunk_matches(self):
+        """Finding is covered if at least one chunk in a list matches."""
+        from raki.metrics.knowledge._common import is_finding_covered_by_chunks
+
+        finding = self._make_finding(
+            file="src/auth/views.py",
+            issue="Missing null pointer check",
+        )
+        unrelated_chunk = DocChunk(
+            text="Database schemas migration procedures postgresql",
+            source_file="database/schema.md",
+            domain="database",
+        )
+        auth_chunk = self._make_auth_chunk(
+            "Authentication token validation must be processed before request"
+        )
+        # auth_chunk gives 'domain' tier → covered
+        assert is_finding_covered_by_chunks(finding, [unrelated_chunk, auth_chunk]) is True
+
+    def test_empty_chunk_list_returns_false(self):
+        """No chunks → never covered."""
+        from raki.metrics.knowledge._common import is_finding_covered_by_chunks
+
+        finding = self._make_finding(
+            file="src/auth/views.py",
+            issue="Missing authentication token validation",
+        )
+        assert is_finding_covered_by_chunks(finding, []) is False
+
+
 # --- KnowledgeGapRate ---
 
 
