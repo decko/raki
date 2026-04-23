@@ -820,7 +820,7 @@ class TestThreeTierSectionHeaders:
         report = EvalReport(
             run_id="three-tier-test",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "knowledge_gap_rate": 0.10,
             },
         )
@@ -834,7 +834,7 @@ class TestThreeTierSectionHeaders:
         report = EvalReport(
             run_id="three-tier-separation",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "knowledge_gap_rate": 0.10,
             },
         )
@@ -853,7 +853,7 @@ class TestThreeTierSectionHeaders:
         report = EvalReport(
             run_id="all-three-tiers",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "knowledge_gap_rate": 0.10,
                 "faithfulness": 0.90,
             },
@@ -870,7 +870,7 @@ class TestThreeTierSectionHeaders:
         report = EvalReport(
             run_id="order-test",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "knowledge_gap_rate": 0.10,
                 "faithfulness": 0.90,
             },
@@ -887,7 +887,7 @@ class TestThreeTierSectionHeaders:
         string_io, test_console = self._make_console()
         report = EvalReport(
             run_id="op-only",
-            aggregate_scores={"first_pass_verify_rate": 0.80},
+            aggregate_scores={"first_pass_success_rate": 0.80},
         )
         print_summary(report, session_count=10, console=test_console)
         output = string_io.getvalue()
@@ -935,7 +935,7 @@ class TestProgressionNudges:
         string_io, test_console = self._make_console()
         report = EvalReport(
             run_id="nudge-op-only",
-            aggregate_scores={"first_pass_verify_rate": 0.80},
+            aggregate_scores={"first_pass_success_rate": 0.80},
         )
         print_summary(report, session_count=10, console=test_console)
         output = string_io.getvalue()
@@ -947,7 +947,7 @@ class TestProgressionNudges:
         report = EvalReport(
             run_id="nudge-kq-only",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "knowledge_gap_rate": 0.10,
             },
         )
@@ -961,7 +961,7 @@ class TestProgressionNudges:
         report = EvalReport(
             run_id="nudge-suppressed",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "knowledge_gap_rate": 0.10,
             },
         )
@@ -975,7 +975,7 @@ class TestProgressionNudges:
         report = EvalReport(
             run_id="nudge-judge-suppressed",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "faithfulness": 0.90,
             },
         )
