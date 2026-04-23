@@ -2,6 +2,8 @@
 
 Operational metrics run with zero configuration -- no LLM, no API keys, no docs path. They are computed directly from session transcript data.
 
+> **See also:** [Rationale and Interpretation Guide](rationale-and-interpretation.md) — detailed design rationale, interpretation tables, pitfall warnings, and combined metric patterns for all non-Ragas metrics.
+
 ## first_pass_verify_rate -- Verify rate
 
 **What it measures:** Fraction of sessions where the agent's work passed all verification checks on the first attempt.
