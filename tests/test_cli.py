@@ -2040,3 +2040,149 @@ class TestRegressionCLI:
             ["report", "--diff", str(baseline), str(compare)],
         )
         assert result.exit_code == 0
+
+
+class TestReportGates:
+    """Tests for --gate and --require-metric flags on the report subcommand (ticket #139)."""
+
+    def test_report_gate_option_accepted(self, tmp_path):
+        """--gate should be a valid option on the report command."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.50"],
+        )
+        assert result.exit_code == 0
+
+    def test_report_require_metric_option_accepted(self, tmp_path):
+        """--require-metric should be a valid option on the report command."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "report",
+                str(report_json),
+                "--gate",
+                "first_pass_verify_rate>0.50",
+                "--require-metric",
+                "first_pass_verify_rate",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_report_gate_pass_exits_0(self, tmp_path):
+        """--gate with a passing threshold should exit 0 and show PASS."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # report.json has first_pass_verify_rate=0.85, threshold is 0.50 so it passes
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.50"],
+        )
+        assert result.exit_code == 0
+        assert "PASS" in result.output
+
+    def test_report_gate_violation_exits_1(self, tmp_path):
+        """--gate with a failing threshold should exit 1 and show FAIL."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # report.json has first_pass_verify_rate=0.85, threshold >0.99 fails
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.99"],
+        )
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+
+    def test_report_gate_na_metric_skipped(self, tmp_path):
+        """--gate with an N/A metric (not in report) should SKIP and exit 0."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # faithfulness is not in the report (N/A) — should skip, not fail
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "faithfulness>0.80"],
+        )
+        assert result.exit_code == 0
+        assert "SKIP" in result.output
+
+    def test_report_require_metric_fails_on_na(self, tmp_path):
+        """--require-metric with an N/A metric should exit 1 and show FAIL."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # faithfulness is not in the report (N/A) + required -> FAIL
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "report",
+                str(report_json),
+                "--gate",
+                "faithfulness>0.80",
+                "--require-metric",
+                "faithfulness",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+
+    def test_report_gate_invalid_syntax_exits_2(self, tmp_path):
+        """--gate with invalid syntax should exit 2."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "not a valid gate"],
+        )
+        assert result.exit_code == 2
+
+    def test_report_gate_quiet_suppresses_gate_output(self, tmp_path):
+        """--gate with -q should suppress Quality Gates output."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.50", "-q"],
+        )
+        assert result.exit_code == 0
+        assert "Quality Gates" not in result.output
+
+    def test_report_gate_multiple_gates(self, tmp_path):
+        """Multiple --gate flags should all be evaluated."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # first_pass_verify_rate=0.85 > 0.50 PASS; rework_cycles=0.3 < 1.0 PASS
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "report",
+                str(report_json),
+                "--gate",
+                "first_pass_verify_rate>0.50",
+                "--gate",
+                "rework_cycles<1.0",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_report_gate_shows_quality_gates_heading(self, tmp_path):
+        """Gate output should include the 'Quality Gates:' heading."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.50"],
+        )
+        assert result.exit_code == 0
+        assert "Quality Gates" in result.output
