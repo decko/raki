@@ -15,6 +15,66 @@ from raki.model import (
 )
 
 
+# --- STOP_WORDS and word_match ---
+
+
+class TestWordMatch:
+    def test_returns_true_with_three_overlapping_non_stop_words(self):
+        """Three domain-specific words in common → True."""
+        from raki.metrics.knowledge._common import word_match
+
+        assert (
+            word_match(
+                "Missing authentication token validation on the endpoint",
+                "Authentication token validation must be checked before processing",
+            )
+            is True
+        )
+
+    def test_returns_false_with_fewer_than_three_overlapping_words(self):
+        """Only one word in common → False."""
+        from raki.metrics.knowledge._common import word_match
+
+        # Only "authentication" overlaps
+        assert (
+            word_match(
+                "Missing authentication check on the endpoint",
+                "Authentication tokens must be validated before processing requests",
+            )
+            is False
+        )
+
+    def test_stop_words_are_excluded_from_matching(self):
+        """Common stop words do not contribute to overlap count → False."""
+        from raki.metrics.knowledge._common import word_match
+
+        assert word_match("the and or if not", "the and or if not be") is False
+
+    def test_matching_is_case_insensitive(self):
+        """Upper and lower case tokens are treated identically."""
+        from raki.metrics.knowledge._common import word_match
+
+        assert (
+            word_match(
+                "AUTHENTICATION TOKEN VALIDATION",
+                "authentication token validation",
+            )
+            is True
+        )
+
+    def test_stop_words_is_frozenset_containing_common_words(self):
+        """STOP_WORDS is a frozenset that filters English function words."""
+        from raki.metrics.knowledge._common import STOP_WORDS
+
+        assert isinstance(STOP_WORDS, frozenset)
+        assert "the" in STOP_WORDS
+        assert "and" in STOP_WORDS
+        assert "must" in STOP_WORDS
+        assert "be" in STOP_WORDS
+        assert "authentication" not in STOP_WORDS
+        assert "database" not in STOP_WORDS
+
+
 # --- KnowledgeGapRate ---
 
 

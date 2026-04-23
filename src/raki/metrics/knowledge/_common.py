@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from raki.model import EvalSample
@@ -12,6 +13,197 @@ if TYPE_CHECKING:
 # Minimum word length to consider for overlap matching.
 # Short words like "the", "and", "with" produce false-positive overlaps.
 _MIN_WORD_LENGTH = 5
+
+# Common English stop words that carry no domain signal.
+STOP_WORDS: frozenset[str] = frozenset(
+    {
+        # Articles and determiners
+        "a",
+        "an",
+        "the",
+        # Prepositions
+        "about",
+        "above",
+        "across",
+        "after",
+        "against",
+        "along",
+        "among",
+        "around",
+        "as",
+        "at",
+        "before",
+        "behind",
+        "below",
+        "beneath",
+        "between",
+        "beyond",
+        "by",
+        "down",
+        "during",
+        "for",
+        "from",
+        "in",
+        "inside",
+        "into",
+        "near",
+        "of",
+        "off",
+        "on",
+        "onto",
+        "out",
+        "outside",
+        "over",
+        "past",
+        "since",
+        "through",
+        "throughout",
+        "to",
+        "toward",
+        "under",
+        "until",
+        "up",
+        "upon",
+        "with",
+        "within",
+        "without",
+        # Conjunctions
+        "and",
+        "but",
+        "or",
+        "nor",
+        "so",
+        "yet",
+        "both",
+        "either",
+        "neither",
+        "whether",
+        "not",
+        "if",
+        "than",
+        "that",
+        "though",
+        "although",
+        "because",
+        "unless",
+        "while",
+        "when",
+        "where",
+        "which",
+        "who",
+        "whom",
+        "whose",
+        # Pronouns
+        "all",
+        "any",
+        "each",
+        "few",
+        "he",
+        "her",
+        "here",
+        "him",
+        "his",
+        "how",
+        "i",
+        "it",
+        "its",
+        "itself",
+        "me",
+        "more",
+        "most",
+        "my",
+        "none",
+        "our",
+        "ours",
+        "she",
+        "some",
+        "such",
+        "their",
+        "them",
+        "there",
+        "these",
+        "they",
+        "this",
+        "those",
+        "us",
+        "very",
+        "we",
+        "what",
+        "you",
+        "your",
+        # Auxiliaries and common verbs
+        "am",
+        "are",
+        "be",
+        "been",
+        "being",
+        "can",
+        "could",
+        "did",
+        "do",
+        "does",
+        "doing",
+        "done",
+        "get",
+        "got",
+        "had",
+        "has",
+        "have",
+        "having",
+        "is",
+        "may",
+        "might",
+        "must",
+        "need",
+        "ought",
+        "shall",
+        "should",
+        "was",
+        "were",
+        "will",
+        "would",
+        # Common adverbs / other function words
+        "also",
+        "always",
+        "back",
+        "even",
+        "ever",
+        "however",
+        "just",
+        "never",
+        "now",
+        "once",
+        "only",
+        "other",
+        "own",
+        "same",
+        "then",
+        "too",
+        "well",
+        # One/two-letter words not caught above
+        "no",
+        "ok",
+        "re",
+    }
+)
+
+
+def tokenize(text: str) -> set[str]:
+    """Return non-stop-word tokens from *text* as a lower-cased set.
+
+    Splits on non-alphabetic characters and removes tokens that appear in
+    STOP_WORDS.  Used by both the doc-chunk path and the legacy
+    knowledge-context path.
+    """
+    return {word for word in re.findall(r"[a-z]+", text.lower()) if word not in STOP_WORDS}
+
+
+def word_match(finding_text: str, chunk_text: str) -> bool:
+    """Return True when *finding_text* and *chunk_text* share ≥ 3 non-stop words.
+
+    Overlap is computed on lower-cased alphabetic tokens after removing STOP_WORDS.
+    """
+    return len(tokenize(finding_text) & tokenize(chunk_text)) >= 3
 
 
 def extract_knowledge_context(sample: EvalSample) -> str | None:
