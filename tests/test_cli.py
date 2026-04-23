@@ -1408,8 +1408,9 @@ class TestReportPositionalArg:
 class TestDocsPathCLI:
     """Tests for --docs-path flag on the run command."""
 
-    def test_docs_path_option_accepted(self, manifest_with_session, tmp_path):
+    def test_docs_path_option_accepted(self, manifest_with_session, tmp_path, monkeypatch):
         """--docs-path should be accepted as a valid CLI option."""
+        monkeypatch.chdir(tmp_path)
         manifest, _sessions = manifest_with_session
         docs_dir = tmp_path / "docs"
         docs_dir.mkdir()
@@ -1431,8 +1432,9 @@ class TestDocsPathCLI:
         )
         assert result.exit_code == 2
 
-    def test_docs_path_adds_knowledge_metrics(self, manifest_with_session, tmp_path):
+    def test_docs_path_adds_knowledge_metrics(self, manifest_with_session, tmp_path, monkeypatch):
         """--docs-path should add knowledge metrics to the output."""
+        monkeypatch.chdir(tmp_path)
         manifest, _sessions = manifest_with_session
         docs_dir = tmp_path / "docs"
         docs_dir.mkdir()
@@ -1459,8 +1461,9 @@ class TestDocsPathCLI:
         assert "knowledge_gap_rate" in metric_names
         assert "knowledge_miss_rate" in metric_names
 
-    def test_docs_path_logs_loaded_count(self, manifest_with_session, tmp_path):
+    def test_docs_path_logs_loaded_count(self, manifest_with_session, tmp_path, monkeypatch):
         """--docs-path should log how many chunks were loaded."""
+        monkeypatch.chdir(tmp_path)
         manifest, _sessions = manifest_with_session
         docs_dir = tmp_path / "docs"
         docs_dir.mkdir()
@@ -1473,8 +1476,9 @@ class TestDocsPathCLI:
         assert result.exit_code == 0
         assert "doc" in result.output.lower()
 
-    def test_docs_path_overrides_manifest_docs(self, tmp_path, pass_simple_dir):
+    def test_docs_path_overrides_manifest_docs(self, tmp_path, pass_simple_dir, monkeypatch):
         """CLI --docs-path should override manifest docs.path."""
+        monkeypatch.chdir(tmp_path)
         sessions = tmp_path / "sessions"
         sessions.mkdir()
         session_dest = sessions / "101"
@@ -1502,8 +1506,9 @@ class TestDocsPathCLI:
         )
         assert result.exit_code == 0
 
-    def test_manifest_docs_used_when_no_cli_flag(self, tmp_path, pass_simple_dir):
+    def test_manifest_docs_used_when_no_cli_flag(self, tmp_path, pass_simple_dir, monkeypatch):
         """Manifest docs.path should be used when --docs-path is not given."""
+        monkeypatch.chdir(tmp_path)
         sessions = tmp_path / "sessions"
         sessions.mkdir()
         session_dest = sessions / "101"
