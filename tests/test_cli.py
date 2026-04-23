@@ -572,6 +572,58 @@ class TestMetricsSubcommand:
             assert isinstance(metric_info["requires_llm"], bool)
             assert isinstance(metric_info["higher_is_better"], bool)
 
+    def test_metrics_shows_knowledge_metrics(self):
+        """raki metrics should list knowledge metrics (gap rate and miss rate)."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics"])
+        assert result.exit_code == 0
+        assert "knowledge_gap_rate" in result.output
+        assert "knowledge_miss_rate" in result.output
+
+    def test_metrics_json_includes_knowledge_metrics(self):
+        """raki metrics --json should include knowledge metrics in the output."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        metric_names = {metric_info["name"] for metric_info in data["metrics"]}
+        assert "knowledge_gap_rate" in metric_names
+        assert "knowledge_miss_rate" in metric_names
+
+    def test_metrics_knowledge_display_names(self):
+        """raki metrics should show human-readable display names for knowledge metrics."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        knowledge_metrics = {
+            metric_info["name"]: metric_info
+            for metric_info in data["metrics"]
+            if metric_info["name"] in ("knowledge_gap_rate", "knowledge_miss_rate")
+        }
+        assert knowledge_metrics["knowledge_gap_rate"]["display_name"] == "Knowledge gap rate"
+        assert knowledge_metrics["knowledge_miss_rate"]["display_name"] == "Knowledge miss rate"
+
+    def test_metrics_knowledge_requires_llm_false(self):
+        """Knowledge metrics should report requires_llm=False."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        for metric_info in data["metrics"]:
+            if metric_info["name"] in ("knowledge_gap_rate", "knowledge_miss_rate"):
+                assert metric_info["requires_llm"] is False
+
+    def test_metrics_knowledge_higher_is_better_false(self):
+        """Knowledge metrics (gap/miss rate) should report higher_is_better=False."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        for metric_info in data["metrics"]:
+            if metric_info["name"] in ("knowledge_gap_rate", "knowledge_miss_rate"):
+                assert metric_info["higher_is_better"] is False
+
 
 class TestCliJudgeModel:
     def test_judge_model_option_accepted(self, empty_manifest):
