@@ -27,13 +27,32 @@ _INFORMATIONAL_BASH_PREFIXES = (
 )
 
 
+def _extract_session_id(raw: dict) -> str:
+    """Extract session ID from either alcove or bridge format.
+
+    Bridge format uses ``id`` at the top level.
+    Classic alcove format uses ``session_id``.
+    Falls back to ``task_id`` or the system entry's ``session_id``.
+    """
+    if "session_id" in raw:
+        return raw["session_id"]
+    if "id" in raw:
+        return raw["id"]
+    if "task_id" in raw:
+        return raw["task_id"]
+    for entry in raw.get("transcript", []):
+        if entry.get("type") == "system" and "session_id" in entry:
+            return entry["session_id"]
+    raise KeyError("No session_id or id found in transcript file")
+
+
 class AlcoveAdapter:
     name: str = "alcove"
-    description: str = "Single-file JSON transcript with session_id and transcript array"
-    detection_hint: str = "*.json file containing session_id + transcript"
+    description: str = "Single-file JSON transcript from Claude Code or Alcove bridge"
+    detection_hint: str = "*.json file containing (session_id or id) + transcript"
 
     def detect(self, source: Path) -> bool:
-        """Detect Alcove format via substring search of first 4KB."""
+        """Detect Alcove/bridge format via substring search of first 4KB."""
         if source.is_symlink():
             return False
         if not source.is_file() or source.suffix != ".json":
@@ -41,12 +60,15 @@ class AlcoveAdapter:
         try:
             with source.open(encoding="utf-8", errors="replace") as file_handle:
                 header = file_handle.read(DETECT_READ_SIZE)
-            return '"session_id"' in header and '"transcript"' in header
+            has_transcript = '"transcript"' in header
+            has_session_id = '"session_id"' in header
+            has_bridge_id = '"id"' in header and '"task_id"' in header
+            return has_transcript and (has_session_id or has_bridge_id)
         except OSError:
             return False
 
     def load(self, source: Path) -> EvalSample:
-        """Parse an Alcove single-file transcript into an EvalSample."""
+        """Parse a Claude Code or bridge transcript into an EvalSample."""
         if source.is_symlink():
             raise ValueError(f"Source must be a regular file (no symlinks): {source}")
         resolved = source.resolve()
@@ -58,8 +80,10 @@ class AlcoveAdapter:
                 f"File exceeds {MAX_ALCOVE_FILE_SIZE // (1024 * 1024)}MB limit: {source}"
             )
         raw = json.loads(resolved.read_text(encoding="utf-8"))
-        session_id = raw["session_id"]
         transcript = raw["transcript"]
+        is_bridge = "task_id" in raw
+
+        session_id = _extract_session_id(raw)
 
         model_id: str | None = None
         tool_calls: list[ToolCall] = []
@@ -69,6 +93,11 @@ class AlcoveAdapter:
         started_at: datetime | None = None
         tokens_in = 0
         tokens_out = 0
+        session_status = raw.get("status", "completed") if is_bridge else "completed"
+        task_name: str | None = raw.get("task_name") if is_bridge else None
+
+        if is_bridge and raw.get("started_at"):
+            started_at = datetime.fromisoformat(raw["started_at"])
 
         for entry in transcript:
             entry_type = entry.get("type")
@@ -107,8 +136,10 @@ class AlcoveAdapter:
                 if not model_id and model_usage:
                     model_id = next(iter(model_usage), None)
 
+        ticket = task_name or session_id
         meta = SessionMeta(
             session_id=session_id,
+            ticket=ticket if ticket != session_id else None,
             started_at=started_at or datetime.now(timezone.utc),
             total_cost_usd=total_cost_usd,
             total_phases=1,
@@ -120,7 +151,7 @@ class AlcoveAdapter:
         phase = PhaseResult(
             name="session",
             generation=1,
-            status="completed",
+            status="completed" if session_status == "completed" else "failed",
             cost_usd=total_cost_usd,
             duration_ms=duration_ms,
             tokens_in=tokens_in or None,
