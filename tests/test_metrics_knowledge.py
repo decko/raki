@@ -110,6 +110,83 @@ class TestPathMatch:
         assert path_match("project/src/auth/service/views.py", "auth/setup.md") is True
 
 
+# --- match_finding_to_chunk ---
+
+
+class TestMatchFindingToChunk:
+    def _make_finding(self, issue: str, file: str | None = None) -> ReviewFinding:
+        return ReviewFinding(reviewer="test", severity="critical", file=file, issue=issue)
+
+    def _make_chunk(
+        self, text: str, source_file: str = "auth/setup.md", domain: str = "auth"
+    ) -> DocChunk:
+        return DocChunk(text=text, source_file=source_file, domain=domain)
+
+    def test_strong_tier_when_path_and_word_both_match(self):
+        """path match + ≥3 word overlap → 'strong'."""
+        from raki.metrics.knowledge._common import match_finding_to_chunk
+
+        finding = self._make_finding(
+            file="src/auth/views.py",
+            issue="Missing authentication token validation on the endpoint",
+        )
+        # "authentication", "token", "validation", "endpoint" overlap (≥3)
+        chunk = self._make_chunk(
+            text="Authentication token validation endpoint must be checked before processing",
+        )
+        assert match_finding_to_chunk(finding, chunk) == "strong"
+
+    def test_domain_tier_when_only_path_matches(self):
+        """path match only (word overlap < 3) → 'domain'."""
+        from raki.metrics.knowledge._common import match_finding_to_chunk
+
+        finding = self._make_finding(
+            file="src/auth/views.py",
+            issue="Missing null pointer check",  # too few words to hit word_match
+        )
+        chunk = self._make_chunk(
+            text="Authentication token validation must be processed before request",
+        )
+        assert match_finding_to_chunk(finding, chunk) == "domain"
+
+    def test_content_tier_when_only_words_match(self):
+        """word overlap ≥ 3 but no path match → 'content'."""
+        from raki.metrics.knowledge._common import match_finding_to_chunk
+
+        finding = self._make_finding(
+            file=None,  # no path
+            issue="Missing authentication token validation endpoint configuration",
+        )
+        chunk = self._make_chunk(
+            text="Authentication token validation endpoint configuration must be set",
+        )
+        assert match_finding_to_chunk(finding, chunk) == "content"
+
+    def test_none_tier_when_neither_matches(self):
+        """No path match and word overlap < 3 → 'none'."""
+        from raki.metrics.knowledge._common import match_finding_to_chunk
+
+        finding = self._make_finding(
+            file=None,
+            issue="Missing null check",
+        )
+        chunk = self._make_chunk(
+            text="Database schemas migration procedures postgresql setup",
+            source_file="database/schema.md",
+            domain="database",
+        )
+        assert match_finding_to_chunk(finding, chunk) == "none"
+
+    def test_returns_literal_type(self):
+        """Return value is one of the four expected string literals."""
+        from raki.metrics.knowledge._common import match_finding_to_chunk
+
+        finding = self._make_finding(issue="test", file=None)
+        chunk = self._make_chunk(text="test chunk text only")
+        result = match_finding_to_chunk(finding, chunk)
+        assert result in ("strong", "domain", "content", "none")
+
+
 # --- KnowledgeGapRate ---
 
 

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from raki.model import EvalSample
 
 if TYPE_CHECKING:
     from raki.docs.chunker import DocChunk
+    from raki.model import ReviewFinding
 
 # Minimum word length to consider for overlap matching.
 # Short words like "the", "and", "with" produce false-positive overlaps.
@@ -225,6 +226,34 @@ def path_match(finding_file: str | None, chunk_source: str) -> bool:
     finding_parts = set(Path(finding_file).parts)
     chunk_parts = set(Path(chunk_source).parts)
     return bool(finding_parts & chunk_parts)
+
+
+def match_finding_to_chunk(
+    finding: ReviewFinding,
+    chunk: DocChunk,
+) -> Literal["strong", "domain", "content", "none"]:
+    """Return the coverage tier for a (finding, chunk) pair.
+
+    Tiers (highest to lowest):
+
+    * ``"strong"``  — path match **and** word overlap ≥ 3
+    * ``"domain"``  — path match only
+    * ``"content"`` — word overlap ≥ 3 only (path match absent)
+    * ``"none"``    — neither criterion satisfied
+
+    Only ``"strong"`` and ``"domain"`` are treated as *covered* by
+    :func:`is_finding_covered_by_chunks`.  ``"content"`` was the old
+    (too-loose) behaviour that this system replaces.
+    """
+    has_path = path_match(finding.file, chunk.source_file)
+    has_word = word_match(finding.issue, chunk.text)
+    if has_path and has_word:
+        return "strong"
+    if has_path:
+        return "domain"
+    if has_word:
+        return "content"
+    return "none"
 
 
 def extract_knowledge_context(sample: EvalSample) -> str | None:
