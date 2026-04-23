@@ -142,7 +142,7 @@ def test_eval_report_serialization():
 
 def test_metric_result_with_sample_scores():
     result = MetricResult(
-        name="first_pass_verify_rate",
+        name="first_pass_success_rate",
         score=0.58,
         details={"passed": 22, "total": 38},
         sample_scores={"101": 1.0, "53": 0.0},
