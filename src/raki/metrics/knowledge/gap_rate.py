@@ -45,6 +45,18 @@ class KnowledgeGapRate:
     display_format: str = "score"
     display_name: str = "Knowledge gap rate"
     description: str = "Ratio of rework findings in domains not covered by the knowledge base"
+    rationale: str = (
+        "When an agent fails on a task, the first diagnostic question is: did it have the right "
+        "reference material? Knowledge gap rate answers this by checking whether the domains "
+        "where critical and major failures occurred are covered by the knowledge base. "
+        "A finding is 'uncovered' when its issue words do not overlap with any domain's doc "
+        "content. A high gap rate is directly actionable: the uncovered findings point to "
+        "specific topics that need to be added to the knowledge base. Unlike Ragas context "
+        "precision/recall (which measure retrieval quality within the KB), gap rate measures "
+        "coverage: whether the content exists at all. Returns N/A when no rework findings "
+        "exist or when no docs are loaded — both are expected for clean, no-KB runs. "
+        "Target: <0.20 (KB covers >80% of failure domains)."
+    )
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         # When doc chunks are available, use domain-aware matching

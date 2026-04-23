@@ -2,6 +2,8 @@
 
 Knowledge metrics measure how well your project's documentation covers the domains where the agent makes mistakes. They require a docs path (via `--docs-path` or the `docs.path` manifest field) and activate automatically when docs are loaded.
 
+> **See also:** [Rationale and Interpretation Guide](rationale-and-interpretation.md) — detailed design rationale, interpretation tables, pitfall warnings, and combined metric patterns for all non-Ragas metrics.
+
 ## Prerequisites
 
 Provide project documentation so RAKI can build a knowledge context:

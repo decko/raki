@@ -36,6 +36,15 @@ class FaithfulnessMetric:
     display_name: str = "Faithfulness"
     description: str = "Whether the response is faithful to retrieved contexts"
     experimental: bool = True
+    rationale: str = (
+        "Faithfulness measures whether the agent's claims are grounded in the retrieved context "
+        "rather than hallucinated. An LLM judge decomposes the response into individual claims "
+        "and checks each against the retrieved contexts. Scores below 1.0 mean some claims "
+        "lack context support. Note: this metric is experimental for agentic sessions — agents "
+        "that synthesize across multiple tool calls or reason beyond the retrieved content may "
+        "legitimately produce low faithfulness scores without indicating a real problem. "
+        "Inspect low-scoring sessions manually before acting on the score."
+    )
 
     def compute(
         self,

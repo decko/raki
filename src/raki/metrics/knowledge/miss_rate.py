@@ -47,6 +47,18 @@ class KnowledgeMissRate:
     display_format: str = "score"
     display_name: str = "Knowledge miss rate"
     description: str = "Ratio of rework findings in domains covered by the KB but still wrong"
+    rationale: str = (
+        "Knowledge miss rate addresses the follow-up question to gap rate: if the KB has "
+        "coverage for a domain, is the agent using it effectively? A high miss rate means "
+        "the agent is failing in domains where documentation exists — the agent may not be "
+        "retrieving the right content, may be retrieving it but ignoring it, or the content "
+        "may be poorly structured or outdated. This is the inverse complement of gap rate: "
+        "a high miss rate with low gap rate means your KB is comprehensive but ineffective, "
+        "pointing to a retrieval quality or prompt engineering problem rather than a "
+        "documentation coverage gap. When both rates are high, both coverage and content "
+        "quality need attention. Returns N/A when no rework findings exist or no docs are "
+        "loaded. Target: <0.10 (agent uses available KB content effectively)."
+    )
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         # When doc chunks are available, use domain-aware matching

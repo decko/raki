@@ -30,6 +30,18 @@ class SelfCorrectionRate:
     display_format: str = "percent"
     display_name: str = "Self-correction rate"
     description: str = "Ratio of rework findings resolved by the agent"
+    rationale: str = (
+        "When an agent makes a mistake, the critical question is: can it fix it? "
+        "Self-correction rate measures whether the agent can apply reviewer feedback and "
+        "deliver a correct result in subsequent generations. A high self-correction rate "
+        "means the agent is effectively learning from feedback within a session. A low rate "
+        "means the agent is churning—consuming tokens and time without converging on a correct "
+        "answer. Only critical and major findings are counted because minor findings rarely "
+        "block final verification. A session's findings are considered resolved when its "
+        "final verify phase has status='completed'. Returns N/A (not 0.0) when no rework "
+        "findings exist, which is the normal state for high-quality runs. "
+        "Target: >=80% of rework findings resolved."
+    )
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         total_rework_findings = 0

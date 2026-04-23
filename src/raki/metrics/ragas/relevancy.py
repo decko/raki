@@ -36,6 +36,15 @@ class AnswerRelevancyMetric:
     display_name: str = "Answer relevancy"
     description: str = "Relevance of the generated response to the question"
     experimental: bool = True
+    rationale: str = (
+        "Answer relevancy measures whether the agent's output actually addresses the user's "
+        "question. An LLM generates synthetic questions from the response and compares them "
+        "to the original using embedding similarity. Low relevancy indicates the agent is "
+        "going off-track — answering a different question or producing unrelated output. "
+        "This is typically a prompt or routing issue rather than a retrieval problem. "
+        "Experimental: multi-step agentic workflows may address the question indirectly, "
+        "yielding lower scores without indicating a real problem."
+    )
 
     def compute(
         self,

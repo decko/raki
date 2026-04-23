@@ -8,6 +8,9 @@ For detailed metric documentation, see the per-tier references:
 - [Knowledge Metrics](metrics/knowledge.md)
 - [Analytical Metrics](metrics/analytical.md)
 
+For in-depth design rationale, interpretation pitfalls, and combined metric patterns, see:
+- [Rationale and Interpretation Guide](metrics/rationale-and-interpretation.md)
+
 ## Operational Health Metrics
 
 These metrics require no LLM -- they are computed directly from session data.

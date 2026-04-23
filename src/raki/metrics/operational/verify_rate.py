@@ -32,6 +32,7 @@ class FirstPassSuccessRate:
     display_format: str = "percent"
     display_name: str = "First-pass success rate"
     description: str = "% sessions with no rework cycles"
+    rationale: str = "Measures how often the agent gets it right on the first try. A low rate means reviewers frequently reject the agent's work, triggering costly rework iterations."
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         sample_scores: dict[str, float] = {}

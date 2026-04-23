@@ -11,6 +11,17 @@ class ReworkCycles:
     display_format: str = "count"
     display_name: str = "Rework cycles"
     description: str = "Mean review-rework iterations per session"
+    rationale: str = (
+        "Rework cycles measure the cost of iteration: each cycle represents a review-fix loop "
+        "where the agent consumed additional tokens, introduced latency, and potentially added "
+        "new defects. A session with rework_cycles=3 is roughly 3x more expensive in LLM calls "
+        "and wall-clock time than a first-pass success. This metric uses the raw count rather "
+        "than a normalized 0-1 score because the business impact scales linearly with cycles. "
+        "Unlike first_pass_verify_rate (which is binary per session), rework_cycles captures "
+        "the degree of iteration: an agent averaging 0.2 cycles is significantly more efficient "
+        "than one averaging 1.2 cycles, even if both occasionally fail the first pass. "
+        "Target: <1.5 cycles on average."
+    )
 
     def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         sample_scores: dict[str, float] = {}

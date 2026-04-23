@@ -28,6 +28,14 @@ class ContextPrecisionMetric:
     display_format: str = "score"
     display_name: str = "Context precision"
     description: str = "Relevance of retrieved contexts to the question"
+    rationale: str = (
+        "Context precision measures how much of what the retriever returned was actually useful. "
+        "A retriever with high precision surfaces relevant content and discards noise; low "
+        "precision means the agent's context window is flooded with irrelevant material, "
+        "wasting tokens and potentially confusing the model. Requires ground truth to define "
+        "what 'relevant' means. Use this metric to evaluate and tune your retrieval pipeline's "
+        "ranking and chunking strategies."
+    )
 
     def compute(
         self,

@@ -28,6 +28,14 @@ class ContextRecallMetric:
     display_format: str = "score"
     display_name: str = "Context recall"
     description: str = "Coverage of needed information in retrieved contexts"
+    rationale: str = (
+        "Context recall measures how much of the needed information the retriever successfully "
+        "found. Low recall means the agent is missing critical knowledge — either it does not "
+        "exist in the knowledge base, or search is failing to surface it. Requires ground truth "
+        "to define what information is 'needed'. Complementary to context_precision: high "
+        "precision with low recall means the retriever is selective but incomplete; low "
+        "precision with high recall means it over-retrieves but does find the relevant content."
+    )
 
     def compute(
         self,
