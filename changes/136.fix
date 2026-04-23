@@ -1,0 +1,1 @@
+``--gate`` now rejects completely unknown metric names with exit code 2 and a helpful error listing valid metrics, instead of silently skipping the gate check.
