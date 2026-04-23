@@ -4,10 +4,10 @@ from raki.metrics.operational.rework import ReworkCycles
 from raki.metrics.operational.self_correction import SelfCorrectionRate
 from raki.metrics.operational.severity import ReviewSeverityDistribution
 from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
-from raki.metrics.operational.verify_rate import FirstPassVerifyRate
+from raki.metrics.operational.verify_rate import FirstPassSuccessRate
 
 ALL_OPERATIONAL = [
-    FirstPassVerifyRate(),
+    FirstPassSuccessRate(),
     ReworkCycles(),
     ReviewSeverityDistribution(),
     CostEfficiency(),
@@ -19,7 +19,7 @@ ALL_OPERATIONAL = [
 __all__ = [
     "ALL_OPERATIONAL",
     "CostEfficiency",
-    "FirstPassVerifyRate",
+    "FirstPassSuccessRate",
     "PhaseExecutionTimeMetric",
     "ReviewSeverityDistribution",
     "ReworkCycles",

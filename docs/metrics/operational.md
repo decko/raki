@@ -2,19 +2,17 @@
 
 Operational metrics run with zero configuration -- no LLM, no API keys, no docs path. They are computed directly from session transcript data.
 
-> **See also:** [Rationale and Interpretation Guide](rationale-and-interpretation.md) — detailed design rationale, interpretation tables, pitfall warnings, and combined metric patterns for all non-Ragas metrics.
+## first_pass_success_rate -- First-pass success rate
 
-## first_pass_verify_rate -- Verify rate
+**What it measures:** Fraction of sessions that completed without any rework cycles.
 
-**What it measures:** Fraction of sessions where the agent's work passed all verification checks on the first attempt.
-
-**What it tells you:** Whether the agent consistently delivers correct work without needing rework. A proxy for implementation quality.
+**What it tells you:** Whether the agent consistently delivers correct work on the first attempt, consistent with the `rework_cycles` metric. A proxy for implementation quality.
 
 **What action it drives:** Low values mean the implement phase is producing defective output. Investigate common failure patterns in failing sessions and improve prompts or knowledge coverage for those domains.
 
-**How it's computed:** Count sessions with a `verify` phase at `generation=1` and `status=completed`, divided by total sessions with at least one verify phase. Returns a ratio (0.0--1.0).
+**How it's computed:** Count sessions where `session.rework_cycles == 0`, divided by total sessions. Returns a ratio (0.0--1.0). Returns N/A for empty datasets.
 
-**N/A conditions:** Never N/A -- returns 0.0 when no sessions have verify phases.
+**N/A conditions:** Returns `score=None` (displayed as N/A) when the dataset is empty.
 
 | Zone | Range | Meaning |
 |------|-------|---------|

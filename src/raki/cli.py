@@ -70,58 +70,11 @@ def _resolve_manifest(
 
 
 # LLM metric names that are always known (Ragas-backed retrieval metrics)
-# tuple: (display_name, requires_llm, rationale)
-_RAGAS_METRICS: dict[str, tuple[str, bool, str]] = {
-    "context_precision": (
-        "Context precision",
-        True,
-        (
-            "Context precision measures how much of what the retriever returned was actually "
-            "useful. A retriever with high precision surfaces relevant content and discards "
-            "noise; low precision means the agent's context window is flooded with irrelevant "
-            "material, wasting tokens and potentially confusing the model. Requires ground "
-            "truth to define what 'relevant' means. Use this metric to evaluate and tune "
-            "your retrieval pipeline's ranking and chunking strategies."
-        ),
-    ),
-    "context_recall": (
-        "Context recall",
-        True,
-        (
-            "Context recall measures how much of the needed information the retriever "
-            "successfully found. Low recall means the agent is missing critical knowledge — "
-            "either it does not exist in the knowledge base, or search is failing to surface "
-            "it. Requires ground truth to define what information is 'needed'. Complementary "
-            "to context_precision: high precision with low recall means the retriever is "
-            "selective but incomplete; low precision with high recall means it over-retrieves "
-            "but does find the relevant content."
-        ),
-    ),
-    "faithfulness": (
-        "Faithfulness",
-        True,
-        (
-            "Faithfulness measures whether the agent's claims are grounded in the retrieved "
-            "context rather than hallucinated. An LLM judge decomposes the response into "
-            "individual claims and checks each against the retrieved contexts. Scores below "
-            "1.0 mean some claims lack context support. Experimental for agentic sessions — "
-            "agents that synthesize across multiple tool calls may legitimately produce lower "
-            "scores without indicating a real problem. Inspect low-scoring sessions manually."
-        ),
-    ),
-    "answer_relevancy": (
-        "Answer relevancy",
-        True,
-        (
-            "Answer relevancy measures whether the agent's output actually addresses the "
-            "user's question. An LLM generates synthetic questions from the response and "
-            "compares them to the original using embedding similarity. Low relevancy "
-            "indicates the agent is going off-track — typically a prompt or routing issue "
-            "rather than a retrieval problem. Experimental: multi-step agentic workflows "
-            "may address the question indirectly, yielding lower scores without indicating "
-            "a real problem."
-        ),
-    ),
+_RAGAS_METRICS: dict[str, tuple[str, bool]] = {
+    "context_precision": ("Context precision", True),
+    "context_recall": ("Context recall", True),
+    "faithfulness": ("Faithfulness", True),
+    "answer_relevancy": ("Answer relevancy", True),
 }
 
 
@@ -139,7 +92,7 @@ def _all_metric_names() -> dict[str, str]:
         names[metric.name] = metric.display_name
     for metric in ALL_KNOWLEDGE:
         names[metric.name] = metric.display_name
-    for ragas_name, (display_name, _requires_llm, _rationale) in _RAGAS_METRICS.items():
+    for ragas_name, (display_name, _requires_llm) in _RAGAS_METRICS.items():
         names[ragas_name] = display_name
     return names
 
@@ -266,6 +219,24 @@ def run(
                 param_hint="'--metrics'",
             )
 
+    # Validate --gate metric names before doing any heavy loading
+    if gate_thresholds:
+        from raki.gates.thresholds import parse_threshold
+
+        all_known = _all_metric_names()
+        try:
+            parsed_gates_early = [parse_threshold(raw) for raw in gate_thresholds]
+        except ValueError as exc:
+            raise click.BadParameter(str(exc), param_hint="'--gate'") from exc
+        unknown_gate_metrics = {thr.metric for thr in parsed_gates_early} - set(all_known.keys())
+        if unknown_gate_metrics:
+            valid_list = ", ".join(sorted(all_known.keys()))
+            raise click.BadParameter(
+                f"Unknown metric(s) in --gate: {', '.join(sorted(unknown_gate_metrics))}. "
+                f"Valid metrics: {valid_list}",
+                param_hint="'--gate'",
+            )
+
     manifest_file = _resolve_manifest(manifest_path, quiet=quiet, con=out)
 
     try:
@@ -340,7 +311,7 @@ def run(
 
     if effective_docs_path is not None:
         resolved_docs = Path(effective_docs_path).resolve()
-        project_root = manifest_file.parent.resolve()
+        project_root = Path.cwd().resolve()
         try:
             resolved_docs.relative_to(project_root)
         except ValueError:
@@ -714,6 +685,7 @@ def adapters() -> None:
 @click.option("--json", "json_output", is_flag=True, help="Output as JSON")
 def metrics(json_output: bool) -> None:
     """List available metrics."""
+    from raki.metrics.knowledge import ALL_KNOWLEDGE
     from raki.metrics.operational import ALL_OPERATIONAL
 
     all_metrics_info: list[dict[str, str | bool]] = []
@@ -724,17 +696,24 @@ def metrics(json_output: bool) -> None:
                 "display_name": metric.display_name,
                 "requires_llm": metric.requires_llm,
                 "higher_is_better": metric.higher_is_better,
-                "rationale": metric.rationale,
             }
         )
-    for ragas_name, (display_name, requires_llm, ragas_rationale) in _RAGAS_METRICS.items():
+    for metric in ALL_KNOWLEDGE:
+        all_metrics_info.append(
+            {
+                "name": metric.name,
+                "display_name": metric.display_name,
+                "requires_llm": metric.requires_llm,
+                "higher_is_better": metric.higher_is_better,
+            }
+        )
+    for ragas_name, (display_name, requires_llm) in _RAGAS_METRICS.items():
         all_metrics_info.append(
             {
                 "name": ragas_name,
                 "display_name": display_name,
                 "requires_llm": requires_llm,
                 "higher_is_better": True,
-                "rationale": ragas_rationale,
             }
         )
 
@@ -790,16 +769,33 @@ def metrics(json_output: bool) -> None:
     default=False,
     help="Exit non-zero on metric regression (use with --diff)",
 )
+@click.option(
+    "--gate",
+    "gate_thresholds",
+    multiple=True,
+    help="Quality gate: 'metric>value' (e.g. 'faithfulness>0.85')",
+)
+@click.option(
+    "--require-metric",
+    "required_metrics",
+    multiple=True,
+    help="Fail if metric is N/A instead of skipping threshold",
+)
+@click.option("-q", "--quiet", is_flag=True, help="CI mode -- minimal output")
 def report(
     input_path: str | None,
     diff_paths: tuple[str, str] | None,
     html_path: str | None,
     output_dir: str | None,
     fail_on_regression: bool,
+    gate_thresholds: tuple[str, ...],
+    required_metrics: tuple[str, ...],
+    quiet: bool,
 ) -> None:
     """Re-render CLI summary and HTML from a saved JSON report.
 
     Use --diff to compare two evaluation runs side by side.
+    Use --gate to apply per-metric quality gates to a saved report.
     """
     if diff_paths is not None:
         _handle_diff(diff_paths, html_path, output_dir, fail_on_regression=fail_on_regression)
@@ -825,21 +821,22 @@ def report(
     session_count = len(eval_report.sample_results)
     stripped = is_session_data_stripped(eval_report)
 
-    if stripped:
-        console.print(
-            "[yellow]Warning: Per-session drill-down unavailable — "
-            "original report was generated without --include-sessions[/yellow]"
+    if not quiet:
+        if stripped:
+            console.print(
+                "[yellow]Warning: Per-session drill-down unavailable — "
+                "original report was generated without --include-sessions[/yellow]"
+            )
+
+        from raki.report.cli_summary import print_summary
+
+        metric_stubs = metric_stubs_from_metadata(eval_report.aggregate_scores)
+        print_summary(
+            eval_report,
+            session_count=session_count,
+            console=console,
+            metrics=metric_stubs,
         )
-
-    from raki.report.cli_summary import print_summary
-
-    metric_stubs = metric_stubs_from_metadata(eval_report.aggregate_scores)
-    print_summary(
-        eval_report,
-        session_count=session_count,
-        console=console,
-        metrics=metric_stubs,
-    )
 
     if html_path is not None:
         try:
@@ -857,6 +854,31 @@ def report(
                 "[yellow]Note: jinja2 not installed — skipping HTML report. "
                 "Install with: uv pip install raki[html][/yellow]"
             )
+
+    if gate_thresholds:
+        from raki.gates.thresholds import (
+            evaluate_all,
+            format_threshold_results,
+            parse_threshold,
+        )
+
+        try:
+            parsed_thresholds = [parse_threshold(raw) for raw in gate_thresholds]
+        except ValueError as exc:
+            console.print(f"[red]Error: {exc}[/red]")
+            raise SystemExit(2) from exc
+
+        required_set = set(required_metrics) if required_metrics else None
+        gate_results = evaluate_all(
+            parsed_thresholds, eval_report.aggregate_scores, required_metrics=required_set
+        )
+
+        if not quiet:
+            console.print(format_threshold_results(gate_results))
+
+        has_violation = any(not result.passed for result in gate_results)
+        if has_violation:
+            raise SystemExit(1)
 
 
 def _handle_diff(

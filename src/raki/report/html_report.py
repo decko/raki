@@ -24,15 +24,15 @@ if TYPE_CHECKING:
 # so the HTML report can render display_name, format values, and pick colors
 # without importing the metric classes directly.
 METRIC_METADATA: dict[str, dict[str, str | bool]] = {
-    "first_pass_verify_rate": {
-        "display_name": "Verify rate",
+    "first_pass_success_rate": {
+        "display_name": "First-pass success rate",
         "higher_is_better": True,
         "display_format": "percent",
-        "description": "% sessions passing verify on first try",
-        "subtitle": "How often the agent's work passes all checks on the first try",
+        "description": "% sessions with no rework cycles",
+        "subtitle": "How often the agent completes a session without requiring any rework",
         "direction": "higher is better",
         "threshold": "Target: >85%",
-        "docs_anchor": "verify-rate",
+        "docs_anchor": "first-pass-success-rate",
     },
     "rework_cycles": {
         "display_name": "Rework cycles",

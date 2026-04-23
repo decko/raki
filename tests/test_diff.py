@@ -161,20 +161,20 @@ class TestMatchSessions:
 
 class TestComputeDeltas:
     def test_higher_is_better_improvement(self):
-        baseline_scores = {"first_pass_verify_rate": 0.78}
-        compare_scores = {"first_pass_verify_rate": 0.91}
+        baseline_scores = {"first_pass_success_rate": 0.78}
+        compare_scores = {"first_pass_success_rate": 0.91}
         deltas = compute_deltas(baseline_scores, compare_scores)
         assert len(deltas) == 1
         delta = deltas[0]
-        assert delta.name == "first_pass_verify_rate"
+        assert delta.name == "first_pass_success_rate"
         assert delta.baseline_value == pytest.approx(0.78)
         assert delta.compare_value == pytest.approx(0.91)
         assert delta.delta == pytest.approx(0.13)
         assert delta.direction == "improved"
 
     def test_higher_is_better_regression(self):
-        baseline_scores = {"first_pass_verify_rate": 0.91}
-        compare_scores = {"first_pass_verify_rate": 0.78}
+        baseline_scores = {"first_pass_success_rate": 0.91}
+        compare_scores = {"first_pass_success_rate": 0.78}
         deltas = compute_deltas(baseline_scores, compare_scores)
         assert deltas[0].direction == "regressed"
 
@@ -195,45 +195,45 @@ class TestComputeDeltas:
         assert deltas[0].direction == "regressed"
 
     def test_flat_delta(self):
-        baseline_scores = {"first_pass_verify_rate": 0.85}
-        compare_scores = {"first_pass_verify_rate": 0.85}
+        baseline_scores = {"first_pass_success_rate": 0.85}
+        compare_scores = {"first_pass_success_rate": 0.85}
         deltas = compute_deltas(baseline_scores, compare_scores)
         assert deltas[0].direction == "flat"
         assert deltas[0].delta == pytest.approx(0.0)
 
     def test_multiple_metrics(self):
         baseline_scores = {
-            "first_pass_verify_rate": 0.78,
+            "first_pass_success_rate": 0.78,
             "rework_cycles": 1.2,
             "cost_efficiency": 12.30,
         }
         compare_scores = {
-            "first_pass_verify_rate": 0.91,
+            "first_pass_success_rate": 0.91,
             "rework_cycles": 0.4,
             "cost_efficiency": 7.42,
         }
         deltas = compute_deltas(baseline_scores, compare_scores)
         assert len(deltas) == 3
         delta_names = {delta.name for delta in deltas}
-        assert "first_pass_verify_rate" in delta_names
+        assert "first_pass_success_rate" in delta_names
         assert "rework_cycles" in delta_names
         assert "cost_efficiency" in delta_names
 
     def test_metric_only_in_baseline_skipped(self):
-        baseline_scores = {"first_pass_verify_rate": 0.78, "context_precision": 0.90}
-        compare_scores = {"first_pass_verify_rate": 0.91}
+        baseline_scores = {"first_pass_success_rate": 0.78, "context_precision": 0.90}
+        compare_scores = {"first_pass_success_rate": 0.91}
         deltas = compute_deltas(baseline_scores, compare_scores)
         delta_names = {delta.name for delta in deltas}
-        assert "first_pass_verify_rate" in delta_names
+        assert "first_pass_success_rate" in delta_names
         # context_precision is only in baseline, should be skipped
         assert "context_precision" not in delta_names
 
     def test_metric_only_in_compare_skipped(self):
-        baseline_scores = {"first_pass_verify_rate": 0.78}
-        compare_scores = {"first_pass_verify_rate": 0.91, "context_precision": 0.90}
+        baseline_scores = {"first_pass_success_rate": 0.78}
+        compare_scores = {"first_pass_success_rate": 0.91, "context_precision": 0.90}
         deltas = compute_deltas(baseline_scores, compare_scores)
         delta_names = {delta.name for delta in deltas}
-        assert "first_pass_verify_rate" in delta_names
+        assert "first_pass_success_rate" in delta_names
         assert "context_precision" not in delta_names
 
 
@@ -317,12 +317,12 @@ class TestGenerateDiffReport:
     def test_produces_diff_report(self):
         baseline = _make_eval_report(
             "eval-abc123",
-            {"first_pass_verify_rate": 0.78, "rework_cycles": 1.2},
+            {"first_pass_success_rate": 0.78, "rework_cycles": 1.2},
             [_make_sample_result("session-101")],
         )
         compare = _make_eval_report(
             "eval-def456",
-            {"first_pass_verify_rate": 0.91, "rework_cycles": 0.4},
+            {"first_pass_success_rate": 0.91, "rework_cycles": 0.4},
             [_make_sample_result("session-101")],
         )
         diff = generate_diff_report(baseline, compare)
@@ -335,12 +335,12 @@ class TestGenerateDiffReport:
     def test_diff_report_with_transitions(self):
         baseline = _make_eval_report(
             "base",
-            {"first_pass_verify_rate": 0.50},
+            {"first_pass_success_rate": 0.50},
             [_make_sample_result("session-101", verify_status="failed")],
         )
         compare = _make_eval_report(
             "comp",
-            {"first_pass_verify_rate": 1.0},
+            {"first_pass_success_rate": 1.0},
             [_make_sample_result("session-101", verify_status="completed")],
         )
         diff = generate_diff_report(baseline, compare)
@@ -349,8 +349,8 @@ class TestGenerateDiffReport:
 
     def test_diff_report_empty_sample_results(self):
         """Diff should still work with aggregate-only reports (no sample_results)."""
-        baseline = _make_eval_report("base", {"first_pass_verify_rate": 0.78})
-        compare = _make_eval_report("comp", {"first_pass_verify_rate": 0.91})
+        baseline = _make_eval_report("base", {"first_pass_success_rate": 0.78})
+        compare = _make_eval_report("comp", {"first_pass_success_rate": 0.91})
         diff = generate_diff_report(baseline, compare)
         assert len(diff.deltas) == 1
         assert len(diff.improvements) == 0
@@ -403,7 +403,7 @@ class TestPrintDiffSummary:
             match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
             deltas=[
                 MetricDelta(
-                    name="first_pass_verify_rate",
+                    name="first_pass_success_rate",
                     baseline_value=0.78,
                     compare_value=0.91,
                     delta=0.13,
@@ -477,7 +477,7 @@ class TestPrintDiffSummary:
             match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
             deltas=[
                 MetricDelta(
-                    name="first_pass_verify_rate",
+                    name="first_pass_success_rate",
                     baseline_value=0.78,
                     compare_value=0.91,
                     delta=0.13,
@@ -506,7 +506,7 @@ class TestWriteDiffHtmlReport:
             ),
             deltas=[
                 MetricDelta(
-                    name="first_pass_verify_rate",
+                    name="first_pass_success_rate",
                     baseline_value=0.78,
                     compare_value=0.91,
                     delta=0.13,

@@ -177,7 +177,7 @@ class TestCliRunThreshold:
         fake_report = EvalReport(
             run_id="fake",
             aggregate_scores={
-                "first_pass_verify_rate": 1.0,
+                "first_pass_success_rate": 1.0,
                 "context_precision": 0.50,
                 "context_recall": 0.40,
             },
@@ -439,7 +439,7 @@ class TestMetricsFiltering:
         metric_names = set(data.get("aggregate_scores", {}).keys())
         assert "cost_efficiency" in metric_names
         # Other operational metrics should not appear
-        assert "first_pass_verify_rate" not in metric_names
+        assert "first_pass_success_rate" not in metric_names
 
     def test_filter_avoids_llm_import_when_only_operational(self, manifest_with_session):
         """When --metrics selects only operational metrics, LLM imports should not happen."""
@@ -487,7 +487,7 @@ class TestMetricsFiltering:
                 "-m",
                 str(manifest_path),
                 "--metrics",
-                "first_pass_verify_rate,rework_cycles",
+                "first_pass_success_rate,rework_cycles",
                 "-q",
             ],
         )
@@ -526,7 +526,8 @@ class TestMetricsSubcommand:
         runner = CliRunner()
         result = runner.invoke(main, ["metrics"])
         assert result.exit_code == 0
-        assert "Verify rate" in result.output
+        # Rich table wraps long display names; check for the un-wrapped prefix
+        assert "First-pass success" in result.output
 
     def test_metrics_shows_requires_llm_column(self):
         runner = CliRunner()
@@ -547,7 +548,7 @@ class TestMetricsSubcommand:
         data = json.loads(result.output)
         assert "metrics" in data
         metric_names = {metric_info["name"] for metric_info in data["metrics"]}
-        assert "first_pass_verify_rate" in metric_names
+        assert "first_pass_success_rate" in metric_names
         assert "context_precision" in metric_names
 
     def test_metrics_json_includes_all_fields(self):
@@ -572,39 +573,57 @@ class TestMetricsSubcommand:
             assert isinstance(metric_info["requires_llm"], bool)
             assert isinstance(metric_info["higher_is_better"], bool)
 
-    def test_metrics_json_includes_rationale(self):
-        """raki metrics --json should include rationale for every metric."""
+    def test_metrics_shows_knowledge_metrics(self):
+        """raki metrics should list knowledge metrics (gap rate and miss rate)."""
         runner = CliRunner()
-        result = runner.invoke(main, ["metrics", "--json"])
+        result = runner.invoke(main, ["metrics"])
         assert result.exit_code == 0
-        data = json.loads(result.output)
-        for metric_info in data["metrics"]:
-            assert "rationale" in metric_info, (
-                f"metric {metric_info['name']} is missing 'rationale' in --json output"
-            )
-            assert isinstance(metric_info["rationale"], str)
-            assert len(metric_info["rationale"]) > 0
+        assert "knowledge_gap_rate" in result.output
+        assert "knowledge_miss_rate" in result.output
 
-    def test_metrics_json_rationale_non_empty_for_operational(self):
-        """Operational metrics must have non-empty rationale strings."""
+    def test_metrics_json_includes_knowledge_metrics(self):
+        """raki metrics --json should include knowledge metrics in the output."""
         runner = CliRunner()
         result = runner.invoke(main, ["metrics", "--json"])
         assert result.exit_code == 0
         data = json.loads(result.output)
-        operational_names = {
-            "first_pass_verify_rate",
-            "rework_cycles",
-            "review_severity_distribution",
-            "cost_efficiency",
-            "self_correction_rate",
-            "phase_execution_time",
-            "token_efficiency",
+        metric_names = {metric_info["name"] for metric_info in data["metrics"]}
+        assert "knowledge_gap_rate" in metric_names
+        assert "knowledge_miss_rate" in metric_names
+
+    def test_metrics_knowledge_display_names(self):
+        """raki metrics should show human-readable display names for knowledge metrics."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        knowledge_metrics = {
+            metric_info["name"]: metric_info
+            for metric_info in data["metrics"]
+            if metric_info["name"] in ("knowledge_gap_rate", "knowledge_miss_rate")
         }
+        assert knowledge_metrics["knowledge_gap_rate"]["display_name"] == "Knowledge gap rate"
+        assert knowledge_metrics["knowledge_miss_rate"]["display_name"] == "Knowledge miss rate"
+
+    def test_metrics_knowledge_requires_llm_false(self):
+        """Knowledge metrics should report requires_llm=False."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
         for metric_info in data["metrics"]:
-            if metric_info["name"] in operational_names:
-                assert len(metric_info["rationale"]) > 50, (
-                    f"operational metric {metric_info['name']} has too-short rationale"
-                )
+            if metric_info["name"] in ("knowledge_gap_rate", "knowledge_miss_rate"):
+                assert metric_info["requires_llm"] is False
+
+    def test_metrics_knowledge_higher_is_better_false(self):
+        """Knowledge metrics (gap/miss rate) should report higher_is_better=False."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["metrics", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        for metric_info in data["metrics"]:
+            if metric_info["name"] in ("knowledge_gap_rate", "knowledge_miss_rate"):
+                assert metric_info["higher_is_better"] is False
 
 
 class TestCliJudgeModel:
@@ -740,7 +759,7 @@ class TestCliSummaryDisplayName:
         )
         assert result.exit_code == 0
         # Should show human-readable display names, not raw snake_case
-        assert "Verify rate" in result.output
+        assert "First-pass success rate" in result.output
         assert "Rework cycles" in result.output
         assert "Cost / session" in result.output
 
@@ -754,7 +773,7 @@ class TestCliSummaryDisplayName:
         )
         assert result.exit_code == 0
         # Raw snake_case names should not appear in the summary lines
-        assert "first_pass_verify_rate" not in result.output
+        assert "first_pass_success_rate" not in result.output
         assert "rework_cycles" not in result.output
         assert "cost_efficiency" not in result.output
 
@@ -770,7 +789,7 @@ class TestCliSummaryMetricDescription:
         )
         assert result.exit_code == 0
         # Metric descriptions should appear in parentheses
-        assert "% sessions passing verify" in result.output
+        assert "% sessions with no rework" in result.output
 
 
 def _write_report_json(path, *, include_sessions: bool = False) -> None:
@@ -780,7 +799,7 @@ def _write_report_json(path, *, include_sessions: bool = False) -> None:
     report = EvalReport(
         run_id="test-report-001",
         aggregate_scores={
-            "first_pass_verify_rate": 0.85,
+            "first_pass_success_rate": 0.85,
             "rework_cycles": 0.3,
             "cost_efficiency": 7.50,
         },
@@ -816,7 +835,7 @@ def _write_report_json(path, *, include_sessions: bool = False) -> None:
                     "events": [],
                 },
                 "scores": [
-                    {"name": "first_pass_verify_rate", "score": 1.0},
+                    {"name": "first_pass_success_rate", "score": 1.0},
                 ],
             }
         ]
@@ -850,7 +869,7 @@ def _write_report_json(path, *, include_sessions: bool = False) -> None:
                     "events": [],
                 },
                 "scores": [
-                    {"name": "first_pass_verify_rate", "score": 1.0},
+                    {"name": "first_pass_success_rate", "score": 1.0},
                 ],
             }
         ]
@@ -941,7 +960,7 @@ class TestCliReport:
         result = runner.invoke(main, ["report", str(report_json)])
         assert result.exit_code == 0
         # Should use display names from METRIC_METADATA, not raw metric keys
-        assert "Verify rate" in result.output
+        assert "First-pass success rate" in result.output
 
 
 def _write_diff_report_json(
@@ -955,7 +974,7 @@ def _write_diff_report_json(
 ) -> None:
     """Write a minimal EvalReport JSON file for diff testing."""
     scores = aggregate_scores or {
-        "first_pass_verify_rate": 0.85,
+        "first_pass_success_rate": 0.85,
         "rework_cycles": 0.3,
         "cost_efficiency": 7.50,
     }
@@ -1128,12 +1147,12 @@ class TestCliReportDiff:
         _write_diff_report_json(
             baseline,
             run_id="eval-baseline",
-            aggregate_scores={"first_pass_verify_rate": 0.78, "rework_cycles": 1.2},
+            aggregate_scores={"first_pass_success_rate": 0.78, "rework_cycles": 1.2},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-compare",
-            aggregate_scores={"first_pass_verify_rate": 0.91, "rework_cycles": 0.4},
+            aggregate_scores={"first_pass_success_rate": 0.91, "rework_cycles": 0.4},
         )
         runner = CliRunner()
         result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
@@ -1196,12 +1215,12 @@ class TestCliReportDiff:
         _write_diff_report_json(
             baseline,
             run_id="base",
-            aggregate_scores={"first_pass_verify_rate": 0.78},
+            aggregate_scores={"first_pass_success_rate": 0.78},
         )
         _write_diff_report_json(
             compare,
             run_id="comp",
-            aggregate_scores={"first_pass_verify_rate": 0.91},
+            aggregate_scores={"first_pass_success_rate": 0.91},
         )
         runner = CliRunner()
         result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
@@ -1242,12 +1261,12 @@ class TestCliReportDiff:
         _write_diff_report_json(
             baseline,
             run_id="eval-base",
-            aggregate_scores={"first_pass_verify_rate": 0.78},
+            aggregate_scores={"first_pass_success_rate": 0.78},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-comp",
-            aggregate_scores={"first_pass_verify_rate": 0.91},
+            aggregate_scores={"first_pass_success_rate": 0.91},
         )
         runner = CliRunner()
         result = runner.invoke(
@@ -1442,8 +1461,9 @@ class TestReportPositionalArg:
 class TestDocsPathCLI:
     """Tests for --docs-path flag on the run command."""
 
-    def test_docs_path_option_accepted(self, manifest_with_session, tmp_path):
+    def test_docs_path_option_accepted(self, manifest_with_session, tmp_path, monkeypatch):
         """--docs-path should be accepted as a valid CLI option."""
+        monkeypatch.chdir(tmp_path)
         manifest, _sessions = manifest_with_session
         docs_dir = tmp_path / "docs"
         docs_dir.mkdir()
@@ -1465,8 +1485,9 @@ class TestDocsPathCLI:
         )
         assert result.exit_code == 2
 
-    def test_docs_path_adds_knowledge_metrics(self, manifest_with_session, tmp_path):
+    def test_docs_path_adds_knowledge_metrics(self, manifest_with_session, tmp_path, monkeypatch):
         """--docs-path should add knowledge metrics to the output."""
+        monkeypatch.chdir(tmp_path)
         manifest, _sessions = manifest_with_session
         docs_dir = tmp_path / "docs"
         docs_dir.mkdir()
@@ -1493,8 +1514,9 @@ class TestDocsPathCLI:
         assert "knowledge_gap_rate" in metric_names
         assert "knowledge_miss_rate" in metric_names
 
-    def test_docs_path_logs_loaded_count(self, manifest_with_session, tmp_path):
+    def test_docs_path_logs_loaded_count(self, manifest_with_session, tmp_path, monkeypatch):
         """--docs-path should log how many chunks were loaded."""
+        monkeypatch.chdir(tmp_path)
         manifest, _sessions = manifest_with_session
         docs_dir = tmp_path / "docs"
         docs_dir.mkdir()
@@ -1507,8 +1529,9 @@ class TestDocsPathCLI:
         assert result.exit_code == 0
         assert "doc" in result.output.lower()
 
-    def test_docs_path_overrides_manifest_docs(self, tmp_path, pass_simple_dir):
+    def test_docs_path_overrides_manifest_docs(self, tmp_path, pass_simple_dir, monkeypatch):
         """CLI --docs-path should override manifest docs.path."""
+        monkeypatch.chdir(tmp_path)
         sessions = tmp_path / "sessions"
         sessions.mkdir()
         session_dest = sessions / "101"
@@ -1536,8 +1559,9 @@ class TestDocsPathCLI:
         )
         assert result.exit_code == 0
 
-    def test_manifest_docs_used_when_no_cli_flag(self, tmp_path, pass_simple_dir):
+    def test_manifest_docs_used_when_no_cli_flag(self, tmp_path, pass_simple_dir, monkeypatch):
         """Manifest docs.path should be used when --docs-path is not given."""
+        monkeypatch.chdir(tmp_path)
         sessions = tmp_path / "sessions"
         sessions.mkdir()
         session_dest = sessions / "101"
@@ -1571,17 +1595,19 @@ class TestDocsPathCLI:
         metric_names = set(data.get("aggregate_scores", {}).keys())
         assert "knowledge_gap_rate" in metric_names
 
-    def test_docs_path_outside_project_root_rejected(self, tmp_path):
-        """--docs-path pointing outside the project root should fail with UsageError."""
-        # Create project directory with manifest
+    def test_docs_path_outside_project_root_rejected(self, tmp_path, monkeypatch):
+        """--docs-path pointing outside the CWD (project root) should fail with UsageError."""
+        # Create project directory — this is the CWD (project root)
         project_dir = tmp_path / "project"
         project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
         sessions = project_dir / "sessions"
         sessions.mkdir()
         manifest_file = project_dir / "raki.yaml"
         manifest_file.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
 
-        # Create docs directory outside the project root
+        # Create docs directory outside the CWD (project root)
         outside_docs = tmp_path / "outside_docs"
         outside_docs.mkdir()
         (outside_docs / "guide.md").write_text("# Guide\nContent.\n")
@@ -1593,6 +1619,38 @@ class TestDocsPathCLI:
         )
         assert result.exit_code != 0
         assert "must be within the project root" in result.output
+
+    def test_docs_path_within_cwd_but_outside_manifest_parent_accepted(self, tmp_path, monkeypatch):
+        """--docs-path within CWD but outside manifest parent directory should be accepted.
+
+        Regression test for bug where the guard used manifest_file.parent as the
+        project root instead of CWD.  When the manifest lives in a subdirectory
+        (e.g. discovered from a nested config/ folder), docs at the repo root must
+        still be accepted.
+        """
+        # CWD is the project root (tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Manifest is in a subdirectory — simulates auto-discovery from a nested location
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        sessions = config_dir / "sessions"
+        sessions.mkdir()
+        manifest_file = config_dir / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\n  format: auto\n")
+
+        # docs is at the project root — within CWD but NOT within manifest parent (config/)
+        docs_dir = tmp_path / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "guide.md").write_text("# Guide\nContent.\n")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_file), "--docs-path", str(docs_dir), "-q"],
+        )
+        # Should succeed: docs_dir is within CWD even though it's outside config/
+        assert result.exit_code == 0
 
 
 class TestRagasMetricsSync:
@@ -1712,7 +1770,9 @@ class TestValidateDeep:
         result = runner.invoke(main, ["validate", "-m", str(manifest), "--deep"])
         assert result.exit_code == 0
         # Should show at least one metric name or display name
-        assert "Verify rate" in result.output or "first_pass_verify_rate" in result.output
+        assert (
+            "First-pass success rate" in result.output or "first_pass_success_rate" in result.output
+        )
 
     def test_deep_adapter_failure_shows_fail(self, tmp_path):
         """--deep should show a failure indicator when an adapter fails to load."""
@@ -1744,7 +1804,7 @@ class TestGateThresholdCLI:
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -1757,7 +1817,7 @@ class TestGateThresholdCLI:
                     "-m",
                     str(manifest),
                     "--gate",
-                    "first_pass_verify_rate>0.80",
+                    "first_pass_success_rate>0.80",
                     "-o",
                     str(output_dir),
                 ],
@@ -1773,7 +1833,7 @@ class TestGateThresholdCLI:
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.70},
+            aggregate_scores={"first_pass_success_rate": 0.70},
         )
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -1786,7 +1846,7 @@ class TestGateThresholdCLI:
                     "-m",
                     str(manifest),
                     "--gate",
-                    "first_pass_verify_rate>0.80",
+                    "first_pass_success_rate>0.80",
                     "-o",
                     str(output_dir),
                 ],
@@ -1866,12 +1926,12 @@ class TestGateThresholdCLI:
         manifest_path = tmp_path / "raki.yaml"
         manifest_path.write_text(
             f"sessions:\n  path: {sessions}\n  format: auto\n"
-            f"thresholds:\n  - first_pass_verify_rate>0.99\n"
+            f"thresholds:\n  - first_pass_success_rate>0.99\n"
         )
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.80},
+            aggregate_scores={"first_pass_success_rate": 0.80},
         )
         output_dir = tmp_path / "results"
         with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
@@ -1901,12 +1961,12 @@ class TestGateThresholdCLI:
         manifest_path = tmp_path / "raki.yaml"
         manifest_path.write_text(
             f"sessions:\n  path: {sessions}\n  format: auto\n"
-            f"thresholds:\n  - first_pass_verify_rate>0.99\n"
+            f"thresholds:\n  - first_pass_success_rate>0.99\n"
         )
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.80},
+            aggregate_scores={"first_pass_success_rate": 0.80},
         )
         output_dir = tmp_path / "results"
         with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
@@ -1918,7 +1978,7 @@ class TestGateThresholdCLI:
                     "-m",
                     str(manifest_path),
                     "--gate",
-                    "first_pass_verify_rate>0.50",
+                    "first_pass_success_rate>0.50",
                     "-o",
                     str(output_dir),
                 ],
@@ -1934,7 +1994,7 @@ class TestGateThresholdCLI:
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -1962,7 +2022,7 @@ class TestGateThresholdCLI:
 
         fake_report = EvalReport(
             run_id="fake",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -1975,7 +2035,7 @@ class TestGateThresholdCLI:
                     "-m",
                     str(manifest),
                     "--gate",
-                    "first_pass_verify_rate>0.80",
+                    "first_pass_success_rate>0.80",
                     "-o",
                     str(output_dir),
                     "-q",
@@ -1983,6 +2043,88 @@ class TestGateThresholdCLI:
             )
             assert result.exit_code == 0
             assert "Quality Gates" not in result.output
+
+    def test_gate_unknown_metric_exits_2(self, empty_manifest):
+        """--gate with a completely unknown metric name should exit 2 (not silently skip)."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "completely_fake_metric>0.5",
+            ],
+        )
+        assert result.exit_code == 2
+
+    def test_gate_unknown_metric_shows_error_message(self, empty_manifest):
+        """--gate with an unknown metric name should show a friendly error message."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "completely_fake_metric>0.5",
+            ],
+        )
+        assert "completely_fake_metric" in result.output
+        assert "unknown" in result.output.lower() or "invalid" in result.output.lower()
+
+    def test_gate_unknown_metric_lists_valid_metrics(self, empty_manifest):
+        """--gate with an unknown metric name should list valid metric names."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "completely_fake_metric>0.5",
+            ],
+        )
+        assert "first_pass_success_rate" in result.output
+        assert "faithfulness" in result.output
+
+    def test_gate_known_but_uncomputed_metric_still_skips(self, empty_manifest):
+        """--gate with a known-but-not-computed metric (e.g. faithfulness without --judge)
+        should SKIP gracefully (exit 0), not exit 2."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "faithfulness>0.85",
+                "-q",
+            ],
+        )
+        # faithfulness is a valid metric name, so no error
+        assert result.exit_code == 0
+
+    def test_gate_validation_happens_before_evaluation(self, empty_manifest):
+        """--gate validation of metric names should happen before heavy evaluation."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--gate",
+                "typo_metricc>0.5",
+            ],
+        )
+        assert result.exit_code == 2
+        # The error message should mention --gate
+        assert "--gate" in result.output or "gate" in result.output.lower()
 
 
 class TestRegressionCLI:
@@ -1995,12 +2137,12 @@ class TestRegressionCLI:
         _write_diff_report_json(
             baseline,
             run_id="eval-baseline",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-compare",
-            aggregate_scores={"first_pass_verify_rate": 0.70},
+            aggregate_scores={"first_pass_success_rate": 0.70},
         )
         runner = CliRunner()
         result = runner.invoke(
@@ -2023,12 +2165,12 @@ class TestRegressionCLI:
         _write_diff_report_json(
             baseline,
             run_id="eval-baseline",
-            aggregate_scores={"first_pass_verify_rate": 0.80},
+            aggregate_scores={"first_pass_success_rate": 0.80},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-compare",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         runner = CliRunner()
         result = runner.invoke(
@@ -2061,12 +2203,12 @@ class TestRegressionCLI:
         _write_diff_report_json(
             baseline,
             run_id="eval-baseline",
-            aggregate_scores={"first_pass_verify_rate": 0.90},
+            aggregate_scores={"first_pass_success_rate": 0.90},
         )
         _write_diff_report_json(
             compare,
             run_id="eval-compare",
-            aggregate_scores={"first_pass_verify_rate": 0.70},
+            aggregate_scores={"first_pass_success_rate": 0.70},
         )
         runner = CliRunner()
         result = runner.invoke(
@@ -2074,3 +2216,149 @@ class TestRegressionCLI:
             ["report", "--diff", str(baseline), str(compare)],
         )
         assert result.exit_code == 0
+
+
+class TestReportGates:
+    """Tests for --gate and --require-metric flags on the report subcommand (ticket #139)."""
+
+    def test_report_gate_option_accepted(self, tmp_path):
+        """--gate should be a valid option on the report command."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.50"],
+        )
+        assert result.exit_code == 0
+
+    def test_report_require_metric_option_accepted(self, tmp_path):
+        """--require-metric should be a valid option on the report command."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "report",
+                str(report_json),
+                "--gate",
+                "first_pass_success_rate>0.50",
+                "--require-metric",
+                "first_pass_success_rate",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_report_gate_pass_exits_0(self, tmp_path):
+        """--gate with a passing threshold should exit 0 and show PASS."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # report.json has first_pass_success_rate=0.85, threshold is 0.50 so it passes
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.50"],
+        )
+        assert result.exit_code == 0
+        assert "PASS" in result.output
+
+    def test_report_gate_violation_exits_1(self, tmp_path):
+        """--gate with a failing threshold should exit 1 and show FAIL."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # report.json has first_pass_success_rate=0.85, threshold >0.99 fails
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.99"],
+        )
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+
+    def test_report_gate_na_metric_skipped(self, tmp_path):
+        """--gate with an N/A metric (not in report) should SKIP and exit 0."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # faithfulness is not in the report (N/A) — should skip, not fail
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "faithfulness>0.80"],
+        )
+        assert result.exit_code == 0
+        assert "SKIP" in result.output
+
+    def test_report_require_metric_fails_on_na(self, tmp_path):
+        """--require-metric with an N/A metric should exit 1 and show FAIL."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # faithfulness is not in the report (N/A) + required -> FAIL
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "report",
+                str(report_json),
+                "--gate",
+                "faithfulness>0.80",
+                "--require-metric",
+                "faithfulness",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+
+    def test_report_gate_invalid_syntax_exits_2(self, tmp_path):
+        """--gate with invalid syntax should exit 2."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "not a valid gate"],
+        )
+        assert result.exit_code == 2
+
+    def test_report_gate_quiet_suppresses_gate_output(self, tmp_path):
+        """--gate with -q should suppress Quality Gates output."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.50", "-q"],
+        )
+        assert result.exit_code == 0
+        assert "Quality Gates" not in result.output
+
+    def test_report_gate_multiple_gates(self, tmp_path):
+        """Multiple --gate flags should all be evaluated."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        # first_pass_success_rate=0.85 > 0.50 PASS; rework_cycles=0.3 < 1.0 PASS
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "report",
+                str(report_json),
+                "--gate",
+                "first_pass_success_rate>0.50",
+                "--gate",
+                "rework_cycles<1.0",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_report_gate_shows_quality_gates_heading(self, tmp_path):
+        """Gate output should include the 'Quality Gates:' heading."""
+        report_json = tmp_path / "report.json"
+        _write_report_json(report_json, include_sessions=True)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.50"],
+        )
+        assert result.exit_code == 0
+        assert "Quality Gates" in result.output

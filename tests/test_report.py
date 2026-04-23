@@ -25,7 +25,7 @@ def _make_report() -> EvalReport:
         run_id="eval-test-001",
         config={"adapter": "session-schema", "metrics": ["rework_cycles"]},
         aggregate_scores={
-            "first_pass_verify_rate": 0.58,
+            "first_pass_success_rate": 0.58,
             "rework_cycles": 1.3,
             "review_severity_distribution": 0.85,
             "cost_efficiency": 18.4,
@@ -261,17 +261,17 @@ class TestColorForScore:
 
 class TestFormatMetricLine:
     def test_contains_name_and_score(self) -> None:
-        line = format_metric_line("first_pass_verify_rate", 0.85, "(32/38 passed)")
-        assert "first_pass_verify_rate" in line
+        line = format_metric_line("first_pass_success_rate", 0.85, "(32/38 passed)")
+        assert "first_pass_success_rate" in line
         assert "0.85" in line
 
     def test_red_for_low_score(self) -> None:
-        line = format_metric_line("first_pass_verify_rate", 0.45, "(17/38 passed)")
+        line = format_metric_line("first_pass_success_rate", 0.45, "(17/38 passed)")
         assert "0.45" in line
         assert "[red]" in line
 
     def test_green_for_high_score(self) -> None:
-        line = format_metric_line("first_pass_verify_rate", 0.85)
+        line = format_metric_line("first_pass_success_rate", 0.85)
         assert "[green]" in line
 
     def test_currency_display_format(self) -> None:
@@ -293,17 +293,17 @@ class TestFormatMetricLine:
         assert "1.3" in line
 
     def test_sample_count_shown(self) -> None:
-        line = format_metric_line("first_pass_verify_rate", 0.85, sample_count=38)
+        line = format_metric_line("first_pass_success_rate", 0.85, sample_count=38)
         assert "(n=38)" in line
 
     def test_display_name_used_when_provided(self) -> None:
         line = format_metric_line(
-            "first_pass_verify_rate",
+            "first_pass_success_rate",
             0.85,
             display_name="First-Pass Verify Rate",
         )
         assert "First-Pass Verify Rate" in line
-        assert "first_pass_verify_rate" not in line
+        assert "first_pass_success_rate" not in line
 
     def test_percent_display_format(self) -> None:
         line = format_metric_line(
@@ -382,7 +382,7 @@ class TestPrintSummary:
         report = EvalReport(
             run_id="both-categories",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "faithfulness": 0.92,
             },
         )
@@ -519,12 +519,12 @@ def _make_finding(severity: Literal["critical", "major", "minor"]) -> ReviewFind
 
 
 class TestGenerateSummarySentence:
-    def test_includes_verify_rate_percentage(self) -> None:
-        """Summary sentence should include verify rate as a percentage."""
+    def test_includes_success_rate_percentage(self) -> None:
+        """Summary sentence should include first-pass success rate as a percentage."""
         report = EvalReport(
             run_id="summary-test",
             aggregate_scores={
-                "first_pass_verify_rate": 0.91,
+                "first_pass_success_rate": 0.91,
                 "rework_cycles": 0.4,
                 "cost_efficiency": 7.42,
             },
@@ -537,7 +537,7 @@ class TestGenerateSummarySentence:
         report = EvalReport(
             run_id="summary-test",
             aggregate_scores={
-                "first_pass_verify_rate": 0.91,
+                "first_pass_success_rate": 0.91,
                 "rework_cycles": 0.4,
                 "cost_efficiency": 7.42,
             },
@@ -550,7 +550,7 @@ class TestGenerateSummarySentence:
         report = EvalReport(
             run_id="summary-test",
             aggregate_scores={
-                "first_pass_verify_rate": 0.91,
+                "first_pass_success_rate": 0.91,
                 "rework_cycles": 0.4,
                 "cost_efficiency": 7.42,
             },
@@ -575,7 +575,7 @@ class TestGenerateSummarySentence:
         report = EvalReport(
             run_id="summary-findings",
             aggregate_scores={
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
                 "rework_cycles": 1.0,
                 "cost_efficiency": 10.0,
             },
@@ -594,7 +594,7 @@ class TestGenerateSummarySentence:
         report = EvalReport(
             run_id="summary-partial",
             aggregate_scores={
-                "first_pass_verify_rate": 0.75,
+                "first_pass_success_rate": 0.75,
             },
         )
         sentence = generate_summary_sentence(report, session_count=10)
@@ -647,11 +647,11 @@ class TestNoDataMetricDisplay:
         report = EvalReport(
             run_id="test-no-data",
             aggregate_scores={
-                "first_pass_verify_rate": 0.8,
+                "first_pass_success_rate": 0.8,
                 "token_efficiency": 0.0,
             },
             metric_details={
-                "first_pass_verify_rate": {"passed": 8, "total": 10},
+                "first_pass_success_rate": {"passed": 8, "total": 10},
                 "token_efficiency": {
                     "mean_tokens_per_phase": 0.0,
                     "sessions_with_tokens": 0,
@@ -766,7 +766,7 @@ class TestNoDataMetricDisplay:
             aggregate_scores={
                 "context_precision": None,
                 "context_recall": None,
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
             },
             metric_details={
                 "context_precision": {"skipped": "no ground truth"},
@@ -775,7 +775,7 @@ class TestNoDataMetricDisplay:
         )
         assert report.aggregate_scores["context_precision"] is None
         assert report.aggregate_scores["context_recall"] is None
-        assert report.aggregate_scores["first_pass_verify_rate"] == 0.80
+        assert report.aggregate_scores["first_pass_success_rate"] == 0.80
 
     def test_skipped_metric_serializes_to_json_null(self, tmp_path: Path) -> None:
         """Bug #140: None aggregate scores must serialize to JSON null, not 0.0."""
@@ -784,7 +784,7 @@ class TestNoDataMetricDisplay:
             aggregate_scores={
                 "context_precision": None,
                 "context_recall": None,
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
             },
             metric_details={
                 "context_precision": {"skipped": "no ground truth"},
@@ -796,7 +796,196 @@ class TestNoDataMetricDisplay:
         raw = json.loads(output_path.read_text())
         assert raw["aggregate_scores"]["context_precision"] is None
         assert raw["aggregate_scores"]["context_recall"] is None
-        assert raw["aggregate_scores"]["first_pass_verify_rate"] == 0.80
+        assert raw["aggregate_scores"]["first_pass_success_rate"] == 0.80
+
+
+# --- Three-tier section headers tests (bug #133) ---
+
+
+class TestThreeTierSectionHeaders:
+    """Bug #133: CLI output must show three separate section headers."""
+
+    def _make_console(self) -> tuple:
+        from io import StringIO
+
+        from rich.console import Console
+
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        return string_io, test_console
+
+    def test_knowledge_metrics_appear_under_knowledge_quality_heading(self) -> None:
+        """Knowledge metrics must appear under 'Knowledge Quality', not 'Operational Health'."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="three-tier-test",
+            aggregate_scores={
+                "first_pass_success_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Knowledge Quality" in output
+
+    def test_knowledge_metrics_not_under_operational_heading(self) -> None:
+        """Knowledge metrics must NOT be grouped under Operational Health."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="three-tier-separation",
+            aggregate_scores={
+                "first_pass_success_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        # The heading "Operational Health" must appear before "Knowledge Quality"
+        op_pos = output.find("Operational Health")
+        kq_pos = output.find("Knowledge Quality")
+        assert op_pos != -1, "Operational Health heading missing"
+        assert kq_pos != -1, "Knowledge Quality heading missing"
+        assert op_pos < kq_pos, "Operational Health must precede Knowledge Quality"
+
+    def test_three_tier_all_sections_displayed(self) -> None:
+        """When all three metric categories exist, all three headings must appear."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="all-three-tiers",
+            aggregate_scores={
+                "first_pass_success_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+                "faithfulness": 0.90,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Operational Health" in output
+        assert "Knowledge Quality" in output
+        assert "Retrieval Quality" in output
+
+    def test_three_sections_appear_in_order(self) -> None:
+        """Three sections must appear in the order: Operational → Knowledge → Retrieval."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="order-test",
+            aggregate_scores={
+                "first_pass_success_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+                "faithfulness": 0.90,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        op_pos = output.find("Operational Health")
+        kq_pos = output.find("Knowledge Quality")
+        rq_pos = output.find("Retrieval Quality")
+        assert op_pos < kq_pos < rq_pos
+
+    def test_only_operational_metrics_shows_one_heading(self) -> None:
+        """When only operational metrics are present, only the Operational Health heading shown."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="op-only",
+            aggregate_scores={"first_pass_success_rate": 0.80},
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Operational Health" in output
+        # Knowledge Quality and Retrieval Quality must not appear as bold section headings.
+        # Nudge text may mention "Knowledge Quality" so check no knowledge metric is listed.
+        assert "knowledge_gap_rate" not in output
+        assert "knowledge_miss_rate" not in output
+        # No retrieval-tier metric should appear either
+        assert "faithfulness" not in output
+
+    def test_only_knowledge_metrics_shows_knowledge_heading(self) -> None:
+        """When only knowledge metrics are present, only Knowledge Quality heading is shown."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="kq-only",
+            aggregate_scores={"knowledge_gap_rate": 0.10},
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Knowledge Quality" in output
+        assert "Operational Health" not in output
+        # Nudge text may mention "Retrieval Quality" — assert no retrieval metric is listed
+        assert "faithfulness" not in output
+        assert "context_precision" not in output
+
+
+# --- Progression nudge tests (bug #133) ---
+
+
+class TestProgressionNudges:
+    """Bug #133: Each section should show a nudge toward the next tier when it is absent."""
+
+    def _make_console(self) -> tuple:
+        from io import StringIO
+
+        from rich.console import Console
+
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True)
+        return string_io, test_console
+
+    def test_nudge_shown_after_operational_when_no_knowledge_metrics(self) -> None:
+        """When only operational metrics are present, show nudge for --docs-path."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="nudge-op-only",
+            aggregate_scores={"first_pass_success_rate": 0.80},
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "--docs-path" in output
+
+    def test_nudge_shown_after_knowledge_when_no_retrieval_metrics(self) -> None:
+        """When operational + knowledge metrics are present but no retrieval, show --judge nudge."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="nudge-kq-only",
+            aggregate_scores={
+                "first_pass_success_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "--judge" in output
+
+    def test_no_docs_path_nudge_when_knowledge_metrics_present(self) -> None:
+        """When knowledge metrics are present, the --docs-path nudge must NOT appear."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="nudge-suppressed",
+            aggregate_scores={
+                "first_pass_success_rate": 0.80,
+                "knowledge_gap_rate": 0.10,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "--docs-path" not in output
+
+    def test_no_judge_nudge_when_retrieval_metrics_present(self) -> None:
+        """When retrieval metrics are present, the --judge nudge must NOT appear."""
+        string_io, test_console = self._make_console()
+        report = EvalReport(
+            run_id="nudge-judge-suppressed",
+            aggregate_scores={
+                "first_pass_success_rate": 0.80,
+                "faithfulness": 0.90,
+            },
+        )
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "--judge" not in output
+
+
+class TestNoDataMetricDisplayExtended:
+    """Additional no-data / null score tests carried from TestNoDataMetricDisplay."""
 
     def test_skipped_metric_cli_shows_na_not_null(self) -> None:
         """Bug #140: CLI must show 'N/A' for None scores, not 'null' or 'None'."""
@@ -808,7 +997,7 @@ class TestNoDataMetricDisplay:
             run_id="test-cli-na",
             aggregate_scores={
                 "context_precision": None,
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
             },
             metric_details={
                 "context_precision": {"skipped": "no ground truth"},
@@ -828,7 +1017,7 @@ class TestNoDataMetricDisplay:
             run_id="test-roundtrip-null",
             aggregate_scores={
                 "context_precision": None,
-                "first_pass_verify_rate": 0.80,
+                "first_pass_success_rate": 0.80,
             },
             metric_details={
                 "context_precision": {"skipped": "no ground truth"},
@@ -838,7 +1027,7 @@ class TestNoDataMetricDisplay:
         write_json_report(report, output_path)
         loaded = load_json_report(output_path)
         assert loaded.aggregate_scores["context_precision"] is None
-        assert loaded.aggregate_scores["first_pass_verify_rate"] == 0.80
+        assert loaded.aggregate_scores["first_pass_success_rate"] == 0.80
 
     def test_engine_propagates_none_score_to_aggregate(self) -> None:
         """Bug #140: MetricsEngine must propagate None scores into aggregate_scores.
@@ -847,11 +1036,11 @@ class TestNoDataMetricDisplay:
         """
         results = [
             MetricResult(name="context_precision", score=None, details={"skipped": "no gt"}),
-            MetricResult(name="first_pass_verify_rate", score=0.80),
+            MetricResult(name="first_pass_success_rate", score=0.80),
         ]
         aggregate = {result.name: result.score for result in results}
         assert aggregate["context_precision"] is None
-        assert aggregate["first_pass_verify_rate"] == 0.80
+        assert aggregate["first_pass_success_rate"] == 0.80
 
     def test_metric_details_populated_by_engine(self) -> None:
         from raki.metrics.engine import MetricsEngine

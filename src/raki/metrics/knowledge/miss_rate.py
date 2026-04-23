@@ -22,10 +22,9 @@ This metric does NOT require an LLM.
 """
 
 from raki.metrics.knowledge._common import (
-    build_domain_word_sets,
     extract_knowledge_context,
     is_finding_covered_by_chunks,
-    _MIN_WORD_LENGTH,
+    tokenize,
 )
 from raki.metrics.protocol import MetricConfig
 from raki.model import EvalDataset
@@ -69,8 +68,6 @@ class KnowledgeMissRate:
 
     def _compute_with_doc_chunks(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
         """Compute using per-domain doc chunk matching."""
-        domain_word_sets = build_domain_word_sets(config.doc_chunks)
-
         covered_findings = 0
         total_rework_findings = 0
 
@@ -83,7 +80,7 @@ class KnowledgeMissRate:
                     continue
                 total_rework_findings += 1
 
-                if is_finding_covered_by_chunks(finding.issue, domain_word_sets):
+                if is_finding_covered_by_chunks(finding, config.doc_chunks):
                     covered_findings += 1
 
         if total_rework_findings == 0:
@@ -127,10 +124,8 @@ class KnowledgeMissRate:
                     continue
                 total_rework_findings += 1
 
-                issue_words = {
-                    word for word in finding.issue.lower().split() if len(word) >= _MIN_WORD_LENGTH
-                }
-                knowledge_words = set(knowledge_text.split())
+                issue_words = tokenize(finding.issue)
+                knowledge_words = tokenize(knowledge_text)
                 if issue_words & knowledge_words:
                     covered_findings += 1
 

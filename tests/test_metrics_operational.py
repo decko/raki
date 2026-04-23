@@ -1,4 +1,4 @@
-"""Tests for operational metrics: verify rate, rework cycles, severity, cost."""
+"""Tests for operational metrics: first-pass success rate, rework cycles, severity, cost."""
 
 from datetime import datetime, timezone
 
@@ -9,7 +9,7 @@ from raki.metrics.engine import MetricsEngine
 from raki.metrics.operational.cost import CostEfficiency
 from raki.metrics.operational.rework import ReworkCycles
 from raki.metrics.operational.severity import ReviewSeverityDistribution
-from raki.metrics.operational.verify_rate import FirstPassVerifyRate
+from raki.metrics.operational.verify_rate import FirstPassSuccessRate
 from raki.metrics.protocol import MetricConfig
 from raki.model import (
     EvalDataset,
@@ -21,68 +21,65 @@ from raki.model import (
 from raki.model.report import SampleResult
 
 
-# --- FirstPassVerifyRate ---
+# --- FirstPassSuccessRate ---
 
 
-def test_first_pass_verify_rate_all_pass():
+def test_first_pass_success_rate_all_pass():
+    """All sessions with rework_cycles=0 should score 1.0."""
     dataset = make_dataset(
-        make_sample("1", verify_gen=1),
-        make_sample("2", verify_gen=1),
+        make_sample("1", rework_cycles=0),
+        make_sample("2", rework_cycles=0),
     )
-    result = FirstPassVerifyRate().compute(dataset, MetricConfig())
+    result = FirstPassSuccessRate().compute(dataset, MetricConfig())
     assert result.score == 1.0
     assert result.details["passed"] == 2
     assert result.details["total"] == 2
 
 
-def test_first_pass_verify_rate_mixed():
+def test_first_pass_success_rate_all_rework():
+    """All sessions with rework_cycles > 0 should score 0.0."""
     dataset = make_dataset(
-        make_sample("1", verify_gen=1),
-        make_sample("2", verify_gen=3),
-        make_sample("3", verify_gen=1),
+        make_sample("1", rework_cycles=1),
+        make_sample("2", rework_cycles=2),
     )
-    result = FirstPassVerifyRate().compute(dataset, MetricConfig())
+    result = FirstPassSuccessRate().compute(dataset, MetricConfig())
+    assert result.score == 0.0
+    assert result.details["passed"] == 0
+    assert result.details["total"] == 2
+
+
+def test_first_pass_success_rate_mixed():
+    """Mix of rework and no-rework sessions gives correct ratio."""
+    dataset = make_dataset(
+        make_sample("1", rework_cycles=0),
+        make_sample("2", rework_cycles=1),
+        make_sample("3", rework_cycles=0),
+    )
+    result = FirstPassSuccessRate().compute(dataset, MetricConfig())
     assert abs(result.score - 2 / 3) < 0.01
+    assert result.sample_scores["1"] == 1.0
     assert result.sample_scores["2"] == 0.0
+    assert result.sample_scores["3"] == 1.0
 
 
-def test_first_pass_verify_rate_no_verify_phase():
-    meta = SessionMeta(
-        session_id="x",
-        started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
-        total_phases=1,
-        rework_cycles=0,
-    )
-    sample = EvalSample(
-        session=meta,
-        phases=[PhaseResult(name="triage", generation=1, status="completed", output="ok")],
-        findings=[],
-        events=[],
-    )
-    dataset = make_dataset(sample)
-    result = FirstPassVerifyRate().compute(dataset, MetricConfig())
+def test_first_pass_success_rate_empty_dataset():
+    """Empty dataset should return score=None (no applicable data)."""
+    dataset = EvalDataset(samples=[])
+    result = FirstPassSuccessRate().compute(dataset, MetricConfig())
+    assert result.score is None
+    assert result.details["passed"] == 0
     assert result.details["total"] == 0
-    assert result.score == 0.0
 
 
-def test_first_pass_verify_rate_gen1_failed():
-    """Verify gen=1, status='failed' should score 0.0."""
-    dataset = make_dataset(
-        make_sample("1", verify_gen=1, verify_status="failed"),
-    )
-    result = FirstPassVerifyRate().compute(dataset, MetricConfig())
-    assert result.score == 0.0
-    assert result.sample_scores["1"] == 0.0
-
-
-def test_first_pass_verify_rate_properties():
-    metric = FirstPassVerifyRate()
-    assert metric.name == "first_pass_verify_rate"
+def test_first_pass_success_rate_properties():
+    """Check all Protocol-required class attributes."""
+    metric = FirstPassSuccessRate()
+    assert metric.name == "first_pass_success_rate"
     assert metric.requires_ground_truth is False
     assert metric.requires_llm is False
     assert metric.higher_is_better is True
     assert metric.display_format == "percent"
-    assert metric.display_name == "Verify rate"
+    assert metric.display_name == "First-pass success rate"
 
 
 # --- ReworkCycles ---
@@ -198,29 +195,29 @@ def test_cost_efficiency_properties():
 
 def test_engine_skips_llm_metrics():
     """MetricsEngine.run() with skip_llm=True should skip metrics requiring LLM."""
-    metrics = [FirstPassVerifyRate(), ReworkCycles()]
+    metrics = [FirstPassSuccessRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
     dataset = make_dataset(make_sample("1"))
     report = engine.run(dataset, skip_llm=True)
     # Both operational metrics should be included (neither requires LLM)
-    assert "first_pass_verify_rate" in report.aggregate_scores
+    assert "first_pass_success_rate" in report.aggregate_scores
     assert "rework_cycles" in report.aggregate_scores
 
 
 def test_engine_skips_ground_truth_metrics():
     """MetricsEngine.run() with skip_ground_truth=True should skip metrics requiring ground truth."""
-    metrics = [FirstPassVerifyRate(), CostEfficiency()]
+    metrics = [FirstPassSuccessRate(), CostEfficiency()]
     engine = MetricsEngine(metrics=metrics)
     dataset = make_dataset(make_sample("1"))
     report = engine.run(dataset, skip_ground_truth=True)
     # Both operational metrics should be included (neither requires ground truth)
-    assert "first_pass_verify_rate" in report.aggregate_scores
+    assert "first_pass_success_rate" in report.aggregate_scores
     assert "cost_efficiency" in report.aggregate_scores
 
 
 def test_engine_run_single():
     """MetricsEngine.run_single() runs only the named metric."""
-    metrics = [FirstPassVerifyRate(), ReworkCycles()]
+    metrics = [FirstPassSuccessRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
     dataset = make_dataset(make_sample("1"))
     result = engine.run_single("rework_cycles", dataset)
@@ -236,7 +233,7 @@ def test_engine_sample_results_populated():
     sample_b = make_sample("session-b", rework_cycles=2, cost=20.0)
     dataset = make_dataset(sample_a, sample_b)
 
-    metrics = [FirstPassVerifyRate(), ReworkCycles(), CostEfficiency()]
+    metrics = [FirstPassSuccessRate(), ReworkCycles(), CostEfficiency()]
     engine = MetricsEngine(metrics=metrics)
     report = engine.run(dataset)
 
@@ -251,7 +248,7 @@ def test_engine_sample_results_correct_session_ids():
     sample_b = make_sample("session-b", rework_cycles=3)
     dataset = make_dataset(sample_a, sample_b)
 
-    metrics = [FirstPassVerifyRate(), ReworkCycles()]
+    metrics = [FirstPassSuccessRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
     report = engine.run(dataset)
 
@@ -265,7 +262,7 @@ def test_engine_sample_results_contain_metric_scores():
     sample_b = make_sample("session-b", rework_cycles=2, cost=20.0)
     dataset = make_dataset(sample_a, sample_b)
 
-    metrics = [FirstPassVerifyRate(), ReworkCycles(), CostEfficiency()]
+    metrics = [FirstPassSuccessRate(), ReworkCycles(), CostEfficiency()]
     engine = MetricsEngine(metrics=metrics)
     report = engine.run(dataset)
 
@@ -274,7 +271,7 @@ def test_engine_sample_results_contain_metric_scores():
         sr for sr in report.sample_results if sr.sample.session.session_id == "session-b"
     )
     score_names = {metric_score.name for metric_score in result_b.scores}
-    assert score_names == {"first_pass_verify_rate", "rework_cycles", "cost_efficiency"}
+    assert score_names == {"first_pass_success_rate", "rework_cycles", "cost_efficiency"}
 
     # Verify that sample-level scores match expected values
     rework_score = next(ms for ms in result_b.scores if ms.name == "rework_cycles")
@@ -288,20 +285,20 @@ def test_engine_sample_results_with_skipped_metrics():
     """SampleResult should only contain scores for metrics that were not skipped."""
     dataset = make_dataset(make_sample("session-a"))
 
-    metrics = [FirstPassVerifyRate(), ReworkCycles()]
+    metrics = [FirstPassSuccessRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
     report = engine.run(dataset, skip_llm=True)
 
     # Neither metric requires LLM, so both should appear
     assert len(report.sample_results) == 1
     score_names = {ms.name for ms in report.sample_results[0].scores}
-    assert score_names == {"first_pass_verify_rate", "rework_cycles"}
+    assert score_names == {"first_pass_success_rate", "rework_cycles"}
 
 
 def test_engine_sample_results_empty_dataset():
     """engine.run() with an empty dataset should produce empty sample_results."""
     dataset = EvalDataset(samples=[])
-    metrics = [FirstPassVerifyRate(), ReworkCycles()]
+    metrics = [FirstPassSuccessRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
     report = engine.run(dataset)
 
@@ -736,8 +733,8 @@ class TestSelfCorrectionRate:
 class TestOperationalMetricRationale:
     """Each non-Ragas metric must have a non-empty rationale string."""
 
-    def test_first_pass_verify_rate_has_rationale(self):
-        metric = FirstPassVerifyRate()
+    def test_first_pass_success_rate_has_rationale(self):
+        metric = FirstPassSuccessRate()
         assert hasattr(metric, "rationale")
         assert isinstance(metric.rationale, str)
         assert len(metric.rationale) > 50

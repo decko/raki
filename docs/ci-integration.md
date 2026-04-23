@@ -21,11 +21,11 @@ Supported operators: `>`, `<`, `>=`, `<=`.
 
 ```bash
 # Require verify rate above 85%
-uv run raki run --manifest raki.yaml --gate 'first_pass_verify_rate>0.85'
+uv run raki run --manifest raki.yaml --gate 'first_pass_success_rate>0.85'
 
 # Multiple gates
 uv run raki run --manifest raki.yaml \
-  --gate 'first_pass_verify_rate>0.85' \
+  --gate 'first_pass_success_rate>0.85' \
   --gate 'rework_cycles<1.5' \
   --gate 'cost_efficiency<15.0'
 
@@ -41,7 +41,7 @@ You can also define thresholds in your manifest file (`raki.yaml`). CLI `--gate`
 
 ```yaml
 thresholds:
-  - "first_pass_verify_rate>0.85"
+  - "first_pass_success_rate>0.85"
   - "rework_cycles<1.5"
 ```
 
@@ -118,7 +118,7 @@ jobs:
         run: |
           uv run raki run \
             --manifest raki.yaml \
-            --gate 'first_pass_verify_rate>0.85' \
+            --gate 'first_pass_success_rate>0.85' \
             --gate 'rework_cycles<1.5' \
             --output results/ \
             --quiet
@@ -150,7 +150,7 @@ jobs:
             --judge \
             --judge-provider anthropic \
             --gate 'faithfulness>0.80' \
-            --gate 'first_pass_verify_rate>0.85' \
+            --gate 'first_pass_success_rate>0.85' \
             --include-sessions \
             --output results/ \
             --quiet
@@ -193,7 +193,7 @@ operational-gate:
     - |
       uv run raki run \
         --manifest raki.yaml \
-        --gate 'first_pass_verify_rate>0.85' \
+        --gate 'first_pass_success_rate>0.85' \
         --gate 'rework_cycles<1.5' \
         --output results/ \
         --quiet
