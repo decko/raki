@@ -714,7 +714,7 @@ class TestKnowledgeMissRate:
         assert metric.display_name == "Knowledge miss rate"
 
     def test_doc_chunks_domain_aware_matching(self):
-        """With doc chunks, only findings matching a specific domain's content are covered."""
+        """With doc chunks, only findings matching a specific domain's path are covered."""
         from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
 
         meta = SessionMeta(
@@ -729,16 +729,18 @@ class TestKnowledgeMissRate:
             status="completed",
             output="done",
         )
-        # Finding about authentication -- should match auth domain
+        # Finding about authentication -- file path shares 'auth' with auth chunk → domain tier
         finding_auth = ReviewFinding(
             reviewer="ai-review",
             severity="critical",
+            file="src/auth/endpoint.py",  # 'auth' matches auth/setup.md
             issue="Missing authentication token validation on the endpoint",
         )
-        # Finding about database -- should NOT match auth domain docs
+        # Finding about database -- no file path → not covered by auth-only docs
         finding_db = ReviewFinding(
             reviewer="ai-review",
             severity="major",
+            file=None,
             issue="Database connection pooling not configured properly",
         )
         sample = EvalSample(
@@ -760,7 +762,7 @@ class TestKnowledgeMissRate:
         config = MetricConfig(doc_chunks=auth_chunks)
         result = KnowledgeMissRate().compute(dataset, config)
 
-        # Only 1 of 2 findings is in a covered domain (auth)
+        # Only 1 of 2 findings is in a covered domain (auth via path match)
         assert result.details["covered_findings"] == 1
         assert result.details["total_rework_findings"] == 2
         assert result.score == pytest.approx(0.5)
@@ -784,6 +786,7 @@ class TestKnowledgeMissRate:
         finding = ReviewFinding(
             reviewer="ai-review",
             severity="critical",
+            file="src/auth/views.py",  # 'auth' matches auth/setup.md → domain tier
             issue="Missing authentication token validation",
         )
         sample = EvalSample(
@@ -998,7 +1001,7 @@ class TestKnowledgeMissRateStrictDocChunks:
 
 class TestKnowledgeGapRateWithDocChunks:
     def test_doc_chunks_domain_aware_matching(self):
-        """With doc chunks, only findings NOT matching any domain's content are uncovered."""
+        """With doc chunks, only findings NOT matching any domain's path are uncovered."""
         from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
 
         meta = SessionMeta(
@@ -1013,14 +1016,18 @@ class TestKnowledgeGapRateWithDocChunks:
             status="completed",
             output="done",
         )
+        # Finding in auth/ — file path shares 'auth' with chunk source → domain tier (covered)
         finding_auth = ReviewFinding(
             reviewer="ai-review",
             severity="critical",
+            file="src/auth/endpoint.py",  # 'auth' matches auth/setup.md
             issue="Missing authentication token validation on the endpoint",
         )
+        # Finding with no file path — cannot path-match → not covered
         finding_db = ReviewFinding(
             reviewer="ai-review",
             severity="major",
+            file=None,
             issue="Database connection pooling not configured properly",
         )
         sample = EvalSample(
@@ -1031,7 +1038,7 @@ class TestKnowledgeGapRateWithDocChunks:
         )
         dataset = make_dataset(sample)
 
-        # Only auth domain docs -- database finding is uncovered
+        # Only auth domain docs -- database finding (no file path) is uncovered
         auth_chunks = [
             DocChunk(
                 text="Authentication tokens must be validated before processing requests",
