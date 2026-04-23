@@ -2088,7 +2088,7 @@ class TestGateThresholdCLI:
                 "completely_fake_metric>0.5",
             ],
         )
-        assert "first_pass_verify_rate" in result.output
+        assert "first_pass_success_rate" in result.output
         assert "faithfulness" in result.output
 
     def test_gate_known_but_uncomputed_metric_still_skips(self, empty_manifest):
@@ -2228,7 +2228,7 @@ class TestReportGates:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.50"],
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.50"],
         )
         assert result.exit_code == 0
 
@@ -2243,9 +2243,9 @@ class TestReportGates:
                 "report",
                 str(report_json),
                 "--gate",
-                "first_pass_verify_rate>0.50",
+                "first_pass_success_rate>0.50",
                 "--require-metric",
-                "first_pass_verify_rate",
+                "first_pass_success_rate",
             ],
         )
         assert result.exit_code == 0
@@ -2254,11 +2254,11 @@ class TestReportGates:
         """--gate with a passing threshold should exit 0 and show PASS."""
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
-        # report.json has first_pass_verify_rate=0.85, threshold is 0.50 so it passes
+        # report.json has first_pass_success_rate=0.85, threshold is 0.50 so it passes
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.50"],
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.50"],
         )
         assert result.exit_code == 0
         assert "PASS" in result.output
@@ -2267,11 +2267,11 @@ class TestReportGates:
         """--gate with a failing threshold should exit 1 and show FAIL."""
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
-        # report.json has first_pass_verify_rate=0.85, threshold >0.99 fails
+        # report.json has first_pass_success_rate=0.85, threshold >0.99 fails
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.99"],
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.99"],
         )
         assert result.exit_code == 1
         assert "FAIL" in result.output
@@ -2327,7 +2327,7 @@ class TestReportGates:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.50", "-q"],
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.50", "-q"],
         )
         assert result.exit_code == 0
         assert "Quality Gates" not in result.output
@@ -2336,7 +2336,7 @@ class TestReportGates:
         """Multiple --gate flags should all be evaluated."""
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
-        # first_pass_verify_rate=0.85 > 0.50 PASS; rework_cycles=0.3 < 1.0 PASS
+        # first_pass_success_rate=0.85 > 0.50 PASS; rework_cycles=0.3 < 1.0 PASS
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -2344,7 +2344,7 @@ class TestReportGates:
                 "report",
                 str(report_json),
                 "--gate",
-                "first_pass_verify_rate>0.50",
+                "first_pass_success_rate>0.50",
                 "--gate",
                 "rework_cycles<1.0",
             ],
@@ -2358,7 +2358,7 @@ class TestReportGates:
         runner = CliRunner()
         result = runner.invoke(
             main,
-            ["report", str(report_json), "--gate", "first_pass_verify_rate>0.50"],
+            ["report", str(report_json), "--gate", "first_pass_success_rate>0.50"],
         )
         assert result.exit_code == 0
         assert "Quality Gates" in result.output
