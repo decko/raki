@@ -241,3 +241,88 @@ cp .ci/results/raki-report-*.json .ci/baseline.json
 | Model change → faithfulness drops | Cheaper model hallucinates more | May not be worth the cost saving |
 | Model change → cost drops, quality stable | More efficient model | Good trade-off |
 | Rework cycles increase | Review is catching more issues | Check if findings are legitimate or review is too strict |
+
+## Using `--diff` Beyond CI
+
+The diff command compares any two RAKI evaluation runs. Beyond CI regression detection, here are practical ways to use it:
+
+### Prompt A/B Testing
+
+Run the same test tickets with two different system prompts and compare:
+
+```bash
+# Run with prompt A
+raki run --manifest raki-ci.yaml --output results-a/
+
+# Switch to prompt B, re-run the agent on the same tickets
+raki run --manifest raki-ci.yaml --output results-b/
+
+# Compare
+raki report --diff results-a/raki-report-*.json results-b/raki-report-*.json
+```
+
+Look for: did faithfulness improve without hurting success rate? Did rework cycles drop? If prompt B is better on analytical metrics but worse on operational, it might be producing prettier text but not better code.
+
+### Model Comparison
+
+Evaluate the same tickets with different models to make cost/quality trade-offs:
+
+```bash
+# Run with Sonnet (cheaper)
+soda run PROJ-101 --model claude-sonnet-4-6
+raki run --manifest raki-ci.yaml --output results-sonnet/
+
+# Run with Opus (more expensive)
+soda run PROJ-101 --model claude-opus-4-6
+raki run --manifest raki-ci.yaml --output results-opus/
+
+# Compare
+raki report --diff results-sonnet/raki-report-*.json results-opus/raki-report-*.json
+```
+
+Look for: does Opus produce fewer rework cycles? Is the cost increase justified by quality gains? If Sonnet has `rework_cycles=1.5` at `$5/session` and Opus has `rework_cycles=0.3` at `$15/session`, the total cost (including rework) might favor Opus.
+
+### Knowledge Base Impact
+
+Measure the before/after effect of adding documentation:
+
+```bash
+# Baseline: run without docs
+raki run --manifest raki-ci.yaml --output results-no-docs/
+
+# Add your new runbook/AGENTS.md/gotchas doc
+raki run --manifest raki-ci.yaml --docs-path docs/ --output results-with-docs/
+
+# Compare
+raki report --diff results-no-docs/raki-report-*.json results-with-docs/raki-report-*.json
+```
+
+Look for: did `knowledge_gap_rate` drop? That means your new docs cover domains where the agent was previously failing without guidance. If `knowledge_miss_rate` is still high, the docs exist but the agent isn't applying them — check retrieval or prompt injection of context.
+
+### Weekly Trend Tracking
+
+Run nightly evaluations and diff each week against the previous:
+
+```bash
+# Cron job saves weekly snapshots
+raki run --manifest raki-ci.yaml --judge --output "results/week-$(date +%V)/"
+
+# Compare this week vs last week
+raki report --diff results/week-15/raki-report-*.json results/week-16/raki-report-*.json
+```
+
+Look for: gradual drift. Faithfulness might drop 2% per week as the codebase evolves and the knowledge base falls behind. A single week's drop is noise — three weeks of consistent decline is a signal to update your docs.
+
+### Post-Incident Analysis
+
+After an agent produces a bad outcome in production, run raki on the session and diff against your healthy baseline:
+
+```bash
+# Evaluate the problematic session
+raki run --manifest incident-manifest.yaml --judge --output results-incident/
+
+# Compare against known-good baseline
+raki report --diff .ci/baseline.json results-incident/raki-report-*.json
+```
+
+Look for: which metrics diverged? If `faithfulness` dropped, the agent hallucinated. If `knowledge_gap_rate` spiked, the agent worked in a domain with no documentation. If `self_correction_rate` dropped, the agent couldn't recover from review feedback. The diff tells you where the failure originated, not just that it happened.
