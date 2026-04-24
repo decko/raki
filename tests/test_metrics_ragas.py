@@ -26,8 +26,10 @@ from raki.metrics.ragas.adapter import (
     MAX_REFERENCE_CHARS,
     MAX_REFERENCE_CHUNKS,
     MAX_RESPONSE_CHARS,
+    InstructorSilentZeroError,
     RagasRow,
     _extract_response_summary,
+    is_instructor_silent_zero,
     select_relevant_chunks,
     to_ragas_rows,
     truncate_for_ragas,
@@ -1620,6 +1622,444 @@ class TestGoogleProvider:
         mock_genai.Client.assert_called_once_with(
             vertexai=True, project="test-project", location="us-central1"
         )
+
+
+# ---------------------------------------------------------------------------
+# instructor#1658 silent-zero detection tests
+# ---------------------------------------------------------------------------
+
+
+class TestIsInstructorSilentZero:
+    """Tests for the is_instructor_silent_zero() detection function."""
+
+    def test_returns_true_for_google_zero_no_reason(self):
+        """Google provider + zero value + no reason → silent-zero detected."""
+        result = MagicMock()
+        result.value = 0.0
+        result.reason = None
+        assert is_instructor_silent_zero(result, "google") is True
+
+    def test_returns_true_for_google_zero_empty_reason(self):
+        """Empty-string reason is also considered 'no reason'."""
+        result = MagicMock()
+        result.value = 0.0
+        result.reason = ""
+        assert is_instructor_silent_zero(result, "google") is True
+
+    def test_returns_false_for_google_zero_with_reason(self):
+        """When reason is present, 0.0 is a legitimate score, not a silent failure."""
+        result = MagicMock()
+        result.value = 0.0
+        result.reason = "No relevant context found for the question"
+        assert is_instructor_silent_zero(result, "google") is False
+
+    def test_returns_false_for_google_nonzero_no_reason(self):
+        """Non-zero value with no reason is not the silent-zero bug."""
+        result = MagicMock()
+        result.value = 0.85
+        result.reason = None
+        assert is_instructor_silent_zero(result, "google") is False
+
+    def test_returns_false_for_anthropic_zero_no_reason(self):
+        """Silent-zero detection applies only to the google provider."""
+        result = MagicMock()
+        result.value = 0.0
+        result.reason = None
+        assert is_instructor_silent_zero(result, "anthropic") is False
+
+    def test_returns_false_for_vertex_anthropic_zero_no_reason(self):
+        """vertex-anthropic provider is not affected by instructor#1658."""
+        result = MagicMock()
+        result.value = 0.0
+        result.reason = None
+        assert is_instructor_silent_zero(result, "vertex-anthropic") is False
+
+    def test_returns_false_for_plain_float_result(self):
+        """A plain float return from ascore() bypasses structured-output parsing entirely."""
+        assert is_instructor_silent_zero(0.0, "google") is False
+
+    def test_instructor_silent_zero_error_is_runtime_error(self):
+        """InstructorSilentZeroError must subclass RuntimeError for consistent handling."""
+        exc = InstructorSilentZeroError("test message")
+        assert isinstance(exc, RuntimeError)
+
+    def test_instructor_silent_zero_error_message(self):
+        """Error message should mention instructor#1658 for traceability."""
+        msg = "instructor#1658: silent zero"
+        exc = InstructorSilentZeroError(msg)
+        assert "instructor#1658" in str(exc)
+
+
+class TestSilentZeroHandlingFaithfulness:
+    """Faithfulness metric skips sessions with instructor#1658 silent-zero scores."""
+
+    def test_silent_zero_skipped_not_averaged(self, monkeypatch: pytest.MonkeyPatch):
+        """When Google returns 0.0 with no reason, session is skipped, not averaged."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = None  # instructor#1658 silent zero
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="google")
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "instructor#1658" in result.details.get("skipped", "")
+        assert result.details.get("silent_zero_sessions") == 1
+
+    def test_legitimate_zero_from_google_with_reason_is_kept(self, monkeypatch: pytest.MonkeyPatch):
+        """When Google returns 0.0 with a reason, it is a real score and must be included."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = "No faithful statements found"
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="google")
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.0)
+        assert result.details["samples_scored"] == 1
+
+    def test_non_google_zero_no_reason_is_kept(self, monkeypatch: pytest.MonkeyPatch):
+        """Silent-zero guard only fires for google; anthropic 0.0 without reason is kept."""
+        from raki.metrics.ragas.faithfulness import FaithfulnessMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = None
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_faithfulness_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_faithfulness_class, "Faithfulness")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="anthropic")
+
+        with patch(
+            "raki.metrics.ragas.faithfulness.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = FaithfulnessMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.0)
+        assert result.details["samples_scored"] == 1
+
+
+class TestSilentZeroHandlingPrecision:
+    """ContextPrecision metric skips sessions with instructor#1658 silent-zero scores."""
+
+    def test_silent_zero_skipped_not_averaged(self, monkeypatch: pytest.MonkeyPatch):
+        """When Google returns 0.0 with no reason, session is skipped, not averaged."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = None  # instructor#1658 silent zero
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_precision_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_precision_class, "ContextPrecisionWithReference")
+
+        ground_truth = GroundTruth(
+            question="How to validate?",
+            reference_answer="Use pydantic",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="google")
+
+        with patch(
+            "raki.metrics.ragas.precision.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextPrecisionMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "instructor#1658" in result.details.get("skipped", "")
+        assert result.details.get("silent_zero_sessions") == 1
+
+    def test_legitimate_zero_from_google_with_reason_is_kept(self, monkeypatch: pytest.MonkeyPatch):
+        """When Google returns 0.0 with a reason, it is a real score."""
+        from raki.metrics.ragas.precision import ContextPrecisionMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = "No relevant context found"
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_precision_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_precision_class, "ContextPrecisionWithReference")
+
+        ground_truth = GroundTruth(
+            question="Q?",
+            reference_answer="A",
+            domains=[],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="google")
+
+        with patch(
+            "raki.metrics.ragas.precision.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextPrecisionMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.0)
+        assert result.details["samples_scored"] == 1
+
+
+class TestSilentZeroHandlingRecall:
+    """ContextRecall metric skips sessions with instructor#1658 silent-zero scores."""
+
+    def test_silent_zero_skipped_not_averaged(self, monkeypatch: pytest.MonkeyPatch):
+        """When Google returns 0.0 with no reason, session is skipped, not averaged."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = None  # instructor#1658 silent zero
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_recall_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_recall_class, "ContextRecall")
+
+        ground_truth = GroundTruth(
+            question="How to validate?",
+            reference_answer="Use pydantic",
+            domains=["validation"],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="google")
+
+        with patch(
+            "raki.metrics.ragas.recall.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextRecallMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "instructor#1658" in result.details.get("skipped", "")
+        assert result.details.get("silent_zero_sessions") == 1
+
+    def test_legitimate_zero_from_google_with_reason_is_kept(self, monkeypatch: pytest.MonkeyPatch):
+        """When Google returns 0.0 with a reason, it is a real score."""
+        from raki.metrics.ragas.recall import ContextRecallMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = "No recall found"
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_recall_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_recall_class, "ContextRecall")
+
+        ground_truth = GroundTruth(
+            question="Q?",
+            reference_answer="A",
+            domains=[],
+        )
+        sample = _make_sample_with_knowledge(ground_truth=ground_truth)
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="google")
+
+        with patch(
+            "raki.metrics.ragas.recall.create_ragas_llm",
+            return_value=MagicMock(),
+        ):
+            metric = ContextRecallMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.0)
+        assert result.details["samples_scored"] == 1
+
+
+class TestSilentZeroHandlingRelevancy:
+    """AnswerRelevancy metric skips sessions with instructor#1658 silent-zero scores."""
+
+    def test_silent_zero_skipped_not_averaged(self, monkeypatch: pytest.MonkeyPatch):
+        """When Google returns 0.0 with no reason, session is skipped, not averaged."""
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = None  # instructor#1658 silent zero
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_relevancy_class, "AnswerRelevancy")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="google")
+
+        with (
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_embeddings",
+                return_value=MagicMock(),
+            ),
+        ):
+            metric = AnswerRelevancyMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score is None
+        assert "instructor#1658" in result.details.get("skipped", "")
+        assert result.details.get("silent_zero_sessions") == 1
+
+    def test_legitimate_zero_from_google_with_reason_is_kept(self, monkeypatch: pytest.MonkeyPatch):
+        """When Google returns 0.0 with a reason, it is a real score."""
+        from raki.metrics.ragas.relevancy import AnswerRelevancyMetric
+
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = "The response does not address the question"
+
+        mock_metric_instance = MagicMock()
+        mock_metric_instance.ascore = AsyncMock(return_value=mock_result)
+
+        mock_relevancy_class = MagicMock(return_value=mock_metric_instance)
+        _install_ragas_mock(monkeypatch, mock_relevancy_class, "AnswerRelevancy")
+
+        sample = _make_sample_with_knowledge()
+        dataset = EvalDataset(samples=[sample])
+        config = MetricConfig(llm_provider="google")
+
+        with (
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_llm",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "raki.metrics.ragas.relevancy.create_ragas_embeddings",
+                return_value=MagicMock(),
+            ),
+        ):
+            metric = AnswerRelevancyMetric()
+            result = metric.compute(dataset, config)
+
+        assert result.score == pytest.approx(0.0)
+        assert result.details["samples_scored"] == 1
+
+
+class TestGoogleProviderTopPRemoval:
+    """Google provider must have top_p removed from model_args (mirrors Anthropic fix)."""
+
+    def test_google_provider_pops_top_p_from_model_args(self, monkeypatch):
+        """top_p must be removed from Google LLM model_args to prevent API rejection."""
+        import sys
+
+        mock_client = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = mock_client
+        mock_google_module = MagicMock()
+        mock_google_module.genai = mock_genai
+        monkeypatch.setitem(sys.modules, "google", mock_google_module)
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+
+        # LLM returned by factory has top_p in model_args
+        mock_llm = MagicMock()
+        mock_llm.model_args = {"temperature": 0.0, "top_p": 0.9, "max_tokens": 4096}
+        mock_factory = MagicMock(return_value=mock_llm)
+        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+
+        from importlib import reload
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        result = llm_setup.create_ragas_llm(config)
+
+        # top_p must have been removed
+        assert "top_p" not in result.model_args
+
+    def test_google_provider_top_p_removal_is_safe_when_absent(self, monkeypatch):
+        """Removing top_p when not present must not raise KeyError."""
+        import sys
+
+        mock_client = MagicMock()
+        mock_genai = MagicMock()
+        mock_genai.Client.return_value = mock_client
+        mock_google_module = MagicMock()
+        mock_google_module.genai = mock_genai
+        monkeypatch.setitem(sys.modules, "google", mock_google_module)
+        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
+
+        # LLM returned by factory has no top_p
+        mock_llm = MagicMock()
+        mock_llm.model_args = {"temperature": 0.0, "max_tokens": 4096}
+        mock_factory = MagicMock(return_value=mock_llm)
+        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+
+        from importlib import reload
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+
+        # Must not raise
+        result = llm_setup.create_ragas_llm(config)
+        assert result is mock_llm
 
 
 # ---------------------------------------------------------------------------

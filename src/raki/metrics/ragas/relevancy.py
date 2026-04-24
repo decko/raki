@@ -12,7 +12,13 @@ import logging
 
 from raki.adapters.redact import redact_sensitive
 from raki.metrics.protocol import MetricConfig
-from raki.metrics.ragas.adapter import detect_context_source, is_max_tokens_error, to_ragas_rows
+from raki.metrics.ragas.adapter import (
+    InstructorSilentZeroError,
+    detect_context_source,
+    is_instructor_silent_zero,
+    is_max_tokens_error,
+    to_ragas_rows,
+)
 from raki.metrics.ragas.async_utils import run_async
 from raki.metrics.ragas.llm_setup import JudgeLogger, create_ragas_embeddings, create_ragas_llm
 from raki.model import EvalDataset
@@ -79,6 +85,7 @@ class AnswerRelevancyMetric:
         sample_scores: dict[str, float] = {}
         scores: list[float] = []
         max_tokens_failures: list[str] = []
+        silent_zero_failures: list[str] = []
 
         async def score_all():
             semaphore = asyncio.Semaphore(config.batch_size)
@@ -90,6 +97,12 @@ class AnswerRelevancyMetric:
                             user_input=row.user_input,
                             response=row.response,
                         )
+                        if is_instructor_silent_zero(result, config.llm_provider):
+                            raise InstructorSilentZeroError(
+                                f"instructor#1658: Google provider returned silent 0.0 "
+                                f"for session {row.session_id}; treating as failure to "
+                                "avoid polluting metric average"
+                            )
                         score = result if isinstance(result, float) else result.value
                         scores.append(score)
                         sample_scores[row.session_id] = score
@@ -100,6 +113,8 @@ class AnswerRelevancyMetric:
                         safe_error = redact_sensitive(f"ERROR: {exc}")
                         if is_max_tokens_error(exc):
                             max_tokens_failures.append(row.session_id)
+                        elif isinstance(exc, InstructorSilentZeroError):
+                            silent_zero_failures.append(row.session_id)
                         logger.warning(
                             "answer_relevancy scoring failed for session %s: %s",
                             row.session_id,
@@ -123,6 +138,20 @@ class AnswerRelevancyMetric:
                 },
             )
 
+        # If all failures were instructor#1658 silent-zero errors, return score=None
+        if not scores and silent_zero_failures:
+            return MetricResult(
+                name=self.name,
+                score=None,
+                details={
+                    "skipped": (
+                        "instructor#1658: Google provider returned only silent 0.0 scores; "
+                        "possible structured-output parsing failures"
+                    ),
+                    "silent_zero_sessions": len(silent_zero_failures),
+                },
+            )
+
         mean_score = sum(scores) / len(scores) if scores else 0.0
 
         # Determine context_source from the dataset samples
@@ -136,6 +165,14 @@ class AnswerRelevancyMetric:
                 "Designed for NL answers, not code -- scores may be noisy for agentic sessions"
             ),
         }
+        if max_tokens_failures:
+            details["max_tokens_sessions"] = len(max_tokens_failures)
+        if silent_zero_failures:
+            details["silent_zero_sessions"] = len(silent_zero_failures)
+            details["silent_zero_warning"] = (
+                f"instructor#1658: {len(silent_zero_failures)} session(s) returned silent 0.0 "
+                "from Google provider and were excluded from the score"
+            )
         if context_source is not None:
             details["context_source"] = context_source
 
