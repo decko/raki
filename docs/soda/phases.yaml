@@ -1,0 +1,140 @@
+# RAKI Development Pipeline — SODA Phase Configuration
+#
+# Phases: triage → plan → implement → verify → review → submit → monitor
+#
+# The review phase acts as a multi-specialist code review gate.
+# If review finds CRITICAL or IMPORTANT issues, it routes back to
+# implement for rework (handled by the pipeline engine).
+
+phases:
+  - name: triage
+    prompt: prompts/triage.md
+    schema: schemas/triage.json
+    tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash(git:*)
+      - Bash(ls:*)
+      - Bash(uv:run raki metrics*)
+    timeout: 3m
+    retry:
+      transient: 2
+      parse: 1
+      semantic: 1
+    depends_on: []
+
+  - name: plan
+    prompt: prompts/plan.md
+    schema: schemas/plan.json
+    model: claude-opus-4-6[1m]
+    tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash(git:*)
+      - Bash(ls:*)
+    timeout: 10m
+    retry:
+      transient: 2
+      parse: 1
+      semantic: 1
+    depends_on:
+      - triage
+
+  - name: implement
+    prompt: prompts/implement.md
+    schema: schemas/implement.json
+    tools:
+      - Read
+      - Write
+      - Edit
+      - Glob
+      - Grep
+      - Bash
+    timeout: 30m
+    retry:
+      transient: 2
+      parse: 1
+      semantic: 0
+    depends_on:
+      - plan
+
+  - name: verify
+    prompt: prompts/verify.md
+    schema: schemas/verify.json
+    tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash
+    timeout: 10m
+    retry:
+      transient: 2
+      parse: 1
+      semantic: 1
+    depends_on:
+      - plan
+      - implement
+
+  - name: review
+    prompt: prompts/review.md
+    schema: schemas/review.json
+    model: claude-opus-4-6[1m]
+    tools:
+      - Read
+      - Glob
+      - Grep
+      - Bash(git:*)
+      - Bash(uv:run pytest*)
+      - Bash(uv:run ruff*)
+      - Bash(uv:run ty*)
+    timeout: 8m
+    retry:
+      transient: 2
+      parse: 1
+      semantic: 0
+    depends_on:
+      - implement
+      - verify
+
+  - name: submit
+    prompt: prompts/submit.md
+    schema: schemas/submit.json
+    tools:
+      - Bash(git:*)
+      - Bash(gh:*)
+    timeout: 3m
+    retry:
+      transient: 2
+      parse: 1
+      semantic: 0
+    depends_on:
+      - implement
+      - verify
+      - review
+
+  # monitor phase disabled for now — human handles PR feedback
+  # - name: monitor
+  #   prompt: prompts/monitor.md
+  #   schema: schemas/monitor.go
+  #   type: polling
+  #   tools:
+  #     - Read
+  #     - Write
+  #     - Edit
+  #     - Glob
+  #     - Grep
+  #     - Bash
+  #   polling:
+  #     initial_interval: 2m
+  #     max_interval: 5m
+  #     escalate_after: 30m
+  #     max_duration: 4h
+  #     max_response_rounds: 3
+  #   retry:
+  #     transient: 2
+  #     parse: 1
+  #     semantic: 0
+  #   depends_on:
+  #     - submit

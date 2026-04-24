@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["ticket_key", "code_area", "files", "complexity", "approach", "risks", "specialists", "automatable"],
+  "properties": {
+    "ticket_key": {
+      "type": "string"
+    },
+    "code_area": {
+      "type": "string"
+    },
+    "files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "complexity": {
+      "type": "string",
+      "enum": ["small", "medium", "large"]
+    },
+    "approach": {
+      "type": "string"
+    },
+    "risks": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "specialists": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["python", "security", "rag", "doc"]
+      }
+    },
+    "automatable": {
+      "type": "boolean"
+    },
+    "block_reason": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

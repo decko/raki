@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["ticket_key", "approach", "tasks", "verification"],
+  "properties": {
+    "ticket_key": {
+      "type": "string"
+    },
+    "approach": {
+      "type": "string"
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "files", "failing_test", "done_when"],
+        "properties": {
+          "id": { "type": "string" },
+          "description": { "type": "string" },
+          "files": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "failing_test": { "type": "string" },
+          "done_when": { "type": "string" },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["commands"],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "manual_steps": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "deviations": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}
