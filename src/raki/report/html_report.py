@@ -445,6 +445,19 @@ def rework_cycles_color(value: float) -> str:
     return "red"
 
 
+def collect_agent_models(report: EvalReport) -> list[str]:
+    """Collect distinct agent model IDs from sample results, sorted for determinism.
+
+    Returns an empty list when no sample has a model_id set.
+    """
+    models: set[str] = set()
+    for sample_result in report.sample_results:
+        model_id = sample_result.sample.session.model_id
+        if model_id:
+            models.add(model_id)
+    return sorted(models)
+
+
 def _collect_recurring_failures(report: EvalReport) -> list[RecurringFailure]:
     """Find issues that recur across multiple sessions, sorted by count descending."""
     issue_counter: Counter[str] = Counter()

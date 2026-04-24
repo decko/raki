@@ -1973,3 +1973,71 @@ class TestPassRowsClean:
         summary_end = content.find("</summary>", minor_idx)
         row_text = content[minor_idx:summary_end]
         assert "1 minor" in row_text or "minor" in row_text.lower()
+
+
+class TestCollectAgentModels:
+    """collect_agent_models helper — extracts distinct model IDs from sample results."""
+
+    def test_empty_when_no_model_ids(self) -> None:
+        """Returns empty list when no session has a model_id."""
+        from raki.report.html_report import collect_agent_models
+
+        report = _make_report_with_samples()
+        assert collect_agent_models(report) == []
+
+    def test_returns_unique_sorted_model_ids(self) -> None:
+        """Returns a sorted, deduplicated list of model IDs."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import collect_agent_models
+
+        sample_a = make_sample("s1", model_id="claude-opus-4")
+        sample_b = make_sample("s2", model_id="claude-sonnet-4-6")
+        sample_c = make_sample("s3", model_id="claude-opus-4")  # duplicate
+        report = EvalReport(
+            run_id="model-test",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=sample_a, scores=[]),
+                SampleResult(sample=sample_b, scores=[]),
+                SampleResult(sample=sample_c, scores=[]),
+            ],
+        )
+        models = collect_agent_models(report)
+        assert models == ["claude-opus-4", "claude-sonnet-4-6"]
+
+    def test_single_model_id(self) -> None:
+        """Returns a one-element list when all sessions use the same model."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import collect_agent_models
+
+        sample = make_sample("s1", model_id="gemini-pro")
+        report = EvalReport(
+            run_id="single-model",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        assert collect_agent_models(report) == ["gemini-pro"]
+
+    def test_ignores_none_model_ids(self) -> None:
+        """Sessions with model_id=None are excluded from the result."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import collect_agent_models
+
+        sample_with = make_sample("s1", model_id="claude-opus-4")
+        sample_without = make_sample("s2", model_id=None)
+        report = EvalReport(
+            run_id="mixed-model",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=sample_with, scores=[]),
+                SampleResult(sample=sample_without, scores=[]),
+            ],
+        )
+        assert collect_agent_models(report) == ["claude-opus-4"]
+
+    def test_empty_sample_results(self) -> None:
+        """Returns empty list when sample_results is empty."""
+        from raki.report.html_report import collect_agent_models
+
+        report = _make_minimal_report()
+        assert collect_agent_models(report) == []
