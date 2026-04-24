@@ -108,9 +108,6 @@ def main():
 @click.option("-m", "--manifest", "manifest_path", default=None, help="Path to manifest file")
 @click.option("-o", "--output", "output_dir", default="./results", help="Output directory")
 @click.option("--judge", is_flag=True, default=False, help="Enable LLM-judged analytical metrics")
-@click.option(
-    "--no-llm", is_flag=True, help="[Deprecated] Skip LLM-backed metrics (now the default)"
-)
 @click.option("-q", "--quiet", is_flag=True, help="CI mode -- minimal output")
 @click.option(
     "--threshold", type=float, default=None, help="[Deprecated] Min score for exit code 0"
@@ -186,7 +183,6 @@ def run(
     manifest_path: str | None,
     output_dir: str,
     judge: bool,
-    no_llm: bool,
     quiet: bool,
     threshold: float | None,
     gate_thresholds: tuple[str, ...],
@@ -204,22 +200,8 @@ def run(
     no_history: bool,
 ) -> None:
     """Run evaluation against sessions."""
-    if judge and no_llm:
-        raise click.UsageError(
-            "--judge and --no-llm cannot be used together. "
-            "--no-llm is deprecated and now the default."
-        )
-
     if no_history and history_path_arg is not None:
         raise click.UsageError("--no-history and --history-path cannot be used together.")
-
-    if no_llm:
-        click.echo(
-            "Warning: --no-llm is deprecated and now the default behavior. "
-            "Use --judge to enable LLM-judged metrics. "
-            "--no-llm will be removed in v0.8.0.",
-            err=True,
-        )
 
     skip_llm = not judge
 
