@@ -232,6 +232,12 @@ The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated develo
 12. **N/A display convention** -- metrics signal "no data" via `details` dict: `sessions_with_*: 0` for missing session fields, `skipped: "<reason>"` for Ragas metrics without ground truth. Renderers check these to show "N/A (reason)" instead of misleading 0.0.
 13. **Ground truth matching is fragile** -- `match_ground_truth()` uses `code_area` domain-token overlap from triage phases only. Sessions without a triage phase will not match. Low match rate triggers a CLI warning.
 14. **`scikit-network` requires C++ compiler** -- the `ragas` extra pulls `scikit-network` which needs `g++`. Documented in getting-started.md.
+15. **`max_tokens=4096` on `llm_factory()`** -- Ragas defaults to `max_tokens=1024` for LLM output. Structured output via instructor overflows at 1024. All `llm_factory()` calls must pass `max_tokens=4096`.
+16. **Three-tier metric categories** -- Operational (zero config, in `ALL_OPERATIONAL`), Knowledge (`--docs-path`, in `ALL_KNOWLEDGE`), Analytical (`--judge`, Ragas metrics). Each category has its own CLI section header and registration path.
+17. **Knowledge matching is hybrid** -- `_common.py` uses path matching (finding file vs chunk domain) + word matching (>=3 non-stop-word overlap) with confidence tiers (strong/domain/content/None). Only strong + domain tiers count as "covered." Do not revert to simple word overlap.
+18. **`--gate` is the canonical threshold flag** -- not `--threshold`. The old float-only `--threshold` is deprecated. All docs and examples use `--gate 'metric>value'`.
+19. **Google provider has silent 0.0 bug** -- instructor #1658 causes Gemini structured output to silently return default values. `is_instructor_silent_zero()` in `adapter.py` detects this. Affected sessions are excluded from the metric average with a warning.
+20. **Soda implement prompt must say "complete"** -- TDD "minimal implementation" instruction causes agents to shortcut complex designs (tweak a constant instead of building the full system). The soda implement prompt says "Write the complete implementation as described in the task."
 
 ## Things agents often get wrong here
 
@@ -252,3 +258,7 @@ The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated develo
 - Showing 0.0 for metrics with no data instead of N/A (check `sessions_with_*` / `skipped` keys).
 - Calling `llm_factory()` without `provider="anthropic"` (defaults to openai, fails).
 - Not creating a towncrier fragment for user-facing changes.
+- Implementing only the easiest parts of a multi-task plan and skipping the complex ones (build the full design, not a shortcut).
+- Using old metric names (`first_pass_verify_rate` was renamed to `first_pass_success_rate` in v0.8.0).
+- Passing all doc chunks to Ragas instead of selecting top-N relevant ones per session.
+- Not testing against real soda data (`~/dev/soda/.soda/`) before claiming a feature works. Unit tests verify code, not features.
