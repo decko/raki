@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["ticket_key", "pr_url", "comments_handled", "tests_passed"],
+  "properties": {
+    "ticket_key": {
+      "type": "string"
+    },
+    "pr_url": {
+      "type": "string"
+    },
+    "comments_handled": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["comment_id", "author", "action", "response"],
+        "properties": {
+          "comment_id": { "type": "string" },
+          "author": { "type": "string" },
+          "content": { "type": "string" },
+          "action": {
+            "type": "string",
+            "enum": ["fixed", "explained", "deferred"]
+          },
+          "response": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "action"],
+        "properties": {
+          "path": { "type": "string" },
+          "action": {
+            "type": "string",
+            "enum": ["created", "modified", "deleted"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "commits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["hash", "message"],
+        "properties": {
+          "hash": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "tests_passed": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

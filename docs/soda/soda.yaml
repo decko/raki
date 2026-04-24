@@ -1,0 +1,52 @@
+# RAKI development pipeline configuration for SODA
+
+# Ticket source
+ticket_source: github
+github:
+  repo: decko/raki
+  query: "is:open label:spec-ready label:plan-ready"
+
+# Execution mode
+mode: checkpoint   # pause at review for human oversight
+
+# Model
+model: claude-sonnet-4-6
+
+# Worktrees
+worktree_dir: .worktrees
+
+# State directory
+state_dir: .soda
+
+# Budget
+limits:
+  max_cost_per_ticket: 20.00
+  max_cost_per_phase: 10.00
+
+# Project context — injected into every phase system prompt
+context:
+  - AGENTS.md
+
+# Phase-specific context
+phase_context:
+  plan:
+    - docs/interpreting-results.md
+  implement:
+    - docs/interpreting-results.md
+  verify:
+    - docs/interpreting-results.md
+
+# Repo configuration
+repos:
+  - name: raki
+    forge: github
+    push_to: decko/raki
+    target: decko/raki
+    description: "Retrieval Assessment for Knowledge Impact — agentic RAG evaluation CLI"
+    formatter: "uv run ruff format src/ tests/"
+    test_command: "uv run pytest tests/ -v -m 'not slow'"
+    labels:
+      - ai-assisted
+    trailers:
+      - "Assisted-by: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+      - "Assigned-by: decko"
