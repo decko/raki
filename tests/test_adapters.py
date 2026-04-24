@@ -1933,7 +1933,65 @@ class TestAlcoveContextExtraction:
 # --- Alcove rework_cycles support (issue #176) ---
 
 
+def _tool_use_block(tool_id: str, tool_name: str, tool_input: dict) -> dict:
+    """Build an assistant entry containing a single tool_use block."""
+    return {
+        "type": "assistant",
+        "message": {
+            "id": f"msg_{tool_id}",
+            "role": "assistant",
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+            "content": [
+                {
+                    "id": tool_id,
+                    "name": tool_name,
+                    "type": "tool_use",
+                    "input": tool_input,
+                }
+            ],
+        },
+    }
+
+
+def _tool_result_block(tool_id: str, content: str, is_error: bool = False) -> dict:
+    """Build a user entry containing a single tool_result block."""
+    return {
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "content": content,
+                    "tool_use_id": tool_id,
+                    "is_error": is_error,
+                }
+            ],
+        },
+        "timestamp": "2026-04-16T12:11:06.161Z",
+    }
+
+
+def _make_transcript_session(tmp_path, transcript_entries, overrides=None):
+    """Create a classic alcove session file with the given transcript entries."""
+    data = {
+        "session_id": "rework-detect-test",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            *transcript_entries,
+            {"type": "result", "total_cost_usd": 0.05, "duration_ms": 30000},
+        ],
+    }
+    if overrides:
+        data.update(overrides)
+    session_file = tmp_path / "rework-test.json"
+    session_file.write_text(json.dumps(data))
+    return session_file
+
+
 class TestAlcoveReworkCycles:
+    """Tests for rework cycle detection from transcript tool calls."""
+
     def test_rework_cycles_from_bridge_top_level(self, tmp_path):
         """Bridge format with rework_cycles at top level should populate session.rework_cycles."""
         source = _bridge_session(tmp_path, overrides={"rework_cycles": 2})
@@ -1941,25 +1999,142 @@ class TestAlcoveReworkCycles:
         sample = adapter.load(source)
         assert sample.session.rework_cycles == 2
 
-    def test_rework_cycles_defaults_to_zero_when_absent(self, tmp_path):
-        """Bridge format without rework_cycles field should default to 0."""
-        source = _bridge_session(tmp_path)
+    def test_explicit_rework_cycles_overrides_detection(self, tmp_path):
+        """When rework_cycles is explicitly set in the JSON, detection is skipped."""
+        # Build a transcript with a detectable rework cycle but override with explicit 0
+        entries = [
+            _tool_use_block("t1", "Edit", {"file_path": "/src/main.py"}),
+            _tool_result_block("t1", "file written"),
+            _tool_use_block("t2", "Bash", {"command": "pytest tests/"}),
+            _tool_result_block("t2", "FAILED test_main.py::test_x"),
+            _tool_use_block("t3", "Edit", {"file_path": "/src/main.py"}),
+            _tool_result_block("t3", "file fixed"),
+            _tool_use_block("t4", "Bash", {"command": "pytest tests/"}),
+            _tool_result_block("t4", "1 passed"),
+        ]
+        source = _make_transcript_session(tmp_path, entries, overrides={"rework_cycles": 0})
         adapter = AlcoveAdapter()
         sample = adapter.load(source)
+        # Explicit value takes priority over transcript detection
         assert sample.session.rework_cycles == 0
 
     def test_classic_alcove_rework_cycles_defaults_to_zero(self):
-        """Classic alcove format should default rework_cycles to 0."""
+        """Classic alcove format (simple session) should detect 0 rework cycles."""
         adapter = AlcoveAdapter()
         sample = adapter.load(ALCOVE_FIXTURE)
         assert sample.session.rework_cycles == 0
 
-    def test_rework_cycles_nonzero_updates_total_phases(self, tmp_path):
-        """rework_cycles from bridge format is read independently of phases."""
-        source = _bridge_session(tmp_path, overrides={"rework_cycles": 3})
+    def test_rework_detected_from_transcript(self, tmp_path):
+        """Test failure + edit same file + re-test = 1 rework cycle (positive case)."""
+        entries = [
+            # Write a file initially
+            _tool_use_block("t1", "Edit", {"file_path": "/src/main.py"}),
+            _tool_result_block("t1", "file written"),
+            # Run test -- fails
+            _tool_use_block("t2", "Bash", {"command": "pytest tests/"}),
+            _tool_result_block("t2", "FAILED test_main.py::test_x - AssertionError"),
+            # Fix the same file (rework edit)
+            _tool_use_block("t3", "Edit", {"file_path": "/src/main.py"}),
+            _tool_result_block("t3", "file fixed"),
+            # Re-test -- passes
+            _tool_use_block("t4", "Bash", {"command": "pytest tests/"}),
+            _tool_result_block("t4", "1 passed"),
+        ]
+        source = _make_transcript_session(tmp_path, entries)
         adapter = AlcoveAdapter()
         sample = adapter.load(source)
-        assert sample.session.rework_cycles == 3
+        assert sample.session.rework_cycles == 1
+
+    def test_multiple_rework_cycles_detected(self, tmp_path):
+        """Two failure-edit-retest sequences = 2 rework cycles."""
+        entries = [
+            # First write
+            _tool_use_block("t1", "Write", {"file_path": "/src/app.py"}),
+            _tool_result_block("t1", "file created"),
+            # First test failure
+            _tool_use_block("t2", "Bash", {"command": "uv run pytest tests/"}),
+            _tool_result_block("t2", "FAILED test_app.py"),
+            # Rework edit
+            _tool_use_block("t3", "Edit", {"file_path": "/src/app.py"}),
+            _tool_result_block("t3", "fixed"),
+            # Re-test -- fails again
+            _tool_use_block("t4", "Bash", {"command": "uv run pytest tests/"}),
+            _tool_result_block("t4", "FAILED test_app.py -- still broken"),
+            # Second rework edit
+            _tool_use_block("t5", "Edit", {"file_path": "/src/app.py"}),
+            _tool_result_block("t5", "fixed again"),
+            # Re-test -- passes
+            _tool_use_block("t6", "Bash", {"command": "uv run pytest tests/"}),
+            _tool_result_block("t6", "1 passed"),
+        ]
+        source = _make_transcript_session(tmp_path, entries)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.rework_cycles == 2
+
+    def test_tdd_workflow_zero_rework(self, tmp_path):
+        """TDD: write test first, it fails, then implement = 0 rework (negative case).
+
+        In TDD, the initial test failure happens before any implementation file
+        is written. Editing a new file (never written before the failure) is not
+        rework -- it's the first implementation pass.
+        """
+        entries = [
+            # Write test first
+            _tool_use_block("t1", "Write", {"file_path": "/tests/test_feature.py"}),
+            _tool_result_block("t1", "test file created"),
+            # Run test -- fails (expected in TDD)
+            _tool_use_block("t2", "Bash", {"command": "pytest tests/test_feature.py"}),
+            _tool_result_block("t2", "FAILED test_feature.py::test_new - no module"),
+            # Implement the feature (new file, not previously written)
+            _tool_use_block("t3", "Write", {"file_path": "/src/feature.py"}),
+            _tool_result_block("t3", "implementation created"),
+            # Re-test -- passes
+            _tool_use_block("t4", "Bash", {"command": "pytest tests/test_feature.py"}),
+            _tool_result_block("t4", "1 passed"),
+        ]
+        source = _make_transcript_session(tmp_path, entries)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.rework_cycles == 0
+
+    def test_exploratory_reads_zero_rework(self, tmp_path):
+        """A session with only Read/Grep calls produces 0 rework cycles (negative case)."""
+        entries = [
+            _tool_use_block("t1", "Read", {"file_path": "/src/main.py"}),
+            _tool_result_block("t1", "def main(): pass"),
+            _tool_use_block("t2", "Grep", {"pattern": "def validate"}),
+            _tool_result_block("t2", "src/validator.py:10: def validate_input():"),
+            _tool_use_block("t3", "Read", {"file_path": "/src/validator.py"}),
+            _tool_result_block("t3", "def validate_input(): ..."),
+        ]
+        source = _make_transcript_session(tmp_path, entries)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.rework_cycles == 0
+
+    def test_lint_failure_counts_as_rework(self, tmp_path):
+        """Lint failure (ruff/ty) + edit + re-lint = 1 rework cycle."""
+        entries = [
+            _tool_use_block("t1", "Edit", {"file_path": "/src/module.py"}),
+            _tool_result_block("t1", "file written"),
+            _tool_use_block("t2", "Bash", {"command": "uv run ruff check src/"}),
+            _tool_result_block("t2", "error: F841 unused variable 'x'"),
+            _tool_use_block("t3", "Edit", {"file_path": "/src/module.py"}),
+            _tool_result_block("t3", "fixed lint"),
+            _tool_use_block("t4", "Bash", {"command": "uv run ruff check src/"}),
+            _tool_result_block("t4", "All checks passed!"),
+        ]
+        source = _make_transcript_session(tmp_path, entries)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.rework_cycles == 1
+
+    def test_findings_remain_empty_for_classic_alcove(self):
+        """findings remains [] for classic alcove format (issue #186 out of scope)."""
+        adapter = AlcoveAdapter()
+        sample = adapter.load(ALCOVE_FIXTURE)
+        assert sample.findings == []
 
 
 # --- Alcove findings support (issue #176) ---
@@ -2185,6 +2360,105 @@ class TestAlcoveMultiplePhases:
         assert len(triage_phases) == 1
         # Non-primary phase should not have transcript output
         assert triage_phases[0].output == ""
+
+
+# --- Alcove transcript-based phase detection (issue #176) ---
+
+
+class TestAlcoveTranscriptPhaseDetection:
+    """Tests for multi-phase detection from transcript tool calls."""
+
+    def test_analysis_then_coding_then_testing_three_phases(self, tmp_path):
+        """Read -> Edit -> pytest sequence should detect 3 phases."""
+        entries = [
+            _tool_use_block("t1", "Read", {"file_path": "/src/main.py"}),
+            _tool_result_block("t1", "def main(): pass"),
+            _tool_use_block("t2", "Grep", {"pattern": "def validate"}),
+            _tool_result_block("t2", "found it"),
+            _tool_use_block("t3", "Edit", {"file_path": "/src/main.py"}),
+            _tool_result_block("t3", "file updated"),
+            _tool_use_block("t4", "Bash", {"command": "pytest tests/"}),
+            _tool_result_block("t4", "1 passed"),
+        ]
+        source = _make_transcript_session(tmp_path, entries)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        # 3 distinct phases: analysis -> coding -> testing
+        assert sample.session.total_phases == 3
+
+    def test_single_phase_all_reads(self, tmp_path):
+        """A session with only Read calls detects 1 phase (analysis only)."""
+        entries = [
+            _tool_use_block("t1", "Read", {"file_path": "/src/main.py"}),
+            _tool_result_block("t1", "def main(): pass"),
+            _tool_use_block("t2", "Read", {"file_path": "/src/utils.py"}),
+            _tool_result_block("t2", "def helper(): pass"),
+        ]
+        source = _make_transcript_session(tmp_path, entries)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.total_phases == 1
+
+    def test_no_tool_calls_defaults_to_one_phase(self, tmp_path):
+        """A session with no tool calls should default to 1 phase."""
+        entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg_01",
+                    "role": "assistant",
+                    "usage": {"input_tokens": 10, "output_tokens": 20},
+                    "content": [{"type": "text", "text": "Just text."}],
+                },
+            },
+        ]
+        source = _make_transcript_session(tmp_path, entries)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.total_phases == 1
+
+    def test_interleaved_analysis_and_coding(self, tmp_path):
+        """Read -> Edit -> Read -> Edit detects 4 phase transitions."""
+        entries = [
+            _tool_use_block("t1", "Read", {"file_path": "/src/a.py"}),
+            _tool_result_block("t1", "content a"),
+            _tool_use_block("t2", "Edit", {"file_path": "/src/a.py"}),
+            _tool_result_block("t2", "edited a"),
+            _tool_use_block("t3", "Read", {"file_path": "/src/b.py"}),
+            _tool_result_block("t3", "content b"),
+            _tool_use_block("t4", "Edit", {"file_path": "/src/b.py"}),
+            _tool_result_block("t4", "edited b"),
+        ]
+        source = _make_transcript_session(tmp_path, entries)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        # analysis -> coding -> analysis -> coding = 4 phases
+        assert sample.session.total_phases == 4
+
+    def test_phases_dict_overrides_transcript_detection(self, tmp_path):
+        """When phases dict is present in the JSON, it overrides transcript detection."""
+        phases_data = {
+            "triage": {"status": "completed", "cost_usd": 0.3, "generation": 1},
+            "implement": {"status": "completed", "cost_usd": 1.2, "generation": 1},
+        }
+        source = _bridge_session(tmp_path, overrides={"phases": phases_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.total_phases == 2
+
+    def test_phase_names_no_collision_with_session_schema(self, tmp_path):
+        """Detected phase categories (analysis/coding/testing) must not collide
+        with session_schema names (triage/plan/implement/verify) that trigger
+        context synthesis."""
+        from raki.adapters.alcove import _classify_tool_call
+
+        # The phase names returned by _classify_tool_call are:
+        # "analysis", "coding", "testing" -- none overlap with
+        # the session_schema PHASE_NAMES: "triage", "plan", "implement", "verify"
+        session_schema_names = {"triage", "plan", "implement", "verify"}
+        assert _classify_tool_call("Read", {}) not in session_schema_names
+        assert _classify_tool_call("Edit", {}) not in session_schema_names
+        assert _classify_tool_call("Bash", {"command": "pytest tests/"}) not in session_schema_names
 
 
 class TestSodaContextExtraction:
