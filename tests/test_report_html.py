@@ -1326,14 +1326,14 @@ class TestKnowledgeMissRateConditional:
 
 
 class TestRetrievalQualityConditional:
-    """Retrieval Quality hidden in --no-llm mode."""
+    """Retrieval Quality hidden when --judge is not passed."""
 
-    def test_no_llm_footnote_when_no_retrieval(self, tmp_path: Path) -> None:
+    def test_footnote_when_no_retrieval(self, tmp_path: Path) -> None:
         """When has_retrieval=False, a footnote should appear instead of retrieval section."""
         from raki.report.html_report import write_html_report
 
         report = EvalReport(
-            run_id="eval-no-llm",
+            run_id="eval-no-retrieval",
             timestamp=datetime(2026, 4, 18, 12, 0, 0, tzinfo=timezone.utc),
             aggregate_scores={
                 "first_pass_success_rate": 0.85,
@@ -1342,7 +1342,10 @@ class TestRetrievalQualityConditional:
         output = tmp_path / "report.html"
         write_html_report(report, output, has_retrieval=False)
         content = output.read_text()
-        assert "Retrieval metrics omitted" in content or "without --no-llm" in content
+        assert (
+            "Retrieval metrics omitted" in content
+            or "Retrieval metrics require LLM judge" in content
+        )
 
 
 class TestReworkCyclesColorThresholds:

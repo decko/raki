@@ -156,7 +156,7 @@ class TestCliRunDefaultManifest:
 
 
 class TestCliRunThreshold:
-    def test_warns_threshold_with_no_llm(self, empty_manifest):
+    def test_warns_threshold_without_judge(self, empty_manifest):
         runner = CliRunner()
         result = runner.invoke(
             main,
@@ -1338,9 +1338,9 @@ class TestCliReportDiff:
 
 
 class TestCLIInversion:
-    """Tests for issue #112: --judge opt-in, --no-llm deprecated."""
+    """Tests for issue #112: --judge opt-in; LLM metrics off by default."""
 
-    def test_run_defaults_to_no_llm(self, manifest_with_session, tmp_path):
+    def test_run_defaults_to_skip_llm(self, manifest_with_session, tmp_path):
         """run without --judge should NOT run LLM metrics (skip_llm=True)."""
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
@@ -1378,30 +1378,10 @@ class TestCLIInversion:
             _call_args, call_kwargs = mock_run.call_args
             assert call_kwargs.get("skip_llm") is False
 
-    def test_no_llm_prints_deprecation(self, empty_manifest):
-        """--no-llm should print a deprecation warning to stderr."""
-        runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["run", "-m", str(empty_manifest), "--no-llm", "-q"],
-        )
-        assert result.exit_code == 0
-        assert "--no-llm is deprecated" in result.stderr
-
-    def test_judge_and_no_llm_conflict(self, empty_manifest):
-        """--judge --no-llm should produce an error."""
-        runner = CliRunner()
-        result = runner.invoke(
-            main,
-            ["run", "-m", str(empty_manifest), "--judge", "--no-llm"],
-        )
-        assert result.exit_code != 0
-        assert "--judge" in result.output and "--no-llm" in result.output
-
-    def test_report_defaults_to_no_llm(self, manifest_with_session, tmp_path):
-        """report subcommand is not affected (report doesn't have --no-llm/--judge)."""
+    def test_report_subcommand_unaffected(self, manifest_with_session, tmp_path):
+        """report subcommand re-renders from saved JSON without running metrics."""
         # The report command re-renders from saved JSON, it doesn't run metrics.
-        # This test verifies report still works without any new flags.
+        # This test verifies report still works without any flags.
         report_json = tmp_path / "report.json"
         _write_report_json(report_json, include_sessions=True)
         runner = CliRunner()
@@ -1765,7 +1745,7 @@ class TestValidateDeep:
         # The deep section should not have ground truth checks
         assert "Ground truth loading" not in result.output
 
-    def test_deep_no_llm_calls(self, manifest_with_session):
+    def test_deep_no_llm_metric_calls(self, manifest_with_session):
         """--deep should not trigger any LLM metric computation."""
         manifest, _sessions = manifest_with_session
         runner = CliRunner()
