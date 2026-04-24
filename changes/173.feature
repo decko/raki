@@ -1,0 +1,1 @@
+Serialize judge configuration fields (``llm_provider``, ``llm_model``, ``temperature``, ``batch_size``) into the report JSON ``config`` dict. This enables reproducibility auditing and debugging of differing scores across runs with different judge settings.
