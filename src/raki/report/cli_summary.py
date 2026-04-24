@@ -379,6 +379,12 @@ def print_diff_summary(
         f"Comparing [bold]{diff.baseline_run_id}[/bold] → [bold]{diff.compare_run_id}[/bold]"
     )
 
+    # Judge config mismatch warnings
+    if diff.judge_config_mismatch:
+        for warning_message in diff.judge_config_mismatch:
+            output_console.print(f"[yellow]Warning: {warning_message}[/yellow]")
+        output_console.print()
+
     # Coverage line
     match_result = diff.match_result
     matched_count = len(match_result.matched_ids)
