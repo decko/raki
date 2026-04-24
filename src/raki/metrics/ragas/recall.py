@@ -135,12 +135,21 @@ class ContextRecallMetric:
             )
 
         mean_score = sum(scores) / len(scores) if scores else 0.0
+        details: dict = {
+            "samples_scored": len(scores),
+            "samples_skipped": len(rows_with_ref) - len(scores),
+        }
+        if max_tokens_failures:
+            details["max_tokens_sessions"] = len(max_tokens_failures)
+        if silent_zero_failures:
+            details["silent_zero_sessions"] = len(silent_zero_failures)
+            details["silent_zero_warning"] = (
+                f"instructor#1658: {len(silent_zero_failures)} session(s) returned silent 0.0 "
+                "from Google provider and were excluded from the score"
+            )
         return MetricResult(
             name=self.name,
             score=mean_score,
-            details={
-                "samples_scored": len(scores),
-                "samples_skipped": len(rows_with_ref) - len(scores),
-            },
+            details=details,
             sample_scores=sample_scores,
         )
