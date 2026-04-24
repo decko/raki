@@ -89,11 +89,7 @@ def compare_judge_configs(baseline: EvalReport, compare: EvalReport) -> list[str
 
     # One used a judge, the other did not
     if baseline_skip != compare_skip:
-        which = "compare" if baseline_skip else "baseline"
-        return [
-            f"judge was enabled in only one report ({which} has no judge metrics) "
-            f"— retrieval scores are not comparable"
-        ]
+        return ["unknown baseline — cannot compare judge calibration"]
 
     # Both used a judge — compare individual config fields
     warnings: list[str] = []

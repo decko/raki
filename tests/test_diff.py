@@ -720,8 +720,8 @@ class TestCompareJudgeConfigs:
         )
         compare = _make_eval_report_with_config("comp", {}, config={"skip_llm": True})
         warnings = compare_judge_configs(baseline, compare)
-        assert len(warnings) >= 1
-        assert any("judge" in warning.lower() for warning in warnings)
+        assert len(warnings) == 1
+        assert "unknown baseline — cannot compare judge calibration" in warnings[0]
 
     def test_missing_config_treated_as_no_judge(self):
         """When config is missing (old reports), treated as skip_llm=True — no warnings."""
@@ -739,7 +739,8 @@ class TestCompareJudgeConfigs:
             config={"skip_llm": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"},
         )
         warnings = compare_judge_configs(baseline, compare)
-        assert len(warnings) >= 1
+        assert len(warnings) == 1
+        assert "unknown baseline — cannot compare judge calibration" in warnings[0]
 
 
 class TestDiffReportJudgeConfigMismatch:
