@@ -1,3 +1,30 @@
+## [0.9.0] — 2026-04-24
+
+### Features
+
+- Append a compact JSONL entry to ``.raki/history.jsonl`` after every ``raki run`` so metric trends can be tracked across evaluation runs. Each line records ``run_id``, ``timestamp``, ``sessions_count``, ``metrics``, ``config_hash``, ``git_sha``, and ``manifest``. Use ``--history-path PATH`` to write to a custom location, or ``--no-history`` to skip the log entirely. (#170)
+- Add ``raki trends`` command — show metric trajectories over time from the JSONL history log.
+
+  ``raki trends`` reads ``.raki/history.jsonl`` and displays a sparkline + delta table for every metric, grouped by tier (Operational → Knowledge → Analytical). Key options:
+
+  - ``--metrics NAMES`` — comma-separated filter to specific metrics (validates against known names)
+  - ``--since DATE`` / ``--until DATE`` — restrict to a time window (YYYY-MM-DD)
+  - ``--last N`` — cap to the most recent N evaluation runs
+  - ``--json`` — machine-readable output with full value series and delta
+  - ``--history-path PATH`` — point to a custom history file
+
+  Metric names from older raki versions are automatically translated (e.g. ``first_pass_verify_rate`` → ``first_pass_success_rate``). Runs that did not record a given metric are silently skipped (gap handling).
+
+  (#171)
+- Serialize judge configuration fields (``llm_provider``, ``llm_model``, ``llm_temperature``, ``llm_max_tokens``) into the report JSON ``config`` dict. When ``skip_llm`` is true, all judge fields are ``None``. Old reports without these fields load without error. (#173)
+- Warn when judge configurations differ in ``--diff`` comparison. When ``raki report --diff`` compares two reports that used different LLM judge settings (model or provider), a yellow warning is now shown so users know the retrieval quality scores may not be directly comparable. (#187)
+
+### Bug Fixes
+
+- Fix Google judge provider silently returning 0.0 scores when ``instructor`` (issue #1658) fails to parse structured output. Affected sessions are now skipped with a warning and the metric returns ``score=None`` instead of a misleading zero average. Also removes ``top_p`` from Google LLM ``model_args`` to prevent API rejection when both ``temperature`` and ``top_p`` are set. (#169)
+- Alcove adapter now detects ``rework_cycles`` and ``total_phases`` from transcript tool calls instead of hardcoding 0 and 1. A rework cycle is counted when a test/lint command fails, the agent edits a previously-written file, then re-runs the test. Multi-phase detection groups tool calls into analysis (Read/Grep), coding (Write/Edit), and testing (Bash test runners) phases. Explicit ``rework_cycles`` and ``phases`` values in bridge-format JSON take priority over transcript detection. TDD workflows (test-first, then implement new files) correctly produce zero rework cycles. (#176)
+
+
 ## [0.8.0] — 2026-04-23
 
 ### Breaking Changes
