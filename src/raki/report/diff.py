@@ -74,14 +74,14 @@ def compare_judge_configs(baseline: EvalReport, compare: EvalReport) -> list[str
     Compares the ``llm_provider`` and ``llm_model`` fields stored in each report's
     ``config`` dict.  Returns an empty list when:
 
-    - Neither report used a judge (``skip_llm=True`` or config absent).
+    - Neither report used a judge (``skip_judge=True`` or config absent).
     - Both reports used identical judge settings.
 
     Returns one warning per differing field when both used a judge with different
     settings, or a single warning when only one report used a judge.
     """
-    baseline_skip = bool(baseline.config.get("skip_llm", True))
-    compare_skip = bool(compare.config.get("skip_llm", True))
+    baseline_skip = bool(baseline.config.get("skip_judge", True))
+    compare_skip = bool(compare.config.get("skip_judge", True))
 
     # Neither used a judge — nothing to compare
     if baseline_skip and compare_skip:

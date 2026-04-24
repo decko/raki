@@ -203,7 +203,7 @@ def run(
     if no_history and history_path_arg is not None:
         raise click.UsageError("--no-history and --history-path cannot be used together.")
 
-    skip_llm = not judge
+    skip_judge = not judge
 
     out = _stderr_console() if json_stdout else console
 
@@ -365,7 +365,7 @@ def run(
     # Determine whether LLM metrics are needed: only import Ragas machinery
     # when the user has opted in via --judge and the --metrics filter (if any)
     # includes at least one LLM-backed metric.
-    needs_llm = not skip_llm and (
+    needs_llm = not skip_judge and (
         requested_names is None or any(name in requested_names for name in _RAGAS_METRICS)
     )
     if needs_llm:
@@ -388,7 +388,7 @@ def run(
         all_metrics = [metric for metric in all_metrics if metric.name in requested_names]
 
     engine = MetricsEngine(all_metrics, config=config)
-    report = engine.run(dataset, skip_llm=skip_llm)
+    report = engine.run(dataset, skip_judge=skip_judge)
 
     if not quiet:
         from raki.report.cli_summary import print_summary
@@ -402,7 +402,7 @@ def run(
             metrics=all_metrics,
         )
 
-    if threshold is not None and skip_llm:
+    if threshold is not None and skip_judge:
         out.print(
             "[yellow]Warning: No retrieval metrics active — threshold applies only to "
             "LLM-backed metrics. Operational metrics use non-0-1 scales; "

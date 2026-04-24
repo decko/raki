@@ -10,7 +10,7 @@
       "cost_efficiency",
       "knowledge_retrieval_miss_rate"
     ],
-    "skip_llm": true
+    "skip_judge": true
   },
   "aggregate_scores": {
     "first_pass_verify_rate": 0.75,

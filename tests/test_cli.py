@@ -1315,7 +1315,7 @@ class TestCliReportDiff:
             run_id="base",
             aggregate_scores={"first_pass_success_rate": 0.78},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "anthropic",
                 "llm_model": "claude-opus-4",
             },
@@ -1325,7 +1325,7 @@ class TestCliReportDiff:
             run_id="comp",
             aggregate_scores={"first_pass_success_rate": 0.91},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "anthropic",
                 "llm_model": "claude-sonnet-4-6",
             },
@@ -1340,8 +1340,8 @@ class TestCliReportDiff:
 class TestCLIInversion:
     """Tests for issue #112: --judge opt-in; LLM metrics off by default."""
 
-    def test_run_defaults_to_skip_llm(self, manifest_with_session, tmp_path):
-        """run without --judge should NOT run LLM metrics (skip_llm=True)."""
+    def test_run_defaults_to_skip_judge(self, manifest_with_session, tmp_path):
+        """run without --judge should NOT run LLM metrics (skip_judge=True)."""
         manifest, _sessions = manifest_with_session
         output_dir = tmp_path / "results"
         runner = CliRunner()
@@ -1357,7 +1357,7 @@ class TestCLIInversion:
         assert "faithfulness" not in data.get("aggregate_scores", {})
 
     def test_run_with_judge_enables_llm(self, empty_manifest):
-        """run --judge should set skip_llm=False, enabling LLM metric imports."""
+        """run --judge should set skip_judge=False, enabling LLM metric imports."""
         from unittest.mock import patch
 
         from raki.model.report import EvalReport
@@ -1373,10 +1373,10 @@ class TestCLIInversion:
                 ["run", "-m", str(empty_manifest), "--judge", "-q"],
             )
             assert result.exit_code == 0
-            # Engine.run should have been called with skip_llm=False
+            # Engine.run should have been called with skip_judge=False
             mock_run.assert_called_once()
             _call_args, call_kwargs = mock_run.call_args
-            assert call_kwargs.get("skip_llm") is False
+            assert call_kwargs.get("skip_judge") is False
 
     def test_report_subcommand_unaffected(self, manifest_with_session, tmp_path):
         """report subcommand re-renders from saved JSON without running metrics."""

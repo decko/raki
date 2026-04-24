@@ -14,12 +14,12 @@ class MetricsEngine:
     def run(
         self,
         dataset: EvalDataset,
-        skip_llm: bool = False,
+        skip_judge: bool = False,
         skip_ground_truth: bool = False,
     ) -> EvalReport:
         results: list[MetricResult] = []
         for metric in self._metrics:
-            if skip_llm and metric.requires_llm:
+            if skip_judge and metric.requires_llm:
                 continue
             if skip_ground_truth and metric.requires_ground_truth:
                 continue
@@ -28,7 +28,7 @@ class MetricsEngine:
         aggregate = {result.name: result.score for result in results}
         details = {result.name: result.details for result in results if result.details}
         sample_results = self._build_sample_results(dataset, results)
-        llm_used = not skip_llm
+        llm_used = not skip_judge
         return EvalReport(
             run_id=f"eval-{uuid.uuid4().hex[:8]}",
             config={
@@ -37,7 +37,7 @@ class MetricsEngine:
                 "llm_temperature": self._config.temperature if llm_used else None,
                 "llm_max_tokens": self._config.max_tokens if llm_used else None,
                 "metrics": [metric.name for metric in self._metrics],
-                "skip_llm": skip_llm,
+                "skip_judge": skip_judge,
             },
             aggregate_scores=aggregate,
             metric_details=details,

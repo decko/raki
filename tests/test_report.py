@@ -156,8 +156,8 @@ class TestJudgeConfigSerialization:
         report = engine.run(dataset)
         assert report.config["llm_max_tokens"] == 4096
 
-    def test_judge_fields_none_when_skip_llm(self) -> None:
-        """When skip_llm=True, all judge fields must be None in report config."""
+    def test_judge_fields_none_when_skip_judge(self) -> None:
+        """When skip_judge=True, all judge fields must be None in report config."""
         from raki.metrics.engine import MetricsEngine
         from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
         from raki.metrics.protocol import MetricConfig
@@ -171,7 +171,7 @@ class TestJudgeConfigSerialization:
             max_tokens=4096,
         )
         engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
-        report = engine.run(dataset, skip_llm=True)
+        report = engine.run(dataset, skip_judge=True)
         assert report.config["llm_provider"] is None
         assert report.config["llm_model"] is None
         assert report.config["llm_temperature"] is None
@@ -209,7 +209,7 @@ class TestJudgeConfigSerialization:
             "config": {
                 "llm_model": "claude-sonnet-4-6",
                 "metrics": ["cost_efficiency"],
-                "skip_llm": False,
+                "skip_judge": False,
             },
             "aggregate_scores": {"cost_efficiency": 1.5},
             "metric_details": {},
