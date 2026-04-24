@@ -36,3 +36,6 @@ results/
 
 # Claude Code local settings
 .claude/
+
+# Session memory
+.remember/
