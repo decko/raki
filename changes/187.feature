@@ -1,1 +1,0 @@
-Warn when judge configurations differ in ``--diff`` comparison. When ``raki report --diff`` compares two reports that used different LLM judge settings (model or provider), a yellow warning is now shown so users know the retrieval quality scores may not be directly comparable.

@@ -1,1 +1,0 @@
-Fix Google judge provider silently returning 0.0 scores when ``instructor`` (issue #1658) fails to parse structured output. Affected sessions are now skipped with a warning and the metric returns ``score=None`` instead of a misleading zero average. Also removes ``top_p`` from Google LLM ``model_args`` to prevent API rejection when both ``temperature`` and ``top_p`` are set.
