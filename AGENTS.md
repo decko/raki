@@ -58,6 +58,11 @@ uv run raki --help                        # CLI usage
 uv run raki metrics                       # List all available metrics
 uv run raki metrics --json                # Machine-readable metric list
 uv run raki validate -m raki.yaml --deep  # Smoke-test adapters + metrics
+uv run raki trends                        # Show metric trajectories over time
+uv run raki trends --since 2026-01-01    # Trends from a specific date
+uv run raki trends --metrics rework_cycles,cost_efficiency  # Filter to specific metrics
+uv run raki trends --last 10             # Show trends for the most recent 10 runs
+uv run raki trends --json                # Machine-readable trend output
 uv run towncrier build --draft --version X.Y.Z  # Preview changelog
 uv run towncrier build --version X.Y.Z    # Build changelog (consumes fragments)
 ```
