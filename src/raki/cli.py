@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, cast
+from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import click
 from rich.console import Console
@@ -1068,8 +1069,8 @@ def _handle_diff(
 def trends(
     history_path_arg: str | None,
     metric_names: str | None,
-    since_date: object | None,
-    until_date: object | None,
+    since_date: datetime | None,
+    until_date: datetime | None,
     json_output: bool,
     last_n: int | None,
 ) -> None:
@@ -1129,9 +1130,9 @@ def trends(
     until_dt = None
     if since_date is not None:
         # click.DateTime returns a naive datetime — treat as UTC start of day
-        since_dt = since_date.replace(tzinfo=timezone.utc)  # type: ignore[union-attr]
+        since_dt = since_date.replace(tzinfo=timezone.utc)
     if until_date is not None:
-        until_dt = until_date.replace(tzinfo=timezone.utc)  # type: ignore[union-attr]
+        until_dt = until_date.replace(tzinfo=timezone.utc)
 
     trend_list = compute_all_trends(
         entries,
