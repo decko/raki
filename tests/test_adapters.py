@@ -2797,3 +2797,109 @@ def test_session_schema_fixture_orchestrator(pass_simple_dir):
     sample = adapter.load(pass_simple_dir)
     assert sample.session.orchestrator == "soda"
     assert sample.session.pipeline_phases == ["triage", "plan", "implement", "verify", "review"]
+
+
+# --- Ticket #175: AlcoveAdapter pipeline/orchestrator metadata ---
+
+
+def test_alcove_classic_orchestrator_is_alcove(tmp_path):
+    """Classic alcove format (no task_id) should yield orchestrator='alcove'."""
+    data = {
+        "session_id": "classic-001",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            {
+                "type": "result",
+                "total_cost_usd": 0.01,
+                "duration_ms": 1000,
+            },
+        ],
+    }
+    fixture = tmp_path / "classic.json"
+    fixture.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert sample.session.orchestrator == "alcove"
+
+
+def test_alcove_bridge_orchestrator_is_bridge(tmp_path):
+    """Bridge format (has task_id) should yield orchestrator='bridge'."""
+    source = _bridge_session(tmp_path)
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.orchestrator == "bridge"
+
+
+def test_alcove_provider_from_raw(tmp_path):
+    """provider field in the JSON should be populated on SessionMeta.provider."""
+    data = {
+        "session_id": "prov-001",
+        "provider": "anthropic",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+    }
+    fixture = tmp_path / "provider-session.json"
+    fixture.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert sample.session.provider == "anthropic"
+
+
+def test_alcove_provider_none_when_absent(tmp_path):
+    """provider should be None when not present in the JSON."""
+    data = {
+        "session_id": "prov-002",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+    }
+    fixture = tmp_path / "no-provider.json"
+    fixture.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert sample.session.provider is None
+
+
+def test_alcove_pipeline_phases_from_phases_dict(tmp_path):
+    """pipeline_phases should reflect ordered phase keys from the phases dict."""
+    source = _bridge_session(
+        tmp_path,
+        overrides={
+            "phases": {
+                "triage": {"status": "completed"},
+                "implement": {"status": "completed"},
+                "verify": {"status": "completed"},
+            }
+        },
+    )
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.pipeline_phases == ["triage", "implement", "verify"]
+
+
+def test_alcove_pipeline_phases_none_when_no_phases(tmp_path):
+    """pipeline_phases should be None when phases dict is absent."""
+    data = {
+        "session_id": "phases-none",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+    }
+    fixture = tmp_path / "no-phases.json"
+    fixture.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert sample.session.pipeline_phases is None
+
+
+def test_alcove_classic_fixture_orchestrator():
+    """The classic alcove fixture should have orchestrator='alcove' and no pipeline_phases."""
+    adapter = AlcoveAdapter()
+    sample = adapter.load(ALCOVE_FIXTURE)
+    assert sample.session.orchestrator == "alcove"
+    assert sample.session.pipeline_phases is None
+    assert sample.session.provider is None
