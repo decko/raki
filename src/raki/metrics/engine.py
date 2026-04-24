@@ -31,7 +31,10 @@ class MetricsEngine:
         return EvalReport(
             run_id=f"eval-{uuid.uuid4().hex[:8]}",
             config={
+                "llm_provider": self._config.llm_provider,
                 "llm_model": self._config.llm_model,
+                "temperature": self._config.temperature,
+                "batch_size": self._config.batch_size,
                 "metrics": [metric.name for metric in self._metrics],
                 "skip_llm": skip_llm,
             },
