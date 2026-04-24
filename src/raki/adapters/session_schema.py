@@ -86,6 +86,11 @@ class SessionSchemaAdapter:
         if not model_id:
             model_id = _extract_model_id_from_events(events)
 
+        # Infer orchestrator from branch prefix, e.g. "soda/101" → "soda"
+        branch: str | None = meta_raw.get("branch")
+        orchestrator: str | None = branch.split("/")[0] if branch and "/" in branch else None
+        pipeline_phases: list[str] | None = list(phases_dict.keys()) if phases_dict else None
+
         meta = SessionMeta(
             session_id=session_id,
             ticket=str(meta_raw.get("ticket")),
@@ -94,6 +99,8 @@ class SessionSchemaAdapter:
             total_phases=len(phases_dict),
             rework_cycles=meta_raw.get("rework_cycles", 0),
             model_id=model_id,
+            orchestrator=orchestrator,
+            pipeline_phases=pipeline_phases,
         )
         phases = self._load_phases(source, meta_raw, events)
         findings = self._load_findings(source)
