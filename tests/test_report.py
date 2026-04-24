@@ -130,21 +130,8 @@ class TestJudgeConfigSerialization:
         report = engine.run(dataset)
         assert report.config["llm_provider"] == "anthropic"
 
-    def test_engine_serializes_batch_size_into_config(self) -> None:
-        """MetricsEngine must serialize batch_size into the report config dict."""
-        from raki.metrics.engine import MetricsEngine
-        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
-        from raki.metrics.protocol import MetricConfig
-
-        sample = make_sample("s1")
-        dataset = make_dataset(sample)
-        config = MetricConfig(batch_size=8)
-        engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
-        report = engine.run(dataset)
-        assert report.config["batch_size"] == 8
-
-    def test_engine_serializes_temperature_into_config(self) -> None:
-        """MetricsEngine must serialize temperature into the report config dict."""
+    def test_engine_serializes_llm_temperature_into_config(self) -> None:
+        """MetricsEngine must serialize llm_temperature into the report config dict."""
         from raki.metrics.engine import MetricsEngine
         from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
         from raki.metrics.protocol import MetricConfig
@@ -154,7 +141,41 @@ class TestJudgeConfigSerialization:
         config = MetricConfig(temperature=0.5)
         engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
         report = engine.run(dataset)
-        assert report.config["temperature"] == 0.5
+        assert report.config["llm_temperature"] == 0.5
+
+    def test_engine_serializes_llm_max_tokens_into_config(self) -> None:
+        """MetricsEngine must serialize llm_max_tokens into the report config dict."""
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+        from raki.metrics.protocol import MetricConfig
+
+        sample = make_sample("s1")
+        dataset = make_dataset(sample)
+        config = MetricConfig(max_tokens=4096)
+        engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
+        report = engine.run(dataset)
+        assert report.config["llm_max_tokens"] == 4096
+
+    def test_judge_fields_none_when_skip_llm(self) -> None:
+        """When skip_llm=True, all judge fields must be None in report config."""
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+        from raki.metrics.protocol import MetricConfig
+
+        sample = make_sample("s1")
+        dataset = make_dataset(sample)
+        config = MetricConfig(
+            llm_provider="vertex-anthropic",
+            llm_model="claude-sonnet-4-6",
+            temperature=0.5,
+            max_tokens=4096,
+        )
+        engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
+        report = engine.run(dataset, skip_llm=True)
+        assert report.config["llm_provider"] is None
+        assert report.config["llm_model"] is None
+        assert report.config["llm_temperature"] is None
+        assert report.config["llm_max_tokens"] is None
 
     def test_judge_config_fields_round_trip_in_json(self, tmp_path: Path) -> None:
         """Judge config fields must survive a write/load JSON round-trip."""
@@ -167,8 +188,8 @@ class TestJudgeConfigSerialization:
         config = MetricConfig(
             llm_provider="vertex-anthropic",
             llm_model="claude-sonnet-4-6",
-            batch_size=4,
             temperature=0.0,
+            max_tokens=4096,
         )
         engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
         report = engine.run(dataset)
@@ -177,8 +198,30 @@ class TestJudgeConfigSerialization:
         raw = json.loads(output_path.read_text())
         assert raw["config"]["llm_provider"] == "vertex-anthropic"
         assert raw["config"]["llm_model"] == "claude-sonnet-4-6"
-        assert raw["config"]["batch_size"] == 4
-        assert raw["config"]["temperature"] == 0.0
+        assert raw["config"]["llm_temperature"] == 0.0
+        assert raw["config"]["llm_max_tokens"] == 4096
+
+    def test_old_report_without_judge_fields_loads_cleanly(self, tmp_path: Path) -> None:
+        """Old JSON reports without llm_temperature/llm_max_tokens must load without error."""
+        old_report = {
+            "run_id": "eval-old",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "config": {
+                "llm_model": "claude-sonnet-4-6",
+                "metrics": ["cost_efficiency"],
+                "skip_llm": False,
+            },
+            "aggregate_scores": {"cost_efficiency": 1.5},
+            "metric_details": {},
+            "sample_results": [],
+            "manifest_hash": None,
+        }
+        output_path = tmp_path / "old-report.json"
+        output_path.write_text(json.dumps(old_report))
+        loaded = load_json_report(output_path)
+        assert loaded.run_id == "eval-old"
+        assert loaded.config.get("llm_temperature") is None
+        assert loaded.config.get("llm_max_tokens") is None
 
     def test_default_judge_config_fields_present(self) -> None:
         """Default judge config values must appear in the report config dict."""
@@ -191,9 +234,9 @@ class TestJudgeConfigSerialization:
         engine = MetricsEngine([TokenEfficiencyMetric()], config=MetricConfig())
         report = engine.run(dataset)
         assert "llm_provider" in report.config
-        assert "batch_size" in report.config
-        assert "temperature" in report.config
         assert "llm_model" in report.config
+        assert "llm_temperature" in report.config
+        assert "llm_max_tokens" in report.config
 
 
 class TestJsonReportContextSource:

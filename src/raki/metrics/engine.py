@@ -28,13 +28,14 @@ class MetricsEngine:
         aggregate = {result.name: result.score for result in results}
         details = {result.name: result.details for result in results if result.details}
         sample_results = self._build_sample_results(dataset, results)
+        llm_used = not skip_llm
         return EvalReport(
             run_id=f"eval-{uuid.uuid4().hex[:8]}",
             config={
-                "llm_provider": self._config.llm_provider,
-                "llm_model": self._config.llm_model,
-                "temperature": self._config.temperature,
-                "batch_size": self._config.batch_size,
+                "llm_provider": self._config.llm_provider if llm_used else None,
+                "llm_model": self._config.llm_model if llm_used else None,
+                "llm_temperature": self._config.temperature if llm_used else None,
+                "llm_max_tokens": self._config.max_tokens if llm_used else None,
                 "metrics": [metric.name for metric in self._metrics],
                 "skip_llm": skip_llm,
             },

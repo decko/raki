@@ -17,6 +17,7 @@ class MetricConfig(BaseModel):
     llm_provider: LLMProvider = "vertex-anthropic"
     llm_model: str = "claude-sonnet-4-6"
     temperature: float = 0.0
+    max_tokens: int | None = None
     batch_size: int = 4
     judge_log_path: Path | None = None  # path to judge_log.jsonl for audit logging
     project_root: Path | None = None  # root directory for path validation
