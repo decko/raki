@@ -621,17 +621,17 @@ class TestMetricDeltaDirection:
 
 
 class TestCompareJudgeConfigs:
-    def test_both_skip_llm_returns_empty(self):
+    def test_both_skip_judge_returns_empty(self):
         """When neither report used a judge, no warnings are returned."""
-        baseline = _make_eval_report_with_config("base", {}, config={"skip_llm": True})
-        compare = _make_eval_report_with_config("comp", {}, config={"skip_llm": True})
+        baseline = _make_eval_report_with_config("base", {}, config={"skip_judge": True})
+        compare = _make_eval_report_with_config("comp", {}, config={"skip_judge": True})
         warnings = compare_judge_configs(baseline, compare)
         assert warnings == []
 
     def test_matching_judge_config_returns_empty(self):
         """When both reports used the same judge config, no warnings."""
         config = {
-            "skip_llm": False,
+            "skip_judge": False,
             "llm_provider": "anthropic",
             "llm_model": "claude-opus-4",
         }
@@ -645,13 +645,13 @@ class TestCompareJudgeConfigs:
         baseline = _make_eval_report_with_config(
             "base",
             {},
-            config={"skip_llm": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"},
+            config={"skip_judge": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"},
         )
         compare = _make_eval_report_with_config(
             "comp",
             {},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "anthropic",
                 "llm_model": "claude-sonnet-4-6",
             },
@@ -668,7 +668,7 @@ class TestCompareJudgeConfigs:
             "base",
             {},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "anthropic",
                 "llm_model": "claude-opus-4",
             },
@@ -676,7 +676,7 @@ class TestCompareJudgeConfigs:
         compare = _make_eval_report_with_config(
             "comp",
             {},
-            config={"skip_llm": False, "llm_provider": "google", "llm_model": "claude-opus-4"},
+            config={"skip_judge": False, "llm_provider": "google", "llm_model": "claude-opus-4"},
         )
         warnings = compare_judge_configs(baseline, compare)
         assert len(warnings) == 1
@@ -690,7 +690,7 @@ class TestCompareJudgeConfigs:
             "base",
             {},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "anthropic",
                 "llm_model": "claude-opus-4",
             },
@@ -699,7 +699,7 @@ class TestCompareJudgeConfigs:
             "comp",
             {},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "google",
                 "llm_model": "gemini-pro",
             },
@@ -713,18 +713,18 @@ class TestCompareJudgeConfigs:
             "base",
             {},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "anthropic",
                 "llm_model": "claude-opus-4",
             },
         )
-        compare = _make_eval_report_with_config("comp", {}, config={"skip_llm": True})
+        compare = _make_eval_report_with_config("comp", {}, config={"skip_judge": True})
         warnings = compare_judge_configs(baseline, compare)
         assert len(warnings) == 1
         assert "unknown baseline — cannot compare judge calibration" in warnings[0]
 
     def test_missing_config_treated_as_no_judge(self):
-        """When config is missing (old reports), treated as skip_llm=True — no warnings."""
+        """When config is missing (old reports), treated as skip_judge=True — no warnings."""
         baseline = _make_eval_report("base", {})  # no config
         compare = _make_eval_report("comp", {})  # no config
         warnings = compare_judge_configs(baseline, compare)
@@ -736,7 +736,7 @@ class TestCompareJudgeConfigs:
         compare = _make_eval_report_with_config(
             "comp",
             {},
-            config={"skip_llm": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"},
+            config={"skip_judge": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"},
         )
         warnings = compare_judge_configs(baseline, compare)
         assert len(warnings) == 1
@@ -760,7 +760,7 @@ class TestDiffReportJudgeConfigMismatch:
             "base",
             {"faithfulness": 0.8},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "anthropic",
                 "llm_model": "claude-opus-4",
             },
@@ -769,7 +769,7 @@ class TestDiffReportJudgeConfigMismatch:
             "comp",
             {"faithfulness": 0.9},
             config={
-                "skip_llm": False,
+                "skip_judge": False,
                 "llm_provider": "anthropic",
                 "llm_model": "claude-sonnet-4-6",
             },
@@ -779,7 +779,7 @@ class TestDiffReportJudgeConfigMismatch:
 
     def test_generate_diff_report_no_mismatch_when_configs_match(self):
         """generate_diff_report has empty judge_config_mismatch when configs are identical."""
-        config = {"skip_llm": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"}
+        config = {"skip_judge": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"}
         baseline = _make_eval_report_with_config("base", {"faithfulness": 0.8}, config=config)
         compare = _make_eval_report_with_config("comp", {"faithfulness": 0.9}, config=config)
         diff = generate_diff_report(baseline, compare)

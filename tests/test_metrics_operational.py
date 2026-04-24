@@ -194,11 +194,11 @@ def test_cost_efficiency_properties():
 
 
 def test_engine_skips_llm_metrics():
-    """MetricsEngine.run() with skip_llm=True should skip metrics requiring LLM."""
+    """MetricsEngine.run() with skip_judge=True should skip metrics requiring LLM."""
     metrics = [FirstPassSuccessRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
     dataset = make_dataset(make_sample("1"))
-    report = engine.run(dataset, skip_llm=True)
+    report = engine.run(dataset, skip_judge=True)
     # Both operational metrics should be included (neither requires LLM)
     assert "first_pass_success_rate" in report.aggregate_scores
     assert "rework_cycles" in report.aggregate_scores
@@ -287,7 +287,7 @@ def test_engine_sample_results_with_skipped_metrics():
 
     metrics = [FirstPassSuccessRate(), ReworkCycles()]
     engine = MetricsEngine(metrics=metrics)
-    report = engine.run(dataset, skip_llm=True)
+    report = engine.run(dataset, skip_judge=True)
 
     # Neither metric requires LLM, so both should appear
     assert len(report.sample_results) == 1
