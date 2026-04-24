@@ -114,6 +114,88 @@ class TestJsonReportRoundTrip:
         assert loaded.timestamp.tzinfo is not None
 
 
+class TestJudgeConfigSerialization:
+    """Tests for serialization of judge configuration fields into the report JSON."""
+
+    def test_engine_serializes_llm_provider_into_config(self) -> None:
+        """MetricsEngine must serialize llm_provider into the report config dict."""
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+        from raki.metrics.protocol import MetricConfig
+
+        sample = make_sample("s1")
+        dataset = make_dataset(sample)
+        config = MetricConfig(llm_provider="anthropic", llm_model="claude-3-5-sonnet")
+        engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
+        report = engine.run(dataset)
+        assert report.config["llm_provider"] == "anthropic"
+
+    def test_engine_serializes_batch_size_into_config(self) -> None:
+        """MetricsEngine must serialize batch_size into the report config dict."""
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+        from raki.metrics.protocol import MetricConfig
+
+        sample = make_sample("s1")
+        dataset = make_dataset(sample)
+        config = MetricConfig(batch_size=8)
+        engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
+        report = engine.run(dataset)
+        assert report.config["batch_size"] == 8
+
+    def test_engine_serializes_temperature_into_config(self) -> None:
+        """MetricsEngine must serialize temperature into the report config dict."""
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+        from raki.metrics.protocol import MetricConfig
+
+        sample = make_sample("s1")
+        dataset = make_dataset(sample)
+        config = MetricConfig(temperature=0.5)
+        engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
+        report = engine.run(dataset)
+        assert report.config["temperature"] == 0.5
+
+    def test_judge_config_fields_round_trip_in_json(self, tmp_path: Path) -> None:
+        """Judge config fields must survive a write/load JSON round-trip."""
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+        from raki.metrics.protocol import MetricConfig
+
+        sample = make_sample("s1")
+        dataset = make_dataset(sample)
+        config = MetricConfig(
+            llm_provider="vertex-anthropic",
+            llm_model="claude-sonnet-4-6",
+            batch_size=4,
+            temperature=0.0,
+        )
+        engine = MetricsEngine([TokenEfficiencyMetric()], config=config)
+        report = engine.run(dataset)
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        raw = json.loads(output_path.read_text())
+        assert raw["config"]["llm_provider"] == "vertex-anthropic"
+        assert raw["config"]["llm_model"] == "claude-sonnet-4-6"
+        assert raw["config"]["batch_size"] == 4
+        assert raw["config"]["temperature"] == 0.0
+
+    def test_default_judge_config_fields_present(self) -> None:
+        """Default judge config values must appear in the report config dict."""
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.token_efficiency import TokenEfficiencyMetric
+        from raki.metrics.protocol import MetricConfig
+
+        sample = make_sample("s1")
+        dataset = make_dataset(sample)
+        engine = MetricsEngine([TokenEfficiencyMetric()], config=MetricConfig())
+        report = engine.run(dataset)
+        assert "llm_provider" in report.config
+        assert "batch_size" in report.config
+        assert "temperature" in report.config
+        assert "llm_model" in report.config
+
+
 class TestJsonReportContextSource:
     def test_context_source_included_in_json_output(self, tmp_path: Path) -> None:
         """context_source field should be included in JSON report sample results."""
