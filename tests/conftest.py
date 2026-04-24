@@ -16,6 +16,7 @@ from raki.model import (
     ReviewFinding,
     SessionMeta,
 )
+from raki.report.history import HistoryEntry
 
 
 def make_sample(
@@ -68,6 +69,31 @@ def make_sample(
 
 def make_dataset(*samples: EvalSample) -> EvalDataset:
     return EvalDataset(samples=list(samples))
+
+
+def make_history_entry(
+    run_id: str = "eval-001",
+    timestamp: datetime | None = None,
+    sessions_count: int = 10,
+    metrics: dict[str, float] | None = None,
+    manifest: str | None = None,
+    config_hash: str = "",
+    git_sha: str | None = None,
+) -> HistoryEntry:
+    """Factory for creating HistoryEntry instances in tests.
+
+    All parameters have sensible defaults so callers need only specify what
+    differs from the baseline.
+    """
+    return HistoryEntry(
+        run_id=run_id,
+        timestamp=timestamp or datetime(2026, 4, 1, 12, 0, 0, tzinfo=timezone.utc),
+        sessions_count=sessions_count,
+        metrics=metrics if metrics is not None else {"first_pass_success_rate": 0.80},
+        manifest=manifest,
+        config_hash=config_hash,
+        git_sha=git_sha,
+    )
 
 
 @pytest.fixture
