@@ -570,6 +570,7 @@ def write_html_report(
     drill_down_rows = compute_drill_down_rows(report.sample_results)
     needs_attention_rows = [row for row in drill_down_rows if row.verdict in ("fail", "rework")]
     needs_attention_count = len(needs_attention_rows)
+    agent_models = collect_agent_models(report)
 
     if not include_sessions:
         # Strip session data from a serialized copy, then reload as a clean report
@@ -642,6 +643,7 @@ def write_html_report(
         needs_attention_count=needs_attention_count,
         format_duration=_format_duration,
         no_data_metrics=no_data_metrics,
+        agent_models=agent_models,
     )
 
     output.write_text(html_content, encoding="utf-8")

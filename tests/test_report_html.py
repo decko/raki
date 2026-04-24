@@ -2041,3 +2041,55 @@ class TestCollectAgentModels:
 
         report = _make_minimal_report()
         assert collect_agent_models(report) == []
+
+
+class TestAgentModelInHtmlHeader:
+    """Agent model IDs should appear in the HTML report header when present."""
+
+    def test_agent_model_shown_in_html_header(self, tmp_path: Path) -> None:
+        """When sessions have model_id, it should appear in the HTML header."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        sample = make_sample("s1", model_id="claude-opus-4")
+        report = EvalReport(
+            run_id="agent-model-html",
+            aggregate_scores={"first_pass_success_rate": 0.9},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "claude-opus-4" in content
+        assert "Agent model" in content
+
+    def test_no_agent_model_line_when_absent(self, tmp_path: Path) -> None:
+        """When no session has model_id, 'Agent model' should not appear in the header."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_minimal_report()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "Agent model" not in content
+
+    def test_multiple_agent_models_joined(self, tmp_path: Path) -> None:
+        """Multiple distinct model IDs should be shown joined by commas."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        sample_a = make_sample("s1", model_id="claude-opus-4")
+        sample_b = make_sample("s2", model_id="claude-sonnet-4-6")
+        report = EvalReport(
+            run_id="multi-model-html",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=sample_a, scores=[]),
+                SampleResult(sample=sample_b, scores=[]),
+            ],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "claude-opus-4" in content
+        assert "claude-sonnet-4-6" in content
