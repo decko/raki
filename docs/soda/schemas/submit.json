@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["ticket_key", "pr_url", "pr_number", "title", "branch", "target"],
+  "properties": {
+    "ticket_key": {
+      "type": "string"
+    },
+    "pr_url": {
+      "type": "string"
+    },
+    "pr_number": {
+      "type": "integer"
+    },
+    "title": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

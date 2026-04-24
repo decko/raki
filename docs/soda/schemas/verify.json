@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["ticket_key", "verdict", "criteria_results", "command_results", "raki_checks"],
+  "properties": {
+    "ticket_key": {
+      "type": "string"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["PASS", "FAIL"]
+    },
+    "criteria_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["criterion", "passed", "evidence"],
+        "properties": {
+          "criterion": { "type": "string" },
+          "passed": { "type": "boolean" },
+          "evidence": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "command_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "exit_code", "output", "passed"],
+        "properties": {
+          "command": { "type": "string" },
+          "exit_code": { "type": "integer" },
+          "output": { "type": "string" },
+          "passed": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "code_issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "severity", "issue"],
+        "properties": {
+          "file": { "type": "string" },
+          "line": { "type": "integer" },
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "major", "minor"]
+          },
+          "issue": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "raki_checks": {
+      "type": "object",
+      "required": ["metric_registered", "na_semantics", "redaction_applied", "path_safety", "version_consistent"],
+      "properties": {
+        "metric_registered": { "type": "boolean" },
+        "na_semantics": { "type": "boolean" },
+        "redaction_applied": { "type": "boolean" },
+        "path_safety": { "type": "boolean" },
+        "version_consistent": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "fixes_required": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}
