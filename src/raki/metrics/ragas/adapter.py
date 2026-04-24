@@ -244,6 +244,46 @@ def is_max_tokens_error(exc: Exception) -> bool:
     return "max_tokens" in message
 
 
+class InstructorSilentZeroError(RuntimeError):
+    """Raised when the instructor#1658 silent-zero bug is detected for the Google provider.
+
+    When ``instructor`` fails to parse Google's structured output it silently
+    returns a Pydantic model with default field values (``value=0.0``,
+    ``reason=None``) instead of raising a ``ValidationError``.  Raising this
+    exception lets the existing per-session error handler log a warning and
+    skip the session so the silent zero does not pollute the metric average.
+
+    See: https://github.com/instructor-ai/instructor/issues/1658
+    """
+
+
+def is_instructor_silent_zero(result: object, provider: str) -> bool:
+    """Detect the instructor#1658 silent-zero bug for the Google provider.
+
+    When ``instructor`` fails to parse Google's structured output it silently
+    returns a Pydantic model with default field values (``value=0.0``,
+    ``reason=None``) instead of raising a ``ValidationError``.
+
+    Returns ``True`` only when **all** of the following hold:
+
+    - *provider* is ``"google"``
+    - *result* is a structured object (not a plain ``float``)
+    - ``result.value`` is exactly ``0.0``
+    - ``result.reason`` is ``None`` or an empty string
+
+    Args:
+        result: The value returned by ``ragas_metric.ascore()``.
+        provider: The LLM provider string from ``MetricConfig.llm_provider``.
+    """
+    if provider != "google":
+        return False
+    if isinstance(result, float):
+        return False
+    value = getattr(result, "value", None)
+    reason = getattr(result, "reason", None)
+    return value == 0.0 and not reason
+
+
 def detect_context_source(dataset: EvalDataset) -> str | None:
     """Determine the predominant context_source across dataset samples.
 
