@@ -1063,16 +1063,26 @@ def _handle_diff(
     "--last",
     "last_n",
     type=int,
-    default=None,
-    help="Limit to the last N runs (applied after time filters)",
+    default=20,
+    help="Limit to the last N runs (default: 20; applied after time filters)",
 )
+@click.option(
+    "--manifest",
+    "manifest_name",
+    type=str,
+    default=None,
+    help="Filter history entries by manifest name",
+)
+@click.pass_context
 def trends(
+    ctx: click.Context,
     history_path_arg: str | None,
     metric_names: str | None,
     since_date: datetime | None,
     until_date: datetime | None,
     json_output: bool,
     last_n: int | None,
+    manifest_name: str | None,
 ) -> None:
     """Show metric trajectories over time from the evaluation history log.
 
@@ -1087,9 +1097,18 @@ def trends(
     from raki.report.history import load_history
     from raki.report.trends import compute_all_trends, render_trends_json, render_trends_table
 
-    # Mutual exclusivity: --since/--until and --last conflict
-    if last_n is not None and (since_date is not None or until_date is not None):
+    # Detect whether --last was explicitly passed by the user
+    last_explicitly_set = (
+        ctx.get_parameter_source("last_n") == click.core.ParameterSource.COMMANDLINE
+    )
+
+    # Mutual exclusivity: --since/--until and explicit --last conflict
+    if last_explicitly_set and (since_date is not None or until_date is not None):
         raise click.UsageError("--last cannot be combined with --since or --until.")
+
+    # When --since/--until is given, disable the default --last limit
+    if not last_explicitly_set and (since_date is not None or until_date is not None):
+        last_n = None
 
     # Validate --metrics names before loading history
     metric_filter: set[str] | None = None
@@ -1113,9 +1132,7 @@ def trends(
     entries = load_history(history_path)
 
     if not entries:
-        console.print("[dim]No history entries found.[/dim]")
-        if not history_path.exists():
-            console.print(f"[dim]History file not found: {history_path}[/dim]")
+        console.print("No evaluation history found. Run 'raki run' to generate history.")
         return
 
     # Apply --last filter (take most recent N entries by timestamp)
@@ -1139,6 +1156,7 @@ def trends(
         metric_filter=metric_filter,
         since=since_dt,
         until=until_dt,
+        manifest_filter=manifest_name,
     )
 
     if json_output:

@@ -16,6 +16,11 @@ from raki.report.html_report import METRIC_METADATA
 if TYPE_CHECKING:
     from rich.console import Console
 
+DirectionLabel = Literal["improving", "declining", "stable", "insufficient_data"]
+
+# Formats that use 0-1 bounded values (absolute dead-band threshold).
+_PERCENT_FORMATS = {"percent", "score"}
+
 # Metric name aliases for history entries written by older raki versions.
 # Maps old name -> current canonical name.
 METRIC_RENAME_ALIASES: dict[str, str] = {
@@ -40,6 +45,8 @@ class MetricTrend(BaseModel):
     ``values`` is sorted oldest-first (ascending timestamp order).
     ``delta`` is the signed difference between the most-recent and oldest value;
     ``None`` when fewer than two data points are available.
+    ``direction`` summarises the monotonicity of the last 3 values,
+    respecting ``higher_is_better`` and a per-format dead-band.
     """
 
     metric_name: str
@@ -49,8 +56,63 @@ class MetricTrend(BaseModel):
     display_format: str
     values: list[tuple[datetime, float]] = Field(default_factory=list)
     delta: float | None = None
+    direction: DirectionLabel = "insufficient_data"
 
     model_config = {"arbitrary_types_allowed": True}
+
+
+def _exceeds_dead_band(delta: float, display_format: str, reference: float) -> bool:
+    """Return True when *delta* exceeds the dead-band threshold for *display_format*.
+
+    For percent-format metrics (0-1 range), the threshold is 1 percentage point
+    absolute (0.01).  For unbounded formats (count, currency, duration) the
+    threshold is 1 % of *reference* with an epsilon fallback to avoid division
+    by zero.
+    """
+    if display_format in _PERCENT_FORMATS:
+        return abs(delta) > 0.01
+    # Unbounded: 1 % relative threshold
+    ref_magnitude = max(abs(reference), 1e-9)
+    return abs(delta) > 0.01 * ref_magnitude
+
+
+def _compute_direction(
+    values: list[float],
+    *,
+    higher_is_better: bool,
+    display_format: str,
+) -> DirectionLabel:
+    """Determine trend direction using monotonicity on the last 3 values.
+
+    Algorithm:
+    1. Fewer than 2 values → ``"insufficient_data"``.
+    2. Take the last 3 values (or fewer if only 2 exist).
+    3. Compute consecutive deltas between adjacent values.
+    4. If all deltas exceed the dead-band in the *same* direction, classify as
+       ``"improving"`` or ``"declining"`` (respecting ``higher_is_better``).
+    5. Otherwise → ``"stable"``.
+    """
+    if len(values) < 2:
+        return "insufficient_data"
+
+    tail = values[-3:] if len(values) >= 3 else values[-2:]
+    deltas = [tail[idx + 1] - tail[idx] for idx in range(len(tail) - 1)]
+
+    # Check that every delta exceeds dead-band in the same direction
+    all_positive = all(
+        delta > 0 and _exceeds_dead_band(delta, display_format, tail[idx])
+        for idx, delta in enumerate(deltas)
+    )
+    all_negative = all(
+        delta < 0 and _exceeds_dead_band(delta, display_format, tail[idx])
+        for idx, delta in enumerate(deltas)
+    )
+
+    if all_positive:
+        return "improving" if higher_is_better else "declining"
+    if all_negative:
+        return "declining" if higher_is_better else "improving"
+    return "stable"
 
 
 def _apply_aliases(metrics: dict[str, float]) -> dict[str, float]:
@@ -112,6 +174,13 @@ def compute_trend(entries: list[HistoryEntry], metric_name: str) -> MetricTrend:
     if len(raw_values) >= 2:
         delta = raw_values[-1][1] - raw_values[0][1]
 
+    raw_floats = [val for _ts, val in raw_values]
+    direction = _compute_direction(
+        raw_floats,
+        higher_is_better=higher,
+        display_format=display_format,
+    )
+
     return MetricTrend(
         metric_name=metric_name,
         display_name=display_name,
@@ -120,43 +189,57 @@ def compute_trend(entries: list[HistoryEntry], metric_name: str) -> MetricTrend:
         display_format=display_format,
         values=raw_values,
         delta=delta,
+        direction=direction,
     )
 
 
-def sparkline(values: list[float], *, width: int = 10) -> str:
+def sparkline(values: list[float | None], *, width: int = 10) -> str:
     """Render a Unicode block sparkline for *values*.
 
     Uses block elements ▁▂▃▄▅▆▇█ (8 levels).  When all values are equal,
-    renders a flat midline (▄) at the 50 % level.
+    renders a flat midline (▄) at the 50 % level.  ``None`` entries represent
+    absent metrics and are rendered as a space ``' '``.
 
     Args:
         values: Numeric values to render, in chronological order.
+            ``None`` values represent absent metrics (gaps).
         width: Maximum character width.  Capped at 20.  When ``len(values)``
                exceeds *width*, the rightmost *width* values are used.
 
     Returns:
-        A string of length ``min(len(values), width)`` composed of block chars.
-        Returns ``""`` when *values* is empty.
+        A string of length ``min(len(values), width)`` composed of block chars
+        and spaces (for ``None`` gaps).  Returns ``""`` when fewer than 3
+        data points are present (including ``None`` entries).
     """
-    if not values:
+    if len(values) < 3:
         return ""
 
     width = min(width, 20)
     display_values = values[-width:] if len(values) > width else values
 
-    blocks = "▁▂▃▄▅▆▇█"
-    min_val = min(display_values)
-    max_val = max(display_values)
+    # Collect non-None values for min/max computation
+    numeric_values = [val for val in display_values if val is not None]
 
-    if max_val == min_val:
-        # Flat line — use mid-block for all values
-        return "▄" * len(display_values)
+    if not numeric_values:
+        # All gaps — return spaces
+        return " " * len(display_values)
+
+    blocks = "▁▂▃▄▅▆▇█"
+    min_val = min(numeric_values)
+    max_val = max(numeric_values)
 
     result: list[str] = []
     for val in display_values:
-        normalized = (val - min_val) / (max_val - min_val)
-        index = min(int(normalized * len(blocks)), len(blocks) - 1)
-        result.append(blocks[index])
+        if val is None:
+            result.append(" ")
+            continue
+        if max_val == min_val:
+            # Flat line — use mid-block
+            result.append("▄")
+        else:
+            normalized = (val - min_val) / (max_val - min_val)
+            index = min(int(normalized * len(blocks)), len(blocks) - 1)
+            result.append(blocks[index])
     return "".join(result)
 
 
@@ -166,6 +249,7 @@ def compute_all_trends(
     metric_filter: set[str] | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    manifest_filter: str | None = None,
 ) -> list[MetricTrend]:
     """Compute trends for all metrics found in *entries*.
 
@@ -179,13 +263,17 @@ def compute_all_trends(
             empty ``values`` list.
         since: Inclusive lower bound on ``HistoryEntry.timestamp``.
         until: Inclusive upper bound on ``HistoryEntry.timestamp``.
+        manifest_filter: When provided, only history entries whose
+            ``HistoryEntry.manifest`` field matches this string are included.
 
     Returns:
         List of :class:`MetricTrend` objects, one per discovered (or requested)
         metric, sorted by tier then name.
     """
-    # Apply time window filter
+    # Apply manifest filter
     filtered = entries
+    if manifest_filter is not None:
+        filtered = [entry for entry in filtered if entry.manifest == manifest_filter]
     if since is not None:
         since_aware = since if since.tzinfo is not None else since.replace(tzinfo=None)
         filtered = [
@@ -288,13 +376,30 @@ def _delta_str(delta: float | None, display_format: str) -> str:
     return f"{sign}{delta:.2f}"
 
 
+def _direction_markup(direction: DirectionLabel, higher_is_better: bool) -> str:
+    """Return a Rich-markup string for the trend direction indicator.
+
+    ``▲`` green for improving, ``▼`` red for declining, ``=`` white for stable,
+    ``—`` dim for insufficient data.  The colour logic respects
+    ``higher_is_better``: improving is always green, declining is always red.
+    """
+    if direction == "improving":
+        return "[green]▲ improving[/green]"
+    if direction == "declining":
+        return "[red]▼ declining[/red]"
+    if direction == "stable":
+        return "[white]= stable[/white]"
+    return "[dim]— n/a[/dim]"
+
+
 def render_trends_table(trends: list[MetricTrend], console: Console | None = None) -> None:
     """Render *trends* as a Rich table to *console*.
 
-    Columns: Metric | Tier | Runs | Sparkline | Latest | Δ (first→last)
+    Columns: Metric (~25ch) | Current (~8ch) | History sparkline (max 10ch) |
+    Trend direction (~12ch).
 
     Missing data (empty ``values``) is shown as ``N/A``.
-    Delta is colored green/red based on ``higher_is_better`` and direction.
+    Trend direction uses ``▲`` green / ``▼`` red / ``=`` white / ``—`` dim.
     """
     from rich.console import Console as RichConsole
     from rich.table import Table
@@ -306,49 +411,33 @@ def render_trends_table(trends: list[MetricTrend], console: Console | None = Non
         return
 
     table = Table(title="Metric Trends", show_header=True, header_style="bold")
-    table.add_column("Metric", style="bold", min_width=20)
-    table.add_column("Tier", min_width=11)
-    table.add_column("Runs", justify="right", min_width=4)
-    table.add_column("Trend", min_width=10)
-    table.add_column("Latest", justify="right", min_width=8)
-    table.add_column("Δ (first→last)", justify="right", min_width=14)
+    table.add_column("Metric", style="bold", min_width=25)
+    table.add_column("Current", justify="right", min_width=8)
+    table.add_column("History", min_width=10)
+    table.add_column("Trend", min_width=12)
 
-    current_tier: str | None = None
     for trend in trends:
-        if trend.tier != current_tier:
-            current_tier = trend.tier
-
         run_count = len(trend.values)
 
         if run_count == 0:
             table.add_row(
                 trend.display_name,
-                trend.tier,
-                "0",
-                "[dim]—[/dim]",
                 "[dim]N/A[/dim]",
                 "[dim]—[/dim]",
+                _direction_markup(trend.direction, trend.higher_is_better),
             )
             continue
 
-        raw_vals = [val for _ts, val in trend.values]
+        raw_vals: list[float | None] = [val for _ts, val in trend.values]
         spark = sparkline(raw_vals)
+        spark_display = spark if spark else "—"
         latest_str = _format_value(trend.values[-1][1], trend.display_format)
-
-        delta_text = _delta_str(trend.delta, trend.display_format)
-        if trend.delta is not None:
-            color = _delta_color(trend.delta, trend.higher_is_better)
-            delta_markup = f"[{color}]{delta_text}[/{color}]"
-        else:
-            delta_markup = "[dim]—[/dim]"
 
         table.add_row(
             trend.display_name,
-            trend.tier,
-            str(run_count),
-            spark,
             latest_str,
-            delta_markup,
+            spark_display,
+            _direction_markup(trend.direction, trend.higher_is_better),
         )
 
     output_console.print(table)
@@ -378,6 +467,7 @@ def render_trends_json(trends: list[MetricTrend]) -> str:
                 "display_format": trend.display_format,
                 "run_count": len(trend.values),
                 "delta": trend.delta,
+                "direction": trend.direction,
                 "values": [{"timestamp": ts.isoformat(), "value": val} for ts, val in trend.values],
             }
         )
