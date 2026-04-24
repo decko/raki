@@ -219,7 +219,7 @@ Every spec must include doc update requirements. Every implementation task that 
 
 ## Orchestrator
 
-The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated development sessions via `claude --enable-auto-mode`. It dispatches Sonnet for implementation and Opus for review, with 7 specialist agents reviewing in parallel (see dispatch matrix above).
+Use the `/orchestrate` skill in Claude Code to coordinate milestone-level development. It dispatches tickets to the SODA pipeline, manages issue labels, verifies base health between merges, and tracks costs. SODA phase prompts live in `docs/soda/`.
 
 ## Gotchas
 
@@ -243,6 +243,10 @@ The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated develo
 18. **`--gate` is the canonical threshold flag** -- not `--threshold`. The old float-only `--threshold` is deprecated. All docs and examples use `--gate 'metric>value'`.
 19. **Google provider has silent 0.0 bug** -- instructor #1658 causes Gemini structured output to silently return default values. `is_instructor_silent_zero()` in `adapter.py` detects this. Affected sessions are excluded from the metric average with a warning.
 20. **Soda implement prompt must say "complete"** -- TDD "minimal implementation" instruction causes agents to shortcut complex designs (tweak a constant instead of building the full system). The soda implement prompt says "Write the complete implementation as described in the task."
+21. **SODA rework short-circuits** -- when verify fails, the rework implement agent often sees existing code and declares "already implemented" without fixing the verify feedback (soda#395). After verify failure, check if rework implement spent <2% of first-pass budget — if so, go straight to manual fix in the worktree.
+22. **Report config key names** -- judge config fields use `llm_` prefix: `llm_provider`, `llm_model`, `llm_temperature`, `llm_max_tokens`. Not `temperature`, not `batch_size`. All are None when `skip_llm=True`.
+23. **History log at `.raki/history.jsonl`** -- created automatically by `raki run`. Must be in `.gitignore`. `HistoryEntry.metrics` is `dict[str, float]` — absent keys mean metric not computed, not None or 0.0.
+24. **Ticket budget limit** -- SODA tickets should be scoped under 100K tokens. Use the `/scope` skill to estimate. Split tickets that exceed the budget (core logic vs CLI wiring is a natural boundary).
 
 ## Things agents often get wrong here
 
@@ -267,3 +271,5 @@ The orchestrator prompt at `docs/orchestrator-prompt.md` drives automated develo
 - Using old metric names (`first_pass_verify_rate` was renamed to `first_pass_success_rate` in v0.8.0).
 - Passing all doc chunks to Ragas instead of selecting top-N relevant ones per session.
 - Not testing against real soda data (`~/dev/soda/.soda/`) before claiming a feature works. Unit tests verify code, not features.
+- Using `temperature` or `batch_size` as report config keys instead of `llm_temperature` / `llm_max_tokens`.
+- Treating absent metric keys in `HistoryEntry.metrics` as 0.0 instead of "no data" (gaps, not zeros).
