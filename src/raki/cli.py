@@ -1025,5 +1025,127 @@ def _handle_diff(
             raise SystemExit(exit_code)
 
 
+@main.command()
+@click.option(
+    "--history-path",
+    "history_path_arg",
+    default=None,
+    help="Path to JSONL history log (default: .raki/history.jsonl)",
+)
+@click.option(
+    "--metrics",
+    "metric_names",
+    default=None,
+    help="Comma-separated metric list (default: all)",
+)
+@click.option(
+    "--since",
+    "since_date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    default=None,
+    help="Include only runs on or after this date (YYYY-MM-DD)",
+)
+@click.option(
+    "--until",
+    "until_date",
+    type=click.DateTime(formats=["%Y-%m-%d"]),
+    default=None,
+    help="Include only runs on or before this date (YYYY-MM-DD)",
+)
+@click.option(
+    "--json",
+    "json_output",
+    is_flag=True,
+    help="Output as JSON instead of Rich table",
+)
+@click.option(
+    "--last",
+    "last_n",
+    type=int,
+    default=None,
+    help="Limit to the last N runs (applied after time filters)",
+)
+def trends(
+    history_path_arg: str | None,
+    metric_names: str | None,
+    since_date: object | None,
+    until_date: object | None,
+    json_output: bool,
+    last_n: int | None,
+) -> None:
+    """Show metric trajectories over time from the evaluation history log.
+
+    Reads the JSONL history log and renders a trend table (sparkline + delta)
+    for each metric, grouped by tier (Operational → Knowledge → Analytical).
+
+    Use --since / --until to restrict the time window, --metrics to focus on
+    specific metrics, and --last to cap the number of runs shown.
+    """
+    from datetime import timezone
+
+    from raki.report.history import load_history
+    from raki.report.trends import compute_all_trends, render_trends_json, render_trends_table
+
+    # Mutual exclusivity: --since/--until and --last conflict
+    if last_n is not None and (since_date is not None or until_date is not None):
+        raise click.UsageError("--last cannot be combined with --since or --until.")
+
+    # Validate --metrics names before loading history
+    metric_filter: set[str] | None = None
+    if metric_names is not None:
+        all_known = _all_metric_names()
+        requested = {name.strip() for name in metric_names.split(",")}
+        unknown = requested - set(all_known.keys())
+        if unknown:
+            valid_list = ", ".join(sorted(all_known.keys()))
+            raise click.BadParameter(
+                f"Unknown metric(s): {', '.join(sorted(unknown))}. Valid metrics: {valid_list}",
+                param_hint="'--metrics'",
+            )
+        metric_filter = requested
+
+    # Resolve history path
+    history_path = (
+        Path(history_path_arg) if history_path_arg else Path.cwd() / ".raki" / "history.jsonl"
+    )
+
+    entries = load_history(history_path)
+
+    if not entries:
+        console.print("[dim]No history entries found.[/dim]")
+        if not history_path.exists():
+            console.print(f"[dim]History file not found: {history_path}[/dim]")
+        return
+
+    # Apply --last filter (take most recent N entries by timestamp)
+    if last_n is not None:
+        if last_n < 1:
+            raise click.BadParameter("--last must be a positive integer.", param_hint="'--last'")
+        entries_sorted = sorted(entries, key=lambda entry: entry.timestamp)
+        entries = entries_sorted[-last_n:]
+
+    # Normalize since/until to UTC-aware datetimes for comparison
+    since_dt = None
+    until_dt = None
+    if since_date is not None:
+        # click.DateTime returns a naive datetime — treat as UTC start of day
+        since_dt = since_date.replace(tzinfo=timezone.utc)  # type: ignore[union-attr]
+    if until_date is not None:
+        until_dt = until_date.replace(tzinfo=timezone.utc)  # type: ignore[union-attr]
+
+    trend_list = compute_all_trends(
+        entries,
+        metric_filter=metric_filter,
+        since=since_dt,
+        until=until_dt,
+    )
+
+    if json_output:
+        click.echo(render_trends_json(trend_list))
+        return
+
+    render_trends_table(trend_list, console=console)
+
+
 if __name__ == "__main__":
     main()

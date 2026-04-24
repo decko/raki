@@ -2612,3 +2612,200 @@ class TestCliRunHistoryLog:
         assert result.exit_code == 0
         # In quiet mode there should be no report-path output at all
         assert "history" not in result.output.lower()
+
+
+class TestTrendsCommand:
+    """Tests for raki trends command."""
+
+    def test_trends_shows_in_help(self) -> None:
+        """trends must appear in the main --help output."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "trends" in result.output
+
+    def test_trends_help_text(self) -> None:
+        """trends --help must describe the command."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--help"])
+        assert result.exit_code == 0
+        assert "history" in result.output.lower()
+
+    def test_trends_no_history_file(self, tmp_path, monkeypatch) -> None:
+        """When no history file exists, trends must exit 0 with a helpful message."""
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends"])
+        assert result.exit_code == 0
+        assert "No history" in result.output or "not found" in result.output.lower()
+
+    def test_trends_with_history_file(self, tmp_path, monkeypatch) -> None:
+        """trends must succeed and display a table when history file exists."""
+        from conftest import make_history_entry
+
+        import json
+
+        monkeypatch.chdir(tmp_path)
+        history_path = tmp_path / ".raki" / "history.jsonl"
+        history_path.parent.mkdir(parents=True)
+
+        entry = make_history_entry(metrics={"rework_cycles": 1.5, "first_pass_success_rate": 0.80})
+        line = json.dumps(entry.model_dump(mode="json"), default=str)
+        history_path.write_text(line + "\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends"])
+        assert result.exit_code == 0
+        assert "Trend" in result.output or "Rework" in result.output
+
+    def test_trends_custom_history_path(self, tmp_path, monkeypatch) -> None:
+        """--history-path must allow specifying a custom JSONL file."""
+        from conftest import make_history_entry
+
+        import json
+
+        monkeypatch.chdir(tmp_path)
+        history_path = tmp_path / "my-history.jsonl"
+        entry = make_history_entry(metrics={"rework_cycles": 1.5})
+        line = json.dumps(entry.model_dump(mode="json"), default=str)
+        history_path.write_text(line + "\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--history-path", str(history_path)])
+        assert result.exit_code == 0
+
+    def test_trends_json_output(self, tmp_path, monkeypatch) -> None:
+        """--json flag must produce valid JSON with a 'trends' key."""
+        from conftest import make_history_entry
+
+        import json as json_mod
+
+        monkeypatch.chdir(tmp_path)
+        history_path = tmp_path / ".raki" / "history.jsonl"
+        history_path.parent.mkdir(parents=True)
+
+        entry = make_history_entry(metrics={"rework_cycles": 1.5})
+        line = json_mod.dumps(entry.model_dump(mode="json"), default=str)
+        history_path.write_text(line + "\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--json"])
+        assert result.exit_code == 0
+        data = json_mod.loads(result.output)
+        assert "trends" in data
+
+    def test_trends_metrics_filter(self, tmp_path, monkeypatch) -> None:
+        """--metrics must restrict output to the requested metric(s)."""
+        from conftest import make_history_entry
+
+        import json as json_mod
+
+        monkeypatch.chdir(tmp_path)
+        history_path = tmp_path / ".raki" / "history.jsonl"
+        history_path.parent.mkdir(parents=True)
+
+        entry = make_history_entry(metrics={"rework_cycles": 1.5, "first_pass_success_rate": 0.80})
+        line = json_mod.dumps(entry.model_dump(mode="json"), default=str)
+        history_path.write_text(line + "\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--metrics", "rework_cycles", "--json"])
+        assert result.exit_code == 0
+        data = json_mod.loads(result.output)
+        names = {trend["metric_name"] for trend in data["trends"]}
+        assert "rework_cycles" in names
+        assert "first_pass_success_rate" not in names
+
+    def test_trends_invalid_metric_name_exits_2(self, tmp_path, monkeypatch) -> None:
+        """--metrics with unknown name must exit with code 2."""
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--metrics", "totally_unknown"])
+        assert result.exit_code == 2
+
+    def test_trends_since_filter(self, tmp_path, monkeypatch) -> None:
+        """--since must exclude history entries before the given date."""
+        from conftest import make_history_entry
+        from datetime import datetime, timezone
+
+        import json as json_mod
+
+        monkeypatch.chdir(tmp_path)
+        history_path = tmp_path / ".raki" / "history.jsonl"
+        history_path.parent.mkdir(parents=True)
+
+        old_entry = make_history_entry(
+            run_id="old",
+            timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            metrics={"rework_cycles": 3.0},
+        )
+        new_entry = make_history_entry(
+            run_id="new",
+            timestamp=datetime(2026, 4, 1, tzinfo=timezone.utc),
+            metrics={"rework_cycles": 1.0},
+        )
+        lines = "\n".join(
+            json_mod.dumps(entry.model_dump(mode="json"), default=str)
+            for entry in [old_entry, new_entry]
+        )
+        history_path.write_text(lines + "\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--since", "2026-03-01", "--json"])
+        assert result.exit_code == 0
+        data = json_mod.loads(result.output)
+        rework = next(
+            (trend for trend in data["trends"] if trend["metric_name"] == "rework_cycles"), None
+        )
+        assert rework is not None
+        assert rework["run_count"] == 1
+        assert rework["values"][0]["value"] == 1.0
+
+    def test_trends_last_n(self, tmp_path, monkeypatch) -> None:
+        """--last must limit to the most recent N runs."""
+        from conftest import make_history_entry
+        from datetime import datetime, timezone
+
+        import json as json_mod
+
+        monkeypatch.chdir(tmp_path)
+        history_path = tmp_path / ".raki" / "history.jsonl"
+        history_path.parent.mkdir(parents=True)
+
+        entries = [
+            make_history_entry(
+                run_id=f"run-{idx}",
+                timestamp=datetime(2026, 4, idx + 1, tzinfo=timezone.utc),
+                metrics={"rework_cycles": float(idx)},
+            )
+            for idx in range(5)
+        ]
+        lines = "\n".join(
+            json_mod.dumps(entry.model_dump(mode="json"), default=str) for entry in entries
+        )
+        history_path.write_text(lines + "\n")
+
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--last", "2", "--json"])
+        assert result.exit_code == 0
+        data = json_mod.loads(result.output)
+        rework = next(
+            (trend for trend in data["trends"] if trend["metric_name"] == "rework_cycles"), None
+        )
+        assert rework is not None
+        assert rework["run_count"] == 2
+
+    def test_trends_last_and_since_conflict(self, tmp_path, monkeypatch) -> None:
+        """--last combined with --since must raise UsageError."""
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--last", "5", "--since", "2026-01-01"])
+        assert result.exit_code != 0
+        assert "--last" in result.output or "cannot" in result.output.lower()
+
+    def test_trends_last_and_until_conflict(self, tmp_path, monkeypatch) -> None:
+        """--last combined with --until must raise UsageError."""
+        monkeypatch.chdir(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(main, ["trends", "--last", "5", "--until", "2026-12-31"])
+        assert result.exit_code != 0
