@@ -1930,6 +1930,263 @@ class TestAlcoveContextExtraction:
 # --- Soda context synthesis tests (issue #114) ---
 
 
+# --- Alcove rework_cycles support (issue #176) ---
+
+
+class TestAlcoveReworkCycles:
+    def test_rework_cycles_from_bridge_top_level(self, tmp_path):
+        """Bridge format with rework_cycles at top level should populate session.rework_cycles."""
+        source = _bridge_session(tmp_path, overrides={"rework_cycles": 2})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.rework_cycles == 2
+
+    def test_rework_cycles_defaults_to_zero_when_absent(self, tmp_path):
+        """Bridge format without rework_cycles field should default to 0."""
+        source = _bridge_session(tmp_path)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.rework_cycles == 0
+
+    def test_classic_alcove_rework_cycles_defaults_to_zero(self):
+        """Classic alcove format should default rework_cycles to 0."""
+        adapter = AlcoveAdapter()
+        sample = adapter.load(ALCOVE_FIXTURE)
+        assert sample.session.rework_cycles == 0
+
+    def test_rework_cycles_nonzero_updates_total_phases(self, tmp_path):
+        """rework_cycles from bridge format is read independently of phases."""
+        source = _bridge_session(tmp_path, overrides={"rework_cycles": 3})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.rework_cycles == 3
+
+
+# --- Alcove findings support (issue #176) ---
+
+
+class TestAlcoveFindings:
+    def test_findings_from_bridge_top_level(self, tmp_path):
+        """Bridge format with findings list should populate sample.findings."""
+        findings_data = [
+            {
+                "source": "go-specialist",
+                "severity": "major",
+                "file": "main.go",
+                "line": 42,
+                "issue": "Memory leak in handler",
+                "suggestion": "Use defer to close resources",
+            },
+            {
+                "source": "security-specialist",
+                "severity": "critical",
+                "file": "auth.go",
+                "line": 10,
+                "issue": "SQL injection vulnerability",
+                "suggestion": "Use parameterized queries",
+            },
+        ]
+        source = _bridge_session(tmp_path, overrides={"findings": findings_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert len(sample.findings) == 2
+        assert sample.findings[0].reviewer == "go-specialist"
+        assert sample.findings[0].severity == "major"
+        assert sample.findings[0].file == "main.go"
+        assert sample.findings[0].line == 42
+        assert "Memory leak" in sample.findings[0].issue
+        critical_findings = [
+            finding for finding in sample.findings if finding.severity == "critical"
+        ]
+        assert len(critical_findings) == 1
+
+    def test_findings_empty_when_absent(self, tmp_path):
+        """Bridge format without findings should have empty findings list."""
+        source = _bridge_session(tmp_path)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.findings == []
+
+    def test_findings_skips_malformed_finding_missing_issue(self, tmp_path):
+        """Bridge format with a finding missing 'issue' key should skip it."""
+        findings_data = [
+            {"source": "go-specialist", "severity": "major", "issue": "valid issue"},
+            {"source": "go-specialist", "severity": "minor"},  # missing 'issue' key
+        ]
+        source = _bridge_session(tmp_path, overrides={"findings": findings_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert len(sample.findings) == 1
+        assert sample.findings[0].issue == "valid issue"
+
+    def test_findings_redacts_sensitive_content(self, tmp_path):
+        """Findings from bridge format must pass through redact_sensitive()."""
+        findings_data = [
+            {
+                "source": "security-specialist",
+                "severity": "critical",
+                "file": "config.go",
+                "issue": "Hardcoded password=super_secret_123 in config",
+            }
+        ]
+        source = _bridge_session(tmp_path, overrides={"findings": findings_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert len(sample.findings) == 1
+        assert "super_secret_123" not in sample.findings[0].issue
+        assert "***REDACTED***" in sample.findings[0].issue
+
+    def test_classic_alcove_findings_always_empty(self):
+        """Classic alcove format has no findings structure, so findings are empty."""
+        adapter = AlcoveAdapter()
+        sample = adapter.load(ALCOVE_FIXTURE)
+        assert sample.findings == []
+
+    def test_findings_null_in_bridge_format(self, tmp_path):
+        """Bridge format with null findings should produce empty findings list."""
+        source = _bridge_session(tmp_path, overrides={"findings": None})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.findings == []
+
+
+# --- Alcove multiple phases support (issue #176) ---
+
+
+class TestAlcoveMultiplePhases:
+    def test_phases_dict_creates_multiple_phase_results(self, tmp_path):
+        """Bridge format with phases dict should create one PhaseResult per phase entry."""
+        phases_data = {
+            "triage": {"status": "completed", "cost_usd": 0.3, "generation": 1},
+            "implement": {"status": "completed", "cost_usd": 1.2, "generation": 1},
+        }
+        source = _bridge_session(tmp_path, overrides={"phases": phases_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert len(sample.phases) == 2
+        phase_names = {phase.name for phase in sample.phases}
+        assert "triage" in phase_names
+        assert "implement" in phase_names
+
+    def test_phases_dict_total_phases_matches_dict_length(self, tmp_path):
+        """total_phases on SessionMeta should equal the number of phases in phases dict."""
+        phases_data = {
+            "triage": {"status": "completed", "cost_usd": 0.3, "generation": 1},
+            "plan": {"status": "completed", "cost_usd": 0.5, "generation": 1},
+            "implement": {"status": "completed", "cost_usd": 1.0, "generation": 1},
+        }
+        source = _bridge_session(tmp_path, overrides={"phases": phases_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.total_phases == 3
+
+    def test_phases_dict_metadata_in_phase_results(self, tmp_path):
+        """Phase results from phases dict should carry correct metadata."""
+        phases_data = {
+            "implement": {
+                "status": "completed",
+                "cost_usd": 1.5,
+                "duration_ms": 95000,
+                "generation": 2,
+                "tokens_in": 5000,
+                "tokens_out": 2000,
+            }
+        }
+        source = _bridge_session(tmp_path, overrides={"phases": phases_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        impl_phases = [phase for phase in sample.phases if phase.name == "implement"]
+        assert len(impl_phases) == 1
+        assert impl_phases[0].status == "completed"
+        assert impl_phases[0].cost_usd == 1.5
+        assert impl_phases[0].duration_ms == 95000
+        assert impl_phases[0].generation == 2
+        assert impl_phases[0].tokens_in == 5000
+        assert impl_phases[0].tokens_out == 2000
+
+    def test_phases_dict_transcript_data_in_last_phase(self, tmp_path):
+        """Transcript output and tool_calls should appear in the last phase."""
+        phases_data = {
+            "triage": {"status": "completed", "cost_usd": 0.3, "generation": 1},
+            "implement": {"status": "completed", "cost_usd": 1.2, "generation": 1},
+        }
+        source = _bridge_session(tmp_path, overrides={"phases": phases_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        # Transcript output goes to the last phase (implement)
+        phase_names = [phase.name for phase in sample.phases]
+        last_phase = sample.phases[phase_names.index("implement")]
+        assert last_phase.output  # has transcript-derived output ("I will upgrade deps.")
+        assert "I will upgrade deps" in last_phase.output
+
+    def test_no_phases_dict_creates_single_session_phase(self, tmp_path):
+        """Bridge format without phases dict should create a single 'session' phase."""
+        source = _bridge_session(tmp_path)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert len(sample.phases) == 1
+        assert sample.phases[0].name == "session"
+
+    def test_phases_dict_failed_status_propagates(self, tmp_path):
+        """Phase with 'failed' status in phases dict should produce failed PhaseResult."""
+        phases_data = {
+            "implement": {"status": "failed", "cost_usd": 0.5, "generation": 1},
+        }
+        source = _bridge_session(tmp_path, overrides={"phases": phases_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        impl_phases = [phase for phase in sample.phases if phase.name == "implement"]
+        assert impl_phases[0].status == "failed"
+
+    def test_phases_dict_with_rework_and_findings_combined(self, tmp_path):
+        """Bridge format with rework_cycles, findings, and phases all populated correctly."""
+        phases_data = {
+            "implement": {"status": "completed", "cost_usd": 0.8, "generation": 2},
+            "review": {"status": "completed", "cost_usd": 0.3, "generation": 1},
+        }
+        findings_data = [
+            {
+                "source": "specialist",
+                "severity": "minor",
+                "file": "main.go",
+                "issue": "style issue",
+            },
+        ]
+        overrides = {
+            "rework_cycles": 1,
+            "phases": phases_data,
+            "findings": findings_data,
+        }
+        source = _bridge_session(tmp_path, overrides=overrides)
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert sample.session.rework_cycles == 1
+        assert len(sample.findings) == 1
+        assert len(sample.phases) == 2
+
+    def test_phases_dict_empty_creates_single_session_phase(self, tmp_path):
+        """Bridge format with empty phases dict should create a single 'session' phase."""
+        source = _bridge_session(tmp_path, overrides={"phases": {}})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        assert len(sample.phases) == 1
+        assert sample.phases[0].name == "session"
+
+    def test_phases_dict_non_primary_phases_have_empty_output(self, tmp_path):
+        """Non-primary (not last) phases should not have transcript-derived output."""
+        phases_data = {
+            "triage": {"status": "completed", "cost_usd": 0.3, "generation": 1},
+            "implement": {"status": "completed", "cost_usd": 1.2, "generation": 1},
+        }
+        source = _bridge_session(tmp_path, overrides={"phases": phases_data})
+        adapter = AlcoveAdapter()
+        sample = adapter.load(source)
+        triage_phases = [phase for phase in sample.phases if phase.name == "triage"]
+        assert len(triage_phases) == 1
+        # Non-primary phase should not have transcript output
+        assert triage_phases[0].output == ""
+
+
 class TestSodaContextExtraction:
     def test_synthesizes_context_from_triage_structured(self, tmp_path):
         """Triage output_structured fields should be extracted for context."""
