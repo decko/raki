@@ -234,8 +234,8 @@ class AlcoveAdapter:
                 header = file_handle.read(DETECT_READ_SIZE)
             has_transcript = '"transcript"' in header
             has_session_id = '"session_id"' in header
-            has_bridge_id = '"id"' in header and '"task_id"' in header
-            return has_transcript and (has_session_id or has_bridge_id)
+            has_id = '"id"' in header  # covers bridge (id+task_id) and id-only formats
+            return has_transcript and (has_session_id or has_id)
         except OSError:
             return False
 
