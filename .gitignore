@@ -31,5 +31,8 @@ Thumbs.db
 # Results
 results/
 
+# RAKI local history
+.raki/
+
 # Claude Code local settings
 .claude/

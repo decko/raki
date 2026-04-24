@@ -169,10 +169,10 @@ def main():
 @click.option("--json", "json_stdout", is_flag=True, help="Print JSON report to stdout")
 @click.option("-v", "--verbose", is_flag=True, help="Show debug output")
 @click.option(
-    "--history-file",
-    "history_file",
+    "--history-path",
+    "history_path_arg",
     default=None,
-    help="Path to JSONL history log (default: <output-dir>/raki-history.jsonl)",
+    help="Path to JSONL history log (default: .raki/history.jsonl)",
 )
 @click.option(
     "--no-history",
@@ -199,7 +199,7 @@ def run(
     include_sessions: bool,
     json_stdout: bool,
     verbose: bool,
-    history_file: str | None,
+    history_path_arg: str | None,
     no_history: bool,
 ) -> None:
     """Run evaluation against sessions."""
@@ -208,6 +208,9 @@ def run(
             "--judge and --no-llm cannot be used together. "
             "--no-llm is deprecated and now the default."
         )
+
+    if no_history and history_path_arg is not None:
+        raise click.UsageError("--no-history and --history-path cannot be used together.")
 
     if no_llm:
         click.echo(
@@ -460,11 +463,29 @@ def run(
     # Append to JSONL history log unless the user opted out
     history_path: Path | None = None
     if not no_history:
-        history_path = Path(history_file) if history_file else output_path / "raki-history.jsonl"
+        history_path = (
+            Path(history_path_arg) if history_path_arg else Path.cwd() / ".raki" / "history.jsonl"
+        )
+
+        # Path traversal guard: history path must be a descendant of project root
+        resolved_history = history_path.resolve()
+        project_root = Path.cwd().resolve()
+        try:
+            resolved_history.relative_to(project_root)
+        except ValueError:
+            raise click.UsageError(
+                f"--history-path must be within the project root ({project_root})"
+            )
+
         from raki.report.history import append_history_entry
 
         try:
-            append_history_entry(report, history_path, session_count=len(dataset.samples))
+            append_history_entry(
+                report,
+                history_path,
+                sessions_count=len(dataset.samples),
+                manifest_file=manifest_file,
+            )
         except Exception as exc:
             out.print(f"[yellow]Warning: Failed to write history log: {exc}[/yellow]")
             history_path = None

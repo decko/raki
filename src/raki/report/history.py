@@ -2,35 +2,64 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from raki.model.report import EvalReport
+
+
+def _git_sha() -> str | None:
+    """Return the short git SHA of HEAD, or None if not in a git repo."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _config_hash(config: dict) -> str:
+    """Return a SHA-256 hex digest of the config dict, sorted for determinism."""
+    serialized = json.dumps(sorted(config.items()))
+    return hashlib.sha256(serialized.encode()).hexdigest()
 
 
 class HistoryEntry(BaseModel):
     """Compact record written to the JSONL history file after each evaluation run.
 
-    Each line in ``raki-history.jsonl`` is a JSON-serialised ``HistoryEntry``.
+    Each line in ``history.jsonl`` is a JSON-serialised ``HistoryEntry``.
     The entry contains only the aggregate view of a run — no raw session data —
     so the file stays small and readable over many runs.
     """
 
+    schema_version: int = 1
     run_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    session_count: int
-    aggregate_scores: dict[str, float | None] = Field(default_factory=dict)
-    manifest_hash: str | None = None
+    sessions_count: int
+    metrics: dict[str, float] = Field(default_factory=dict)
+    manifest: str | None = None
+    config_hash: str = ""
+    git_sha: str | None = None
 
 
 def append_history_entry(
     report: EvalReport,
     history_path: Path,
     *,
-    session_count: int,
+    sessions_count: int,
+    manifest_file: Path | None = None,
 ) -> None:
     """Append a single ``HistoryEntry`` line to the JSONL history file.
 
@@ -39,7 +68,8 @@ def append_history_entry(
         history_path: Path to the JSONL history file.  Created (with parent
             directories) on first call.  Subsequent calls append without
             overwriting existing entries.
-        session_count: Number of sessions that were evaluated in this run.
+        sessions_count: Number of sessions that were evaluated in this run.
+        manifest_file: Path to the manifest file used for this run (basename stored).
 
     Raises:
         ValueError: If ``history_path`` is a symlink (security guard).
@@ -50,12 +80,19 @@ def append_history_entry(
 
     history_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Build metrics dict excluding None values
+    metrics_dict = {
+        key: value for key, value in report.aggregate_scores.items() if value is not None
+    }
+
     entry = HistoryEntry(
         run_id=report.run_id,
         timestamp=report.timestamp,
-        session_count=session_count,
-        aggregate_scores=dict(report.aggregate_scores),
-        manifest_hash=report.manifest_hash,
+        sessions_count=sessions_count,
+        metrics=metrics_dict,
+        manifest=manifest_file.name if manifest_file is not None else None,
+        config_hash=_config_hash(report.config),
+        git_sha=_git_sha(),
     )
 
     line = json.dumps(entry.model_dump(mode="json"), default=str)
@@ -65,6 +102,10 @@ def append_history_entry(
 
 def load_history(history_path: Path) -> list[HistoryEntry]:
     """Load all history entries from a JSONL file.
+
+    Malformed lines (invalid JSON or validation errors) are skipped with a
+    warning rather than raising, so a single corrupt line does not prevent
+    loading the rest of the history.
 
     Args:
         history_path: Path to the JSONL history file.
@@ -83,9 +124,18 @@ def load_history(history_path: Path) -> list[HistoryEntry]:
         return []
 
     entries: list[HistoryEntry] = []
-    for raw_line in history_path.read_text(encoding="utf-8").splitlines():
+    for line_number, raw_line in enumerate(
+        history_path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
         stripped = raw_line.strip()
         if not stripped:
             continue
-        entries.append(HistoryEntry.model_validate(json.loads(stripped)))
+        try:
+            parsed = json.loads(stripped)
+            entries.append(HistoryEntry.model_validate(parsed))
+        except (json.JSONDecodeError, ValidationError) as exc:
+            warnings.warn(
+                f"Skipping malformed history line {line_number} in {history_path}: {exc}",
+                stacklevel=2,
+            )
     return entries
