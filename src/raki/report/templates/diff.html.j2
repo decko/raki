@@ -310,6 +310,25 @@
   </header>
 
   <main>
+  {# --- Mismatch warnings --- #}
+  {% if diff.judge_config_mismatch %}
+  <div class="warning-banner">
+    &#9888; <strong>Judge configuration mismatch:</strong>
+    {% for warning in diff.judge_config_mismatch %}
+    <br>&nbsp;&nbsp;{{ warning }}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if diff.agent_model_mismatch %}
+  <div class="warning-banner">
+    &#9888; <strong>Agent model mismatch:</strong>
+    {% for warning in diff.agent_model_mismatch %}
+    <br>&nbsp;&nbsp;{{ warning }}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {# --- Coverage --- #}
   <div class="coverage-line">
     Matched: <strong>{{ matched_count }}/{{ total_count }}</strong> sessions

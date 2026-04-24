@@ -1020,3 +1020,117 @@ class TestDiffReportAgentModelMismatch:
         compare = _make_eval_report("comp", {"first_pass_success_rate": 0.91})
         diff = generate_diff_report(baseline, compare)
         assert diff.agent_model_mismatch == []
+
+
+class TestPrintDiffSummaryAgentModelWarning:
+    """print_diff_summary shows agent_model_mismatch warnings in CLI output."""
+
+    def _capture_diff_output(self, diff: DiffReport) -> str:
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=False, width=120)
+        print_diff_summary(diff, console=test_console)
+        return string_io.getvalue()
+
+    def test_shows_agent_model_warning_when_models_differ(self):
+        """print_diff_summary shows a warning when agent models differ."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            agent_model_mismatch=[
+                "agent model differs: 'claude-opus-4' (baseline) vs 'claude-sonnet-4-6' (compare)"
+            ],
+        )
+        output = self._capture_diff_output(diff)
+        assert "claude-opus-4" in output
+        assert "claude-sonnet-4-6" in output
+
+    def test_no_agent_model_warning_when_no_mismatch(self):
+        """print_diff_summary does not emit agent model warnings when models match."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            agent_model_mismatch=[],
+        )
+        output = self._capture_diff_output(diff)
+        assert "agent model" not in output.lower()
+
+    def test_warning_uses_yellow_or_warning_word(self):
+        """Agent model warning uses yellow styling or the word 'warning'."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            agent_model_mismatch=["agent model differs: 'a' (baseline) vs 'b' (compare)"],
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True, width=120)
+        print_diff_summary(diff, console=test_console)
+        raw_output = string_io.getvalue()
+        plain_output = self._capture_diff_output(diff)
+        assert "warning" in plain_output.lower() or "yellow" in raw_output.lower()
+
+
+@pytest.mark.skipif(
+    not __import__("importlib").util.find_spec("jinja2"),
+    reason="jinja2 not installed",
+)
+class TestDiffHtmlWarningBanners:
+    """HTML diff report shows judge and agent model mismatch banners."""
+
+    def test_html_shows_agent_model_mismatch_banner(self, tmp_path):
+        """HTML diff should display an agent model mismatch warning banner."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            agent_model_mismatch=[
+                "agent model differs: 'claude-opus-4' (baseline) vs 'claude-sonnet-4-6' (compare)"
+            ],
+        )
+        from raki.report.html_report import write_diff_html_report
+
+        html_path = tmp_path / "diff.html"
+        write_diff_html_report(diff, html_path)
+        content = html_path.read_text()
+        assert "claude-opus-4" in content
+        assert "claude-sonnet-4-6" in content
+        assert 'class="warning-banner"' in content
+
+    def test_html_shows_judge_config_mismatch_banner(self, tmp_path):
+        """HTML diff should display a judge config mismatch warning banner."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            judge_config_mismatch=[
+                "judge model differs: 'claude-opus-4' (baseline) vs 'claude-sonnet-4-6' (compare)"
+            ],
+        )
+        from raki.report.html_report import write_diff_html_report
+
+        html_path = tmp_path / "diff.html"
+        write_diff_html_report(diff, html_path)
+        content = html_path.read_text()
+        assert "claude-opus-4" in content
+        assert "claude-sonnet-4-6" in content
+        assert 'class="warning-banner"' in content
+        assert "Judge" in content or "judge" in content
+
+    def test_no_banner_when_no_mismatch(self, tmp_path):
+        """HTML diff should not show mismatch banner elements when configs match."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            judge_config_mismatch=[],
+            agent_model_mismatch=[],
+        )
+        from raki.report.html_report import write_diff_html_report
+
+        html_path = tmp_path / "diff.html"
+        write_diff_html_report(diff, html_path)
+        content = html_path.read_text()
+        # The banner div element should not appear (CSS class definition is still present)
+        assert 'class="warning-banner"' not in content

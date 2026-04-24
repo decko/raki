@@ -391,6 +391,12 @@ def print_diff_summary(
             output_console.print(f"[yellow]Warning: {warning_message}[/yellow]")
         output_console.print()
 
+    # Agent model mismatch warnings
+    if diff.agent_model_mismatch:
+        for warning_message in diff.agent_model_mismatch:
+            output_console.print(f"[yellow]Warning: {warning_message}[/yellow]")
+        output_console.print()
+
     # Coverage line
     match_result = diff.match_result
     matched_count = len(match_result.matched_ids)
