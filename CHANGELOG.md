@@ -16,7 +16,7 @@
   Metric names from older raki versions are automatically translated (e.g. ``first_pass_verify_rate`` → ``first_pass_success_rate``). Runs that did not record a given metric are silently skipped (gap handling).
 
   (#171)
-- Serialize judge configuration fields (``llm_provider``, ``llm_model``, ``llm_temperature``, ``llm_max_tokens``) into the report JSON ``config`` dict. When ``skip_llm`` is true, all judge fields are ``None``. Old reports without these fields load without error. (#173)
+- Serialize judge configuration fields (``llm_provider``, ``llm_model``, ``llm_temperature``, ``llm_max_tokens``) into the report JSON ``config`` dict. When ``skip_judge`` is true, all judge fields are ``None``. Old reports without these fields load without error. (#173)
 - Warn when judge configurations differ in ``--diff`` comparison. When ``raki report --diff`` compares two reports that used different LLM judge settings (model or provider), a yellow warning is now shown so users know the retrieval quality scores may not be directly comparable. (#187)
 
 ### Bug Fixes
