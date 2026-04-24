@@ -971,6 +971,7 @@ def _write_diff_report_json(
     session_ids: list[str] | None = None,
     rework_cycles: int = 0,
     verify_status: str = "completed",
+    config: dict | None = None,
 ) -> None:
     """Write a minimal EvalReport JSON file for diff testing."""
     scores = aggregate_scores or {
@@ -978,12 +979,14 @@ def _write_diff_report_json(
         "rework_cycles": 0.3,
         "cost_efficiency": 7.50,
     }
-    data = {
+    data: dict = {
         "run_id": run_id,
         "timestamp": "2026-04-10T00:00:00Z",
         "aggregate_scores": scores,
         "sample_results": [],
     }
+    if config is not None:
+        data["config"] = config
     if include_sessions and session_ids:
         for session_id in session_ids:
             verify_output = "PASS" if verify_status == "completed" else "FAIL"
@@ -1302,6 +1305,36 @@ class TestCliReportDiff:
         result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
         assert result.exit_code == 0
         assert "Improvement" in result.output or "improvement" in result.output.lower()
+
+    def test_diff_exit_code_0_with_judge_config_warnings(self, tmp_path):
+        """Judge config warnings should NOT affect exit code (still 0)."""
+        baseline = tmp_path / "baseline.json"
+        compare = tmp_path / "compare.json"
+        _write_diff_report_json(
+            baseline,
+            run_id="base",
+            aggregate_scores={"first_pass_success_rate": 0.78},
+            config={
+                "skip_llm": False,
+                "llm_provider": "anthropic",
+                "llm_model": "claude-opus-4",
+            },
+        )
+        _write_diff_report_json(
+            compare,
+            run_id="comp",
+            aggregate_scores={"first_pass_success_rate": 0.91},
+            config={
+                "skip_llm": False,
+                "llm_provider": "anthropic",
+                "llm_model": "claude-sonnet-4-6",
+            },
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["report", "--diff", str(baseline), str(compare)])
+        assert result.exit_code == 0
+        assert "claude-opus-4" in result.output
+        assert "claude-sonnet-4-6" in result.output
 
 
 class TestCLIInversion:

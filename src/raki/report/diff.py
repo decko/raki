@@ -50,6 +50,7 @@ class DiffReport:
     improvements: list[SessionTransition] = field(default_factory=list)
     regressions: list[SessionTransition] = field(default_factory=list)
     has_session_data: bool = True
+    judge_config_mismatch: list[str] = field(default_factory=list)
 
 
 # Verdict rank for sorting: lower rank = worse verdict
@@ -65,6 +66,45 @@ def is_higher_is_better(metric_name: str) -> bool:
     if meta is None:
         return True
     return bool(meta.get("higher_is_better", True))
+
+
+def compare_judge_configs(baseline: EvalReport, compare: EvalReport) -> list[str]:
+    """Return warning messages when judge configs differ between two reports.
+
+    Compares the ``llm_provider`` and ``llm_model`` fields stored in each report's
+    ``config`` dict.  Returns an empty list when:
+
+    - Neither report used a judge (``skip_llm=True`` or config absent).
+    - Both reports used identical judge settings.
+
+    Returns one warning per differing field when both used a judge with different
+    settings, or a single warning when only one report used a judge.
+    """
+    baseline_skip = bool(baseline.config.get("skip_llm", True))
+    compare_skip = bool(compare.config.get("skip_llm", True))
+
+    # Neither used a judge — nothing to compare
+    if baseline_skip and compare_skip:
+        return []
+
+    # One used a judge, the other did not
+    if baseline_skip != compare_skip:
+        return ["unknown baseline — cannot compare judge calibration"]
+
+    # Both used a judge — compare individual config fields
+    warnings: list[str] = []
+    judge_fields = [
+        ("llm_provider", "judge provider"),
+        ("llm_model", "judge model"),
+    ]
+    for config_key, label in judge_fields:
+        baseline_val = baseline.config.get(config_key)
+        compare_val = compare.config.get(config_key)
+        if baseline_val != compare_val:
+            warnings.append(
+                f"{label} differs: {baseline_val!r} (baseline) vs {compare_val!r} (compare)"
+            )
+    return warnings
 
 
 def match_sessions(baseline: EvalReport, compare: EvalReport) -> MatchResult:
@@ -190,10 +230,12 @@ def compute_transitions(
 def generate_diff_report(baseline: EvalReport, compare: EvalReport) -> DiffReport:
     """Generate a complete diff report from two evaluation reports.
 
-    Computes session matching, metric deltas, and verdict transitions.
+    Computes session matching, metric deltas, verdict transitions, and warns
+    when the judge configuration differs between the two runs.
     """
     match_result = match_sessions(baseline, compare)
     deltas = compute_deltas(baseline.aggregate_scores, compare.aggregate_scores)
+    judge_warnings = compare_judge_configs(baseline, compare)
 
     has_session_data = bool(baseline.sample_results and compare.sample_results)
 
@@ -217,4 +259,5 @@ def generate_diff_report(baseline: EvalReport, compare: EvalReport) -> DiffRepor
         improvements=improvements,
         regressions=regressions,
         has_session_data=has_session_data,
+        judge_config_mismatch=judge_warnings,
     )
