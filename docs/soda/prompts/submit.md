@@ -34,4 +34,10 @@ Branch: {{.Branch}}
      Assigned-by: decko
      ```
 
-3. **Do NOT merge** — the PR is for human review. Report the PR URL.
+3. **Create a towncrier changelog fragment** before pushing:
+   - Determine the fragment type: `feature` (new capability), `fix` (bug fix), `breaking` (breaking change), `doc` (documentation), `misc` (other)
+   - Create the file `changes/<ticket-number>.<type>` with a one-line description of the user-facing change
+   - Example: `echo "Add --gate and --require-metric flags to report subcommand." > changes/139.fix`
+   - Stage and commit the fragment: `git add changes/ && git commit -m "chore: add towncrier fragment for #<ticket-number>"`
+
+4. **Do NOT merge** — the PR is for human review. Report the PR URL.

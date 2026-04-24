@@ -60,3 +60,18 @@ Do NOT simplify the design — implement exactly what the plan describes.
 If a task cannot be completed, explain why and move to the next.
 
 If this is a **retry after a failed verification**, the verification feedback is included above. Address EVERY failing criterion — not just the easiest ones. Read the verification output carefully and fix ALL issues identified, not a subset.
+
+## Self-Check Before Reporting
+
+Before you report completion, verify your own work against the acceptance criteria. This step prevents costly pipeline re-runs.
+
+1. **Re-read the acceptance criteria** from the ticket (listed above).
+2. **For each criterion**, check the actual code you wrote — not your memory of what you wrote:
+   - Does the field/function/class name match exactly what the AC specifies?
+   - Did you cover all items in lists (e.g., "add fields X, Y, and Z" means all three)?
+   - Did you update all required locations (e.g., new metric → `ALL_OPERATIONAL` + `METRIC_METADATA` + `OPERATIONAL_METRICS`)?
+3. **Run the tests one final time**: `uv run pytest tests/ -v -m "not slow"`
+4. **Run linting and type checks**: `uv run ruff check src/ tests/ && uv run ruff format src/ tests/ && uv run ty check src/raki/`
+5. **Check for towncrier fragment**: if this is a user-facing change, verify `changes/<ticket-number>.<type>` exists.
+
+If any criterion is not met, fix it now — do not report success and hope the verify phase won't notice.

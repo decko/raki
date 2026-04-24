@@ -103,3 +103,5 @@ For each specialist perspective, report:
 - Any `CRITICAL` or `IMPORTANT` findings → verdict `rework`, route back to implement
 - Only `MINOR` findings → verdict `approve`, note minors in PR body
 - No findings → verdict `approve`
+
+**IMPORTANT: Finding aggregation rule.** When the overall verdict is `rework`, you MUST include ALL `CRITICAL` and `IMPORTANT` findings from every specialist perspective in the top-level `perspectives[].findings` arrays. The implement agent on retry only sees the structured JSON — if findings are mentioned in narrative text but missing from the `findings` array, the implement agent cannot address them. Every finding that contributed to the `rework` verdict must appear in the structured output.

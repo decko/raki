@@ -114,27 +114,26 @@ phases:
       - verify
       - review
 
-  # monitor phase disabled for now — human handles PR feedback
-  # - name: monitor
-  #   prompt: prompts/monitor.md
-  #   schema: schemas/monitor.go
-  #   type: polling
-  #   tools:
-  #     - Read
-  #     - Write
-  #     - Edit
-  #     - Glob
-  #     - Grep
-  #     - Bash
-  #   polling:
-  #     initial_interval: 2m
-  #     max_interval: 5m
-  #     escalate_after: 30m
-  #     max_duration: 4h
-  #     max_response_rounds: 3
-  #   retry:
-  #     transient: 2
-  #     parse: 1
-  #     semantic: 0
-  #   depends_on:
-  #     - submit
+  - name: monitor
+    prompt: prompts/monitor.md
+    schema: schemas/monitor.json
+    type: polling
+    tools:
+      - Read
+      - Write
+      - Edit
+      - Glob
+      - Grep
+      - Bash
+    polling:
+      initial_interval: 2m
+      max_interval: 5m
+      escalate_after: 30m
+      max_duration: 4h
+      max_response_rounds: 3
+    retry:
+      transient: 2
+      parse: 1
+      semantic: 0
+    depends_on:
+      - submit
