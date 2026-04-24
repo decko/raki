@@ -2917,3 +2917,399 @@ class TestSelectRelevantChunksEdgeCases:
         ]
         result = select_relevant_chunks("xylophone zebra quantum", chunks)
         assert result == []
+
+
+# ---------------------------------------------------------------------------
+# ScoringLoop tests — shared scoring loop extracted from the 4 Ragas metrics
+# ---------------------------------------------------------------------------
+
+
+class TestScoringState:
+    """Unit tests for ScoringState dataclass."""
+
+    def test_default_state_is_empty(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState
+
+        state = ScoringState()
+        assert state.scores == []
+        assert state.sample_scores == {}
+        assert state.max_tokens_failures == []
+        assert state.silent_zero_failures == []
+
+    def test_mean_score_empty_returns_zero(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState
+
+        state = ScoringState()
+        assert state.mean_score == 0.0
+
+    def test_mean_score_single_value(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState
+
+        state = ScoringState(scores=[0.8])
+        assert state.mean_score == pytest.approx(0.8)
+
+    def test_mean_score_averages_multiple_values(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState
+
+        state = ScoringState(scores=[0.6, 0.8, 1.0])
+        assert state.mean_score == pytest.approx(0.8)
+
+
+class TestScoreRows:
+    """Tests for the score_rows() coroutine."""
+
+    def _make_row(self, session_id: str = "s1") -> RagasRow:
+        return RagasRow(
+            session_id=session_id,
+            user_input="How to validate?",
+            retrieved_contexts=["ctx"],
+            response="Use pydantic",
+            reference=None,
+        )
+
+    def test_successful_scoring_accumulates_scores(self):
+        """score_rows should append scores and sample_scores for each row."""
+        import asyncio
+
+        from raki.metrics.ragas._scoring_loop import ScoringState, score_rows
+
+        async def fake_score_fn(row: RagasRow) -> float:
+            return 0.85
+
+        rows = [self._make_row("s1"), self._make_row("s2")]
+        state: ScoringState = asyncio.run(
+            score_rows(
+                rows=rows,
+                score_fn=fake_score_fn,
+                metric_name="test_metric",
+                llm_provider="vertex-anthropic",
+                batch_size=4,
+                judge_logger=None,
+            )
+        )
+
+        assert len(state.scores) == 2
+        assert state.sample_scores == {"s1": pytest.approx(0.85), "s2": pytest.approx(0.85)}
+        assert state.max_tokens_failures == []
+        assert state.silent_zero_failures == []
+
+    def test_handles_structured_result_with_value_attribute(self):
+        """score_rows handles result objects with .value and .reason attributes."""
+        import asyncio
+        from unittest.mock import MagicMock
+
+        from raki.metrics.ragas._scoring_loop import score_rows
+
+        mock_result = MagicMock()
+        mock_result.value = 0.72
+        mock_result.reason = "Good"
+
+        async def fake_score_fn(row: RagasRow):
+            return mock_result
+
+        rows = [self._make_row("s1")]
+        state = asyncio.run(
+            score_rows(
+                rows=rows,
+                score_fn=fake_score_fn,
+                metric_name="test_metric",
+                llm_provider="vertex-anthropic",
+                batch_size=4,
+                judge_logger=None,
+            )
+        )
+
+        assert state.scores == [pytest.approx(0.72)]
+        assert state.sample_scores == {"s1": pytest.approx(0.72)}
+
+    def test_max_tokens_error_recorded_in_failures(self):
+        """Exceptions containing 'max_tokens' should go into max_tokens_failures."""
+        import asyncio
+
+        from raki.metrics.ragas._scoring_loop import score_rows
+
+        async def failing_score_fn(row: RagasRow) -> float:
+            raise RuntimeError("max_tokens limit exceeded")
+
+        rows = [self._make_row("s1")]
+        state = asyncio.run(
+            score_rows(
+                rows=rows,
+                score_fn=failing_score_fn,
+                metric_name="test_metric",
+                llm_provider="vertex-anthropic",
+                batch_size=4,
+                judge_logger=None,
+            )
+        )
+
+        assert state.scores == []
+        assert state.max_tokens_failures == ["s1"]
+        assert state.silent_zero_failures == []
+
+    def test_instructor_silent_zero_recorded_in_failures(self):
+        """InstructorSilentZeroError should go into silent_zero_failures."""
+        import asyncio
+        from unittest.mock import MagicMock
+
+        from raki.metrics.ragas._scoring_loop import score_rows
+
+        # A result that triggers silent-zero detection (value=0.0, reason=None, provider=google)
+        mock_result = MagicMock()
+        mock_result.value = 0.0
+        mock_result.reason = None
+
+        async def fake_score_fn(row: RagasRow):
+            return mock_result
+
+        rows = [self._make_row("s1")]
+        state = asyncio.run(
+            score_rows(
+                rows=rows,
+                score_fn=fake_score_fn,
+                metric_name="test_metric",
+                llm_provider="google",  # only detected for google
+                batch_size=4,
+                judge_logger=None,
+            )
+        )
+
+        assert state.scores == []
+        assert state.silent_zero_failures == ["s1"]
+        assert state.max_tokens_failures == []
+
+    def test_generic_exception_does_not_populate_failure_lists(self):
+        """Non-classified exceptions should leave both failure lists empty."""
+        import asyncio
+
+        from raki.metrics.ragas._scoring_loop import score_rows
+
+        async def failing_score_fn(row: RagasRow) -> float:
+            raise ValueError("Something else went wrong")
+
+        rows = [self._make_row("s1")]
+        state = asyncio.run(
+            score_rows(
+                rows=rows,
+                score_fn=failing_score_fn,
+                metric_name="test_metric",
+                llm_provider="vertex-anthropic",
+                batch_size=4,
+                judge_logger=None,
+            )
+        )
+
+        assert state.scores == []
+        assert state.max_tokens_failures == []
+        assert state.silent_zero_failures == []
+
+    def test_mixed_success_and_failure(self):
+        """score_rows should record only successful scores, not failed ones."""
+        import asyncio
+
+        from raki.metrics.ragas._scoring_loop import score_rows
+
+        call_count = 0
+
+        async def alternating_score_fn(row: RagasRow) -> float:
+            nonlocal call_count
+            call_count += 1
+            if row.session_id == "s2":
+                raise RuntimeError("max_tokens error for s2")
+            return 0.9
+
+        rows = [self._make_row("s1"), self._make_row("s2")]
+        state = asyncio.run(
+            score_rows(
+                rows=rows,
+                score_fn=alternating_score_fn,
+                metric_name="test_metric",
+                llm_provider="vertex-anthropic",
+                batch_size=4,
+                judge_logger=None,
+            )
+        )
+
+        assert state.scores == [pytest.approx(0.9)]
+        assert state.sample_scores == {"s1": pytest.approx(0.9)}
+        assert state.max_tokens_failures == ["s2"]
+
+    def test_judge_logger_called_on_success(self, tmp_path: Path):
+        """score_rows should call judge_logger.log for successful scores."""
+        import asyncio
+
+        from raki.metrics.ragas._scoring_loop import score_rows
+
+        judge_logger = JudgeLogger(tmp_path / "judge.jsonl", project_root=tmp_path)
+
+        async def fake_score_fn(row: RagasRow) -> float:
+            return 0.75
+
+        rows = [self._make_row("s1")]
+        asyncio.run(
+            score_rows(
+                rows=rows,
+                score_fn=fake_score_fn,
+                metric_name="faithfulness",
+                llm_provider="vertex-anthropic",
+                batch_size=4,
+                judge_logger=judge_logger,
+            )
+        )
+
+        import json
+
+        entries = [
+            json.loads(line) for line in (tmp_path / "judge.jsonl").read_text().strip().split("\n")
+        ]
+        assert len(entries) == 1
+        assert entries[0]["metric"] == "faithfulness"
+        assert entries[0]["score"] == 0.75
+
+    def test_judge_logger_called_on_failure(self, tmp_path: Path):
+        """score_rows should log score=-1.0 to judge_logger on failure."""
+        import asyncio
+
+        from raki.metrics.ragas._scoring_loop import score_rows
+
+        judge_logger = JudgeLogger(tmp_path / "judge.jsonl", project_root=tmp_path)
+
+        async def failing_score_fn(row: RagasRow) -> float:
+            raise RuntimeError("LLM error")
+
+        rows = [self._make_row("s1")]
+        asyncio.run(
+            score_rows(
+                rows=rows,
+                score_fn=failing_score_fn,
+                metric_name="faithfulness",
+                llm_provider="vertex-anthropic",
+                batch_size=4,
+                judge_logger=judge_logger,
+            )
+        )
+
+        import json
+
+        entries = [
+            json.loads(line) for line in (tmp_path / "judge.jsonl").read_text().strip().split("\n")
+        ]
+        assert len(entries) == 1
+        assert entries[0]["score"] == -1.0
+        assert "LLM error" in entries[0]["reason"]
+
+
+class TestBuildMaxTokensResult:
+    """Tests for build_max_tokens_result() helper."""
+
+    def test_returns_none_when_scores_exist(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, build_max_tokens_result
+
+        state = ScoringState(scores=[0.8], max_tokens_failures=["s1"])
+        result = build_max_tokens_result("test_metric", state)
+        assert result is None
+
+    def test_returns_none_when_no_failures(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, build_max_tokens_result
+
+        state = ScoringState(scores=[], max_tokens_failures=[])
+        result = build_max_tokens_result("test_metric", state)
+        assert result is None
+
+    def test_returns_metric_result_when_all_max_tokens(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, build_max_tokens_result
+
+        state = ScoringState(scores=[], max_tokens_failures=["s1", "s2"])
+        result = build_max_tokens_result("faithfulness", state)
+        assert result is not None
+        assert result.name == "faithfulness"
+        assert result.score is None
+        assert result.details["skipped"] == "max_tokens: all sessions exceeded output token limit"
+        assert result.details["max_tokens_sessions"] == 2
+
+    def test_returns_none_when_only_silent_zero_failures(self):
+        """build_max_tokens_result should not fire when only silent-zero failures exist."""
+        from raki.metrics.ragas._scoring_loop import ScoringState, build_max_tokens_result
+
+        state = ScoringState(scores=[], max_tokens_failures=[], silent_zero_failures=["s1"])
+        result = build_max_tokens_result("test_metric", state)
+        assert result is None
+
+
+class TestBuildSilentZeroResult:
+    """Tests for build_silent_zero_result() helper."""
+
+    def test_returns_none_when_scores_exist(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, build_silent_zero_result
+
+        state = ScoringState(scores=[0.7], silent_zero_failures=["s1"])
+        result = build_silent_zero_result("test_metric", state)
+        assert result is None
+
+    def test_returns_none_when_no_failures(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, build_silent_zero_result
+
+        state = ScoringState(scores=[], silent_zero_failures=[])
+        result = build_silent_zero_result("test_metric", state)
+        assert result is None
+
+    def test_returns_metric_result_when_all_silent_zero(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, build_silent_zero_result
+
+        state = ScoringState(scores=[], silent_zero_failures=["s1", "s2", "s3"])
+        result = build_silent_zero_result("context_precision", state)
+        assert result is not None
+        assert result.name == "context_precision"
+        assert result.score is None
+        assert "instructor#1658" in result.details["skipped"]
+        assert result.details["silent_zero_sessions"] == 3
+
+    def test_returns_none_when_only_max_tokens_failures(self):
+        """build_silent_zero_result should not fire when only max_tokens failures exist."""
+        from raki.metrics.ragas._scoring_loop import ScoringState, build_silent_zero_result
+
+        state = ScoringState(scores=[], max_tokens_failures=["s1"], silent_zero_failures=[])
+        result = build_silent_zero_result("test_metric", state)
+        assert result is None
+
+
+class TestEnrichDetailsWithFailures:
+    """Tests for enrich_details_with_failures() helper."""
+
+    def test_no_failures_leaves_details_unchanged(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, enrich_details_with_failures
+
+        state = ScoringState()
+        details: dict = {"samples_scored": 5}
+        enrich_details_with_failures(details, state)
+        assert details == {"samples_scored": 5}
+
+    def test_max_tokens_failures_adds_count(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, enrich_details_with_failures
+
+        state = ScoringState(max_tokens_failures=["s1", "s2"])
+        details: dict = {}
+        enrich_details_with_failures(details, state)
+        assert details["max_tokens_sessions"] == 2
+        assert "silent_zero_sessions" not in details
+
+    def test_silent_zero_failures_adds_count_and_warning(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, enrich_details_with_failures
+
+        state = ScoringState(silent_zero_failures=["s1", "s2", "s3"])
+        details: dict = {}
+        enrich_details_with_failures(details, state)
+        assert details["silent_zero_sessions"] == 3
+        assert "silent_zero_warning" in details
+        assert "instructor#1658" in details["silent_zero_warning"]
+        assert "3 session(s)" in details["silent_zero_warning"]
+
+    def test_both_failure_types_adds_all_keys(self):
+        from raki.metrics.ragas._scoring_loop import ScoringState, enrich_details_with_failures
+
+        state = ScoringState(max_tokens_failures=["s1"], silent_zero_failures=["s2"])
+        details: dict = {}
+        enrich_details_with_failures(details, state)
+        assert details["max_tokens_sessions"] == 1
+        assert details["silent_zero_sessions"] == 1
+        assert "silent_zero_warning" in details
