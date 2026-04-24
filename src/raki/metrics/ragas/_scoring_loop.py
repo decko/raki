@@ -90,10 +90,10 @@ async def score_rows(
                         f"for session {row.session_id}; treating as failure to "
                         "avoid polluting metric average"
                     )
-                score = result if isinstance(result, float) else result.value  # type: ignore[union-attr]
+                score = result if isinstance(result, float) else result.value  # ty: ignore[unresolved-attribute]
                 state.scores.append(score)
                 state.sample_scores[row.session_id] = score
-                reason = None if isinstance(result, float) else result.reason  # type: ignore[union-attr]
+                reason = None if isinstance(result, float) else result.reason  # ty: ignore[unresolved-attribute]
                 if judge_logger:
                     judge_logger.log(metric_name, row.user_input, score, reason)
             except Exception as exc:
