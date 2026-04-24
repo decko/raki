@@ -338,6 +338,9 @@ class AlcoveAdapter:
             total_phases = _detect_phase_count(tool_sequence)
 
         ticket = task_name or session_id
+        orchestrator = "bridge" if is_bridge else "alcove"
+        provider: str | None = raw.get("provider")
+        pipeline_phases: list[str] | None = list(phases_dict.keys()) if phases_dict else None
         meta = SessionMeta(
             session_id=session_id,
             ticket=ticket if ticket != session_id else None,
@@ -346,6 +349,9 @@ class AlcoveAdapter:
             total_phases=total_phases,
             rework_cycles=rework_cycles,
             model_id=model_id,
+            orchestrator=orchestrator,
+            provider=provider,
+            pipeline_phases=pipeline_phases,
         )
 
         sample = EvalSample(

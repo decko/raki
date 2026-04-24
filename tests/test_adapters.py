@@ -2677,3 +2677,229 @@ class TestSodaContextExtraction:
         adapter = SessionSchemaAdapter()
         sample = adapter.load(tmp_path)
         assert sample.context_source is None
+
+
+# --- Ticket #175: pipeline/orchestrator metadata ---
+
+
+def test_session_schema_orchestrator_from_branch_prefix(tmp_path):
+    """branch field 'soda/101' should yield orchestrator='soda'."""
+    meta = {
+        "ticket": "175",
+        "summary": "orchestrator inference",
+        "branch": "soda/101",
+        "started_at": "2026-04-24T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {"triage": {"status": "completed"}, "implement": {"status": "completed"}},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.orchestrator == "soda"
+
+
+def test_session_schema_orchestrator_none_without_branch(tmp_path):
+    """Without a branch field, orchestrator should be None."""
+    meta = {
+        "ticket": "175b",
+        "summary": "no orchestrator",
+        "started_at": "2026-04-24T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.orchestrator is None
+
+
+def test_session_schema_orchestrator_none_branch_no_slash(tmp_path):
+    """A branch value without a slash yields orchestrator=None."""
+    meta = {
+        "ticket": "175c",
+        "summary": "branch no slash",
+        "branch": "main",
+        "started_at": "2026-04-24T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.orchestrator is None
+
+
+def test_session_schema_pipeline_phases_from_phases_dict(tmp_path):
+    """pipeline_phases should reflect the ordered keys from meta.json phases dict."""
+    meta = {
+        "ticket": "175d",
+        "summary": "pipeline phases",
+        "branch": "soda/175",
+        "started_at": "2026-04-24T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {
+            "triage": {"status": "completed"},
+            "plan": {"status": "completed"},
+            "implement": {"status": "completed"},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.pipeline_phases == ["triage", "plan", "implement"]
+
+
+def test_session_schema_pipeline_phases_none_when_empty(tmp_path):
+    """pipeline_phases should be None when phases dict is empty."""
+    meta = {
+        "ticket": "175e",
+        "summary": "empty phases",
+        "started_at": "2026-04-24T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.pipeline_phases is None
+
+
+def test_session_schema_provider_defaults_to_none(tmp_path):
+    """provider should always be None for session-schema adapter (not populated)."""
+    meta = {
+        "ticket": "175f",
+        "summary": "provider default",
+        "started_at": "2026-04-24T08:00:00Z",
+        "total_cost": 5.0,
+        "rework_cycles": 0,
+        "phases": {},
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.provider is None
+
+
+def test_session_schema_fixture_orchestrator(pass_simple_dir):
+    """pass-simple fixture has branch='soda/101' so orchestrator should be 'soda'."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(pass_simple_dir)
+    assert sample.session.orchestrator == "soda"
+    assert sample.session.pipeline_phases == ["triage", "plan", "implement", "verify", "review"]
+
+
+# --- Ticket #175: AlcoveAdapter pipeline/orchestrator metadata ---
+
+
+def test_alcove_classic_orchestrator_is_alcove(tmp_path):
+    """Classic alcove format (no task_id) should yield orchestrator='alcove'."""
+    data = {
+        "session_id": "classic-001",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            {
+                "type": "result",
+                "total_cost_usd": 0.01,
+                "duration_ms": 1000,
+            },
+        ],
+    }
+    fixture = tmp_path / "classic.json"
+    fixture.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert sample.session.orchestrator == "alcove"
+
+
+def test_alcove_bridge_orchestrator_is_bridge(tmp_path):
+    """Bridge format (has task_id) should yield orchestrator='bridge'."""
+    source = _bridge_session(tmp_path)
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.orchestrator == "bridge"
+
+
+def test_alcove_provider_from_raw(tmp_path):
+    """provider field in the JSON should be populated on SessionMeta.provider."""
+    data = {
+        "session_id": "prov-001",
+        "provider": "anthropic",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+    }
+    fixture = tmp_path / "provider-session.json"
+    fixture.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert sample.session.provider == "anthropic"
+
+
+def test_alcove_provider_none_when_absent(tmp_path):
+    """provider should be None when not present in the JSON."""
+    data = {
+        "session_id": "prov-002",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+    }
+    fixture = tmp_path / "no-provider.json"
+    fixture.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert sample.session.provider is None
+
+
+def test_alcove_pipeline_phases_from_phases_dict(tmp_path):
+    """pipeline_phases should reflect ordered phase keys from the phases dict."""
+    source = _bridge_session(
+        tmp_path,
+        overrides={
+            "phases": {
+                "triage": {"status": "completed"},
+                "implement": {"status": "completed"},
+                "verify": {"status": "completed"},
+            }
+        },
+    )
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+    assert sample.session.pipeline_phases == ["triage", "implement", "verify"]
+
+
+def test_alcove_pipeline_phases_none_when_no_phases(tmp_path):
+    """pipeline_phases should be None when phases dict is absent."""
+    data = {
+        "session_id": "phases-none",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-20250514"},
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+    }
+    fixture = tmp_path / "no-phases.json"
+    fixture.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert sample.session.pipeline_phases is None
+
+
+def test_alcove_classic_fixture_orchestrator():
+    """The classic alcove fixture should have orchestrator='alcove' and no pipeline_phases."""
+    adapter = AlcoveAdapter()
+    sample = adapter.load(ALCOVE_FIXTURE)
+    assert sample.session.orchestrator == "alcove"
+    assert sample.session.pipeline_phases is None
+    assert sample.session.provider is None
