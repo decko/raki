@@ -13,6 +13,7 @@ from raki.report.diff import (
     MatchResult,
     MetricDelta,
     SessionTransition,
+    compare_judge_configs,
     compute_deltas,
     compute_transitions,
     generate_diff_report,
@@ -31,6 +32,22 @@ def _make_eval_report(
     return EvalReport(
         run_id=run_id,
         timestamp=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        aggregate_scores=aggregate_scores,
+        sample_results=sample_results or [],
+    )
+
+
+def _make_eval_report_with_config(
+    run_id: str,
+    aggregate_scores: dict[str, float],
+    config: dict,
+    sample_results: list[SampleResult] | None = None,
+) -> EvalReport:
+    """Create an EvalReport with an explicit judge config dict for testing."""
+    return EvalReport(
+        run_id=run_id,
+        timestamp=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        config=config,
         aggregate_scores=aggregate_scores,
         sample_results=sample_results or [],
     )
@@ -601,3 +618,240 @@ class TestMetricDeltaDirection:
         compare_scores = {"some_new_metric": 0.7}
         deltas = compute_deltas(baseline_scores, compare_scores)
         assert deltas[0].direction == "improved"
+
+
+class TestCompareJudgeConfigs:
+    def test_both_skip_llm_returns_empty(self):
+        """When neither report used a judge, no warnings are returned."""
+        baseline = _make_eval_report_with_config("base", {}, config={"skip_llm": True})
+        compare = _make_eval_report_with_config("comp", {}, config={"skip_llm": True})
+        warnings = compare_judge_configs(baseline, compare)
+        assert warnings == []
+
+    def test_matching_judge_config_returns_empty(self):
+        """When both reports used the same judge config, no warnings."""
+        config = {
+            "skip_llm": False,
+            "llm_provider": "anthropic",
+            "llm_model": "claude-opus-4",
+        }
+        baseline = _make_eval_report_with_config("base", {}, config=config)
+        compare = _make_eval_report_with_config("comp", {}, config=config)
+        warnings = compare_judge_configs(baseline, compare)
+        assert warnings == []
+
+    def test_different_model_returns_warning(self):
+        """When reports used different LLM models, a warning is returned."""
+        baseline = _make_eval_report_with_config(
+            "base",
+            {},
+            config={"skip_llm": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"},
+        )
+        compare = _make_eval_report_with_config(
+            "comp",
+            {},
+            config={
+                "skip_llm": False,
+                "llm_provider": "anthropic",
+                "llm_model": "claude-sonnet-4-6",
+            },
+        )
+        warnings = compare_judge_configs(baseline, compare)
+        assert len(warnings) == 1
+        assert "model" in warnings[0].lower()
+        assert "claude-opus-4" in warnings[0]
+        assert "claude-sonnet-4-6" in warnings[0]
+
+    def test_different_provider_returns_warning(self):
+        """When reports used different LLM providers, a warning is returned."""
+        baseline = _make_eval_report_with_config(
+            "base",
+            {},
+            config={
+                "skip_llm": False,
+                "llm_provider": "anthropic",
+                "llm_model": "claude-opus-4",
+            },
+        )
+        compare = _make_eval_report_with_config(
+            "comp",
+            {},
+            config={"skip_llm": False, "llm_provider": "google", "llm_model": "claude-opus-4"},
+        )
+        warnings = compare_judge_configs(baseline, compare)
+        assert len(warnings) == 1
+        assert "provider" in warnings[0].lower()
+        assert "anthropic" in warnings[0]
+        assert "google" in warnings[0]
+
+    def test_both_model_and_provider_differ_returns_two_warnings(self):
+        """When both model and provider differ, two separate warnings are returned."""
+        baseline = _make_eval_report_with_config(
+            "base",
+            {},
+            config={
+                "skip_llm": False,
+                "llm_provider": "anthropic",
+                "llm_model": "claude-opus-4",
+            },
+        )
+        compare = _make_eval_report_with_config(
+            "comp",
+            {},
+            config={
+                "skip_llm": False,
+                "llm_provider": "google",
+                "llm_model": "gemini-pro",
+            },
+        )
+        warnings = compare_judge_configs(baseline, compare)
+        assert len(warnings) == 2
+
+    def test_one_uses_judge_other_does_not(self):
+        """When one report used a judge and the other did not, a warning is returned."""
+        baseline = _make_eval_report_with_config(
+            "base",
+            {},
+            config={
+                "skip_llm": False,
+                "llm_provider": "anthropic",
+                "llm_model": "claude-opus-4",
+            },
+        )
+        compare = _make_eval_report_with_config("comp", {}, config={"skip_llm": True})
+        warnings = compare_judge_configs(baseline, compare)
+        assert len(warnings) >= 1
+        assert any("judge" in warning.lower() for warning in warnings)
+
+    def test_missing_config_treated_as_no_judge(self):
+        """When config is missing (old reports), treated as skip_llm=True — no warnings."""
+        baseline = _make_eval_report("base", {})  # no config
+        compare = _make_eval_report("comp", {})  # no config
+        warnings = compare_judge_configs(baseline, compare)
+        assert warnings == []
+
+    def test_one_missing_config_one_has_judge(self):
+        """When one report has no config (old format) and the other used a judge, warn."""
+        baseline = _make_eval_report("base", {})  # no config
+        compare = _make_eval_report_with_config(
+            "comp",
+            {},
+            config={"skip_llm": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"},
+        )
+        warnings = compare_judge_configs(baseline, compare)
+        assert len(warnings) >= 1
+
+
+class TestDiffReportJudgeConfigMismatch:
+    def test_diff_report_has_judge_config_mismatch_field(self):
+        """DiffReport dataclass includes the judge_config_mismatch field."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(),
+        )
+        assert hasattr(diff, "judge_config_mismatch")
+        assert diff.judge_config_mismatch == []
+
+    def test_generate_diff_report_populates_judge_config_mismatch_when_models_differ(self):
+        """generate_diff_report populates judge_config_mismatch when LLM models differ."""
+        baseline = _make_eval_report_with_config(
+            "base",
+            {"faithfulness": 0.8},
+            config={
+                "skip_llm": False,
+                "llm_provider": "anthropic",
+                "llm_model": "claude-opus-4",
+            },
+        )
+        compare = _make_eval_report_with_config(
+            "comp",
+            {"faithfulness": 0.9},
+            config={
+                "skip_llm": False,
+                "llm_provider": "anthropic",
+                "llm_model": "claude-sonnet-4-6",
+            },
+        )
+        diff = generate_diff_report(baseline, compare)
+        assert len(diff.judge_config_mismatch) > 0
+
+    def test_generate_diff_report_no_mismatch_when_configs_match(self):
+        """generate_diff_report has empty judge_config_mismatch when configs are identical."""
+        config = {"skip_llm": False, "llm_provider": "anthropic", "llm_model": "claude-opus-4"}
+        baseline = _make_eval_report_with_config("base", {"faithfulness": 0.8}, config=config)
+        compare = _make_eval_report_with_config("comp", {"faithfulness": 0.9}, config=config)
+        diff = generate_diff_report(baseline, compare)
+        assert diff.judge_config_mismatch == []
+
+    def test_generate_diff_report_no_mismatch_when_no_judge_used(self):
+        """No warnings when both reports were run without --judge."""
+        baseline = _make_eval_report("base", {"first_pass_success_rate": 0.78})
+        compare = _make_eval_report("comp", {"first_pass_success_rate": 0.91})
+        diff = generate_diff_report(baseline, compare)
+        assert diff.judge_config_mismatch == []
+
+
+class TestPrintDiffSummaryJudgeConfigWarning:
+    def _capture_diff_output(self, diff: DiffReport) -> str:
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=False, width=120)
+        print_diff_summary(diff, console=test_console)
+        return string_io.getvalue()
+
+    def test_shows_judge_config_warning_when_model_differs(self):
+        """print_diff_summary shows a warning when judge models differ."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            judge_config_mismatch=[
+                "judge model differs: 'claude-opus-4' (baseline) vs 'claude-sonnet-4-6' (compare)"
+            ],
+        )
+        output = self._capture_diff_output(diff)
+        assert "claude-opus-4" in output
+        assert "claude-sonnet-4-6" in output
+
+    def test_shows_judge_config_warning_when_provider_differs(self):
+        """print_diff_summary shows a warning when judge providers differ."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            judge_config_mismatch=[
+                "judge provider differs: 'anthropic' (baseline) vs 'google' (compare)"
+            ],
+        )
+        output = self._capture_diff_output(diff)
+        assert "anthropic" in output
+        assert "google" in output
+
+    def test_no_judge_warning_when_no_mismatch(self):
+        """print_diff_summary does not emit judge config warnings when configs match."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            judge_config_mismatch=[],
+        )
+        output = self._capture_diff_output(diff)
+        assert "judge model" not in output.lower()
+        assert "judge provider" not in output.lower()
+
+    def test_warning_contains_yellow_markup_or_warning_word(self):
+        """Warning message uses yellow styling or the word 'warning'."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            judge_config_mismatch=["judge model differs: 'a' (baseline) vs 'b' (compare)"],
+        )
+        string_io = StringIO()
+        # Use force_terminal=True to capture markup / ANSI output
+        test_console = Console(file=string_io, force_terminal=True, width=120)
+        print_diff_summary(diff, console=test_console)
+        raw_output = string_io.getvalue()
+        # Either the raw ANSI contains yellow escape or the plain text has "warning"
+        plain_output = self._capture_diff_output(diff)
+        assert "warning" in plain_output.lower() or "yellow" in raw_output.lower()
