@@ -168,6 +168,19 @@ def main():
 )
 @click.option("--json", "json_stdout", is_flag=True, help="Print JSON report to stdout")
 @click.option("-v", "--verbose", is_flag=True, help="Show debug output")
+@click.option(
+    "--history-file",
+    "history_file",
+    default=None,
+    help="Path to JSONL history log (default: <output-dir>/raki-history.jsonl)",
+)
+@click.option(
+    "--no-history",
+    "no_history",
+    is_flag=True,
+    default=False,
+    help="Skip writing to the JSONL history log",
+)
 def run(
     manifest_path: str | None,
     output_dir: str,
@@ -186,6 +199,8 @@ def run(
     include_sessions: bool,
     json_stdout: bool,
     verbose: bool,
+    history_file: str | None,
+    no_history: bool,
 ) -> None:
     """Run evaluation against sessions."""
     if judge and no_llm:
@@ -442,10 +457,24 @@ def run(
             strip_session_data(data)
         click.echo(json_mod.dumps(data, indent=2, default=str))
 
+    # Append to JSONL history log unless the user opted out
+    history_path: Path | None = None
+    if not no_history:
+        history_path = Path(history_file) if history_file else output_path / "raki-history.jsonl"
+        from raki.report.history import append_history_entry
+
+        try:
+            append_history_entry(report, history_path, session_count=len(dataset.samples))
+        except Exception as exc:
+            out.print(f"[yellow]Warning: Failed to write history log: {exc}[/yellow]")
+            history_path = None
+
     if not quiet:
         report_msg = f"\nReport written:\n  JSON -> {json_file}"
         if html_file is not None:
             report_msg += f"\n  HTML -> {html_file}"
+        if history_path is not None:
+            report_msg += f"\n  History -> {history_path}"
         out.print(report_msg)
 
     if threshold is not None:
