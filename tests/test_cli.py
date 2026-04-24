@@ -2362,3 +2362,146 @@ class TestReportGates:
         )
         assert result.exit_code == 0
         assert "Quality Gates" in result.output
+
+
+# ---------------------------------------------------------------------------
+# History log tests (ticket #170)
+# ---------------------------------------------------------------------------
+
+
+class TestCliRunHistoryLog:
+    """raki run should append one JSONL entry per run to a history file."""
+
+    def test_history_file_created_by_default(self, manifest_with_session, tmp_path) -> None:
+        """raki run must create a JSONL history file alongside JSON/HTML reports."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "-o", str(output_dir)],
+        )
+        assert result.exit_code == 0
+        history_file = output_dir / "raki-history.jsonl"
+        assert history_file.exists(), f"Expected {history_file} to be created"
+
+    def test_history_file_contains_one_entry_per_run(self, manifest_with_session, tmp_path) -> None:
+        """Each raki run call must append exactly one line to the history file."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        for _ in range(3):
+            result = runner.invoke(
+                main,
+                ["run", "-m", str(manifest), "-o", str(output_dir)],
+            )
+            assert result.exit_code == 0
+        history_file = output_dir / "raki-history.jsonl"
+        lines = history_file.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 3
+
+    def test_history_entry_contains_aggregate_scores(self, manifest_with_session, tmp_path) -> None:
+        """Each JSONL entry must contain aggregate_scores from the run."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "-o", str(output_dir)],
+        )
+        assert result.exit_code == 0
+        history_file = output_dir / "raki-history.jsonl"
+        parsed = json.loads(history_file.read_text(encoding="utf-8").strip())
+        assert "aggregate_scores" in parsed
+        assert isinstance(parsed["aggregate_scores"], dict)
+
+    def test_history_entry_contains_session_count(self, manifest_with_session, tmp_path) -> None:
+        """Each JSONL entry must include the session_count for that run."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "-o", str(output_dir)],
+        )
+        assert result.exit_code == 0
+        history_file = output_dir / "raki-history.jsonl"
+        parsed = json.loads(history_file.read_text(encoding="utf-8").strip())
+        assert "session_count" in parsed
+        assert parsed["session_count"] >= 0
+
+    def test_history_entry_contains_run_id_and_timestamp(
+        self, manifest_with_session, tmp_path
+    ) -> None:
+        """Each JSONL entry must have run_id and timestamp fields."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "-o", str(output_dir)],
+        )
+        assert result.exit_code == 0
+        history_file = output_dir / "raki-history.jsonl"
+        parsed = json.loads(history_file.read_text(encoding="utf-8").strip())
+        assert "run_id" in parsed
+        assert "timestamp" in parsed
+
+    def test_custom_history_file_path(self, manifest_with_session, tmp_path) -> None:
+        """--history-file lets the user specify a custom path for the JSONL log."""
+        manifest, _sessions = manifest_with_session
+        custom_history = tmp_path / "custom" / "my-history.jsonl"
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(manifest),
+                "-o",
+                str(output_dir),
+                "--history-file",
+                str(custom_history),
+            ],
+        )
+        assert result.exit_code == 0
+        assert custom_history.exists(), f"Expected custom history file at {custom_history}"
+
+    def test_no_history_flag_skips_history_file(self, manifest_with_session, tmp_path) -> None:
+        """--no-history must suppress creation of the JSONL history file."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "-o", str(output_dir), "--no-history"],
+        )
+        assert result.exit_code == 0
+        history_file = output_dir / "raki-history.jsonl"
+        assert not history_file.exists(), "History file must NOT be created with --no-history"
+
+    def test_history_file_reported_in_output(self, manifest_with_session, tmp_path) -> None:
+        """raki run should mention the history file path in its output."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "-o", str(output_dir)],
+        )
+        assert result.exit_code == 0
+        assert "history" in result.output.lower() or "jsonl" in result.output.lower()
+
+    def test_history_file_not_reported_in_quiet_mode(self, manifest_with_session, tmp_path) -> None:
+        """In --quiet mode, the history file path must NOT be echoed."""
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest), "-o", str(output_dir), "-q"],
+        )
+        assert result.exit_code == 0
+        # In quiet mode there should be no report-path output at all
+        assert "raki-history" not in result.output
