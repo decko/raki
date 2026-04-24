@@ -18,6 +18,12 @@ class SessionMeta(BaseModel):
     rework_cycles: int
     knowledge_version: str | None = None
     model_id: str | None = None
+    # Pipeline/orchestrator metadata (ticket #175)
+    orchestrator: str | None = None  # e.g. "soda", "bridge", "alcove"
+    provider: str | None = (
+        None  # LLM provider reported by the orchestrator (distinct from MetricConfig.llm_provider)
+    )
+    pipeline_phases: list[str] | None = None  # ordered phase names from the session
 
 
 class EvalSample(BaseModel):

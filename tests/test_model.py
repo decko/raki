@@ -30,6 +30,9 @@ def test_session_meta_required_fields():
     assert meta.knowledge_version is None
     assert meta.model_id is None
     assert meta.total_cost_usd is None
+    assert meta.orchestrator is None
+    assert meta.provider is None
+    assert meta.pipeline_phases is None
 
 
 def test_session_meta_all_fields():
@@ -46,6 +49,22 @@ def test_session_meta_all_fields():
     )
     assert meta.total_cost_usd == 26.1
     assert meta.knowledge_version == "abc123"
+
+
+def test_session_meta_pipeline_fields():
+    """orchestrator, provider, pipeline_phases default to None and accept values."""
+    meta = SessionMeta(
+        session_id="175",
+        started_at=datetime(2026, 4, 24, tzinfo=timezone.utc),
+        total_phases=3,
+        rework_cycles=0,
+        orchestrator="soda",
+        provider="anthropic",
+        pipeline_phases=["triage", "implement", "verify"],
+    )
+    assert meta.orchestrator == "soda"
+    assert meta.provider == "anthropic"
+    assert meta.pipeline_phases == ["triage", "implement", "verify"]
 
 
 def test_phase_result_minimal():
