@@ -275,8 +275,14 @@ def print_summary(
     When *metrics* is provided, human-readable ``display_name`` and
     ``description`` values are shown instead of raw metric names.
     """
+    from raki.report.html_report import collect_agent_models
+
     output_console = console or Console()
     output_console.print()
+
+    agent_models = collect_agent_models(report)
+    if agent_models:
+        output_console.print(f"[dim]Agent: {', '.join(agent_models)}[/dim]")
 
     meta = _MetricMeta(metrics)
 
