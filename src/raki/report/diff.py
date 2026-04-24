@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from raki.model.report import EvalReport, SampleResult
-from raki.report.html_report import METRIC_METADATA, determine_verdict
+from raki.report.html_report import METRIC_METADATA, collect_agent_models, determine_verdict
 
 
 @dataclass(frozen=True)
@@ -51,6 +51,7 @@ class DiffReport:
     regressions: list[SessionTransition] = field(default_factory=list)
     has_session_data: bool = True
     judge_config_mismatch: list[str] = field(default_factory=list)
+    agent_model_mismatch: list[str] = field(default_factory=list)
 
 
 # Verdict rank for sorting: lower rank = worse verdict
@@ -105,6 +106,37 @@ def compare_judge_configs(baseline: EvalReport, compare: EvalReport) -> list[str
                 f"{label} differs: {baseline_val!r} (baseline) vs {compare_val!r} (compare)"
             )
     return warnings
+
+
+def compare_agent_models(baseline: EvalReport, compare: EvalReport) -> list[str]:
+    """Return warning messages when agent models differ between two reports.
+
+    Compares the set of distinct ``model_id`` values found in each report's
+    sample sessions.  Returns an empty list when:
+
+    - Neither report has sessions with a ``model_id`` set.
+    - Both reports use the same set of agent model IDs.
+
+    Returns a single warning when the model ID sets differ.
+    """
+    baseline_models = set(collect_agent_models(baseline))
+    compare_models = set(collect_agent_models(compare))
+
+    # Neither report has model info — nothing to compare
+    if not baseline_models and not compare_models:
+        return []
+
+    # Same models — no mismatch
+    if baseline_models == compare_models:
+        return []
+
+    def _fmt(models: set[str]) -> str:
+        return ", ".join(sorted(models)) if models else "unknown"
+
+    return [
+        f"agent model differs: {_fmt(baseline_models)!r} (baseline)"
+        f" vs {_fmt(compare_models)!r} (compare)"
+    ]
 
 
 def match_sessions(baseline: EvalReport, compare: EvalReport) -> MatchResult:
@@ -236,6 +268,7 @@ def generate_diff_report(baseline: EvalReport, compare: EvalReport) -> DiffRepor
     match_result = match_sessions(baseline, compare)
     deltas = compute_deltas(baseline.aggregate_scores, compare.aggregate_scores)
     judge_warnings = compare_judge_configs(baseline, compare)
+    agent_model_warnings = compare_agent_models(baseline, compare)
 
     has_session_data = bool(baseline.sample_results and compare.sample_results)
 
@@ -260,4 +293,5 @@ def generate_diff_report(baseline: EvalReport, compare: EvalReport) -> DiffRepor
         regressions=regressions,
         has_session_data=has_session_data,
         judge_config_mismatch=judge_warnings,
+        agent_model_mismatch=agent_model_warnings,
     )

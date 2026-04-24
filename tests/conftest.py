@@ -29,6 +29,7 @@ def make_sample(
     duration_ms: int | None = None,
     tokens_in: int | None = None,
     tokens_out: int | None = None,
+    model_id: str | None = None,
 ) -> EvalSample:
     meta = SessionMeta(
         session_id=session_id,
@@ -36,6 +37,7 @@ def make_sample(
         total_phases=3,
         rework_cycles=rework_cycles,
         total_cost_usd=cost,
+        model_id=model_id,
     )
     verify_output = "PASS" if verify_status == "completed" else "FAIL"
     phases = [

@@ -1973,3 +1973,123 @@ class TestPassRowsClean:
         summary_end = content.find("</summary>", minor_idx)
         row_text = content[minor_idx:summary_end]
         assert "1 minor" in row_text or "minor" in row_text.lower()
+
+
+class TestCollectAgentModels:
+    """collect_agent_models helper — extracts distinct model IDs from sample results."""
+
+    def test_empty_when_no_model_ids(self) -> None:
+        """Returns empty list when no session has a model_id."""
+        from raki.report.html_report import collect_agent_models
+
+        report = _make_report_with_samples()
+        assert collect_agent_models(report) == []
+
+    def test_returns_unique_sorted_model_ids(self) -> None:
+        """Returns a sorted, deduplicated list of model IDs."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import collect_agent_models
+
+        sample_a = make_sample("s1", model_id="claude-opus-4")
+        sample_b = make_sample("s2", model_id="claude-sonnet-4-6")
+        sample_c = make_sample("s3", model_id="claude-opus-4")  # duplicate
+        report = EvalReport(
+            run_id="model-test",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=sample_a, scores=[]),
+                SampleResult(sample=sample_b, scores=[]),
+                SampleResult(sample=sample_c, scores=[]),
+            ],
+        )
+        models = collect_agent_models(report)
+        assert models == ["claude-opus-4", "claude-sonnet-4-6"]
+
+    def test_single_model_id(self) -> None:
+        """Returns a one-element list when all sessions use the same model."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import collect_agent_models
+
+        sample = make_sample("s1", model_id="gemini-pro")
+        report = EvalReport(
+            run_id="single-model",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        assert collect_agent_models(report) == ["gemini-pro"]
+
+    def test_ignores_none_model_ids(self) -> None:
+        """Sessions with model_id=None are excluded from the result."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import collect_agent_models
+
+        sample_with = make_sample("s1", model_id="claude-opus-4")
+        sample_without = make_sample("s2", model_id=None)
+        report = EvalReport(
+            run_id="mixed-model",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=sample_with, scores=[]),
+                SampleResult(sample=sample_without, scores=[]),
+            ],
+        )
+        assert collect_agent_models(report) == ["claude-opus-4"]
+
+    def test_empty_sample_results(self) -> None:
+        """Returns empty list when sample_results is empty."""
+        from raki.report.html_report import collect_agent_models
+
+        report = _make_minimal_report()
+        assert collect_agent_models(report) == []
+
+
+class TestAgentModelInHtmlHeader:
+    """Agent model IDs should appear in the HTML report header when present."""
+
+    def test_agent_model_shown_in_html_header(self, tmp_path: Path) -> None:
+        """When sessions have model_id, it should appear in the HTML header."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        sample = make_sample("s1", model_id="claude-opus-4")
+        report = EvalReport(
+            run_id="agent-model-html",
+            aggregate_scores={"first_pass_success_rate": 0.9},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "claude-opus-4" in content
+        assert "Agent model" in content
+
+    def test_no_agent_model_line_when_absent(self, tmp_path: Path) -> None:
+        """When no session has model_id, 'Agent model' should not appear in the header."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_minimal_report()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "Agent model" not in content
+
+    def test_multiple_agent_models_joined(self, tmp_path: Path) -> None:
+        """Multiple distinct model IDs should be shown joined by commas."""
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        sample_a = make_sample("s1", model_id="claude-opus-4")
+        sample_b = make_sample("s2", model_id="claude-sonnet-4-6")
+        report = EvalReport(
+            run_id="multi-model-html",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=sample_a, scores=[]),
+                SampleResult(sample=sample_b, scores=[]),
+            ],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "claude-opus-4" in content
+        assert "claude-sonnet-4-6" in content

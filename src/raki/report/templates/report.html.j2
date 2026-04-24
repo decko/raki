@@ -722,6 +722,7 @@
       <span><strong>Run:</strong> {{ report.run_id }}</span>
       <span><strong>Timestamp:</strong> {{ report.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>
       <span><strong>Sessions:</strong> {{ session_count }}</span>
+      {% if agent_models %}<span><strong>Agent model:</strong> {{ agent_models | join(", ") }}</span>{% endif %}
     </div>
   </header>
 

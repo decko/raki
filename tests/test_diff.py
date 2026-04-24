@@ -13,6 +13,7 @@ from raki.report.diff import (
     MatchResult,
     MetricDelta,
     SessionTransition,
+    compare_agent_models,
     compare_judge_configs,
     compute_deltas,
     compute_transitions,
@@ -856,3 +857,280 @@ class TestPrintDiffSummaryJudgeConfigWarning:
         # Either the raw ANSI contains yellow escape or the plain text has "warning"
         plain_output = self._capture_diff_output(diff)
         assert "warning" in plain_output.lower() or "yellow" in raw_output.lower()
+
+
+class TestCompareAgentModels:
+    """compare_agent_models — warns when agent models differ between two reports."""
+
+    def test_both_no_model_ids_returns_empty(self):
+        """When neither report has model_id data, no warnings are returned."""
+        baseline = _make_eval_report("base", {})
+        compare = _make_eval_report("comp", {})
+        warnings = compare_agent_models(baseline, compare)
+        assert warnings == []
+
+    def test_same_model_ids_returns_empty(self):
+        """When both reports use the same agent models, no warnings."""
+        from raki.model.report import EvalReport, SampleResult
+
+        baseline = EvalReport(
+            run_id="base",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", model_id="claude-opus-4"), scores=[])
+            ],
+        )
+        compare = EvalReport(
+            run_id="comp",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s2", model_id="claude-opus-4"), scores=[])
+            ],
+        )
+        warnings = compare_agent_models(baseline, compare)
+        assert warnings == []
+
+    def test_different_model_ids_returns_warning(self):
+        """When reports use different agent models, a warning is returned."""
+        from raki.model.report import EvalReport, SampleResult
+
+        baseline = EvalReport(
+            run_id="base",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", model_id="claude-opus-4"), scores=[])
+            ],
+        )
+        compare = EvalReport(
+            run_id="comp",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s2", model_id="claude-sonnet-4-6"), scores=[])
+            ],
+        )
+        warnings = compare_agent_models(baseline, compare)
+        assert len(warnings) == 1
+        assert "claude-opus-4" in warnings[0]
+        assert "claude-sonnet-4-6" in warnings[0]
+        assert "agent model" in warnings[0].lower()
+
+    def test_one_report_has_no_model_ids(self):
+        """When baseline has model IDs but compare does not, a warning is returned."""
+        from raki.model.report import EvalReport, SampleResult
+
+        baseline = EvalReport(
+            run_id="base",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", model_id="claude-opus-4"), scores=[])
+            ],
+        )
+        compare = EvalReport(
+            run_id="comp",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=make_sample("s2", model_id=None), scores=[])],
+        )
+        warnings = compare_agent_models(baseline, compare)
+        assert len(warnings) == 1
+        assert "unknown" in warnings[0]
+
+    def test_multiple_models_in_one_report(self):
+        """When one report uses multiple model IDs and the other uses one, warns."""
+        from raki.model.report import EvalReport, SampleResult
+
+        baseline = EvalReport(
+            run_id="base",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", model_id="claude-opus-4"), scores=[]),
+                SampleResult(sample=make_sample("s2", model_id="claude-sonnet-4-6"), scores=[]),
+            ],
+        )
+        compare = EvalReport(
+            run_id="comp",
+            aggregate_scores={},
+            sample_results=[
+                SampleResult(sample=make_sample("s3", model_id="claude-opus-4"), scores=[])
+            ],
+        )
+        warnings = compare_agent_models(baseline, compare)
+        assert len(warnings) == 1
+        assert "claude-opus-4" in warnings[0]
+        assert "claude-sonnet-4-6" in warnings[0]
+
+
+class TestDiffReportAgentModelMismatch:
+    """DiffReport includes agent_model_mismatch field; generate_diff_report populates it."""
+
+    def test_diff_report_has_agent_model_mismatch_field(self):
+        """DiffReport dataclass includes the agent_model_mismatch field."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(),
+        )
+        assert hasattr(diff, "agent_model_mismatch")
+        assert diff.agent_model_mismatch == []
+
+    def test_generate_diff_report_populates_agent_model_mismatch(self):
+        """generate_diff_report populates agent_model_mismatch when models differ."""
+        from raki.model.report import EvalReport, SampleResult
+
+        baseline = EvalReport(
+            run_id="base",
+            aggregate_scores={"first_pass_success_rate": 0.8},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", model_id="claude-opus-4"), scores=[])
+            ],
+        )
+        compare = EvalReport(
+            run_id="comp",
+            aggregate_scores={"first_pass_success_rate": 0.9},
+            sample_results=[
+                SampleResult(sample=make_sample("s2", model_id="claude-sonnet-4-6"), scores=[])
+            ],
+        )
+        diff = generate_diff_report(baseline, compare)
+        assert len(diff.agent_model_mismatch) > 0
+
+    def test_generate_diff_report_no_mismatch_when_models_match(self):
+        """generate_diff_report has empty agent_model_mismatch when models are identical."""
+        from raki.model.report import EvalReport, SampleResult
+
+        baseline = EvalReport(
+            run_id="base",
+            aggregate_scores={"first_pass_success_rate": 0.8},
+            sample_results=[
+                SampleResult(sample=make_sample("s1", model_id="claude-opus-4"), scores=[])
+            ],
+        )
+        compare = EvalReport(
+            run_id="comp",
+            aggregate_scores={"first_pass_success_rate": 0.9},
+            sample_results=[
+                SampleResult(sample=make_sample("s2", model_id="claude-opus-4"), scores=[])
+            ],
+        )
+        diff = generate_diff_report(baseline, compare)
+        assert diff.agent_model_mismatch == []
+
+    def test_generate_diff_report_no_mismatch_when_no_model_ids(self):
+        """No warnings when neither report has model_id data."""
+        baseline = _make_eval_report("base", {"first_pass_success_rate": 0.78})
+        compare = _make_eval_report("comp", {"first_pass_success_rate": 0.91})
+        diff = generate_diff_report(baseline, compare)
+        assert diff.agent_model_mismatch == []
+
+
+class TestPrintDiffSummaryAgentModelWarning:
+    """print_diff_summary shows agent_model_mismatch warnings in CLI output."""
+
+    def _capture_diff_output(self, diff: DiffReport) -> str:
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=False, width=120)
+        print_diff_summary(diff, console=test_console)
+        return string_io.getvalue()
+
+    def test_shows_agent_model_warning_when_models_differ(self):
+        """print_diff_summary shows a warning when agent models differ."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            agent_model_mismatch=[
+                "agent model differs: 'claude-opus-4' (baseline) vs 'claude-sonnet-4-6' (compare)"
+            ],
+        )
+        output = self._capture_diff_output(diff)
+        assert "claude-opus-4" in output
+        assert "claude-sonnet-4-6" in output
+
+    def test_no_agent_model_warning_when_no_mismatch(self):
+        """print_diff_summary does not emit agent model warnings when models match."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            agent_model_mismatch=[],
+        )
+        output = self._capture_diff_output(diff)
+        assert "agent model" not in output.lower()
+
+    def test_warning_uses_yellow_or_warning_word(self):
+        """Agent model warning uses yellow styling or the word 'warning'."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            agent_model_mismatch=["agent model differs: 'a' (baseline) vs 'b' (compare)"],
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=True, width=120)
+        print_diff_summary(diff, console=test_console)
+        raw_output = string_io.getvalue()
+        plain_output = self._capture_diff_output(diff)
+        assert "warning" in plain_output.lower() or "yellow" in raw_output.lower()
+
+
+@pytest.mark.skipif(
+    not __import__("importlib").util.find_spec("jinja2"),
+    reason="jinja2 not installed",
+)
+class TestDiffHtmlWarningBanners:
+    """HTML diff report shows judge and agent model mismatch banners."""
+
+    def test_html_shows_agent_model_mismatch_banner(self, tmp_path):
+        """HTML diff should display an agent model mismatch warning banner."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            agent_model_mismatch=[
+                "agent model differs: 'claude-opus-4' (baseline) vs 'claude-sonnet-4-6' (compare)"
+            ],
+        )
+        from raki.report.html_report import write_diff_html_report
+
+        html_path = tmp_path / "diff.html"
+        write_diff_html_report(diff, html_path)
+        content = html_path.read_text()
+        assert "claude-opus-4" in content
+        assert "claude-sonnet-4-6" in content
+        assert 'class="warning-banner"' in content
+
+    def test_html_shows_judge_config_mismatch_banner(self, tmp_path):
+        """HTML diff should display a judge config mismatch warning banner."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            judge_config_mismatch=[
+                "judge model differs: 'claude-opus-4' (baseline) vs 'claude-sonnet-4-6' (compare)"
+            ],
+        )
+        from raki.report.html_report import write_diff_html_report
+
+        html_path = tmp_path / "diff.html"
+        write_diff_html_report(diff, html_path)
+        content = html_path.read_text()
+        assert "claude-opus-4" in content
+        assert "claude-sonnet-4-6" in content
+        assert 'class="warning-banner"' in content
+        assert "Judge" in content or "judge" in content
+
+    def test_no_banner_when_no_mismatch(self, tmp_path):
+        """HTML diff should not show mismatch banner elements when configs match."""
+        diff = DiffReport(
+            baseline_run_id="base",
+            compare_run_id="comp",
+            match_result=MatchResult(matched_ids={"s1"}, baseline_total=1, compare_total=1),
+            judge_config_mismatch=[],
+            agent_model_mismatch=[],
+        )
+        from raki.report.html_report import write_diff_html_report
+
+        html_path = tmp_path / "diff.html"
+        write_diff_html_report(diff, html_path)
+        content = html_path.read_text()
+        # The banner div element should not appear (CSS class definition is still present)
+        assert 'class="warning-banner"' not in content

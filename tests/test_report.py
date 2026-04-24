@@ -1178,3 +1178,68 @@ class TestNoDataMetricDisplayExtended:
         report = engine.run(dataset)
         assert "token_efficiency" in report.metric_details
         assert report.metric_details["token_efficiency"]["sessions_with_tokens"] == 0
+
+
+# --- Agent model in CLI summary (ticket #179) ---
+
+
+class TestAgentModelInCliSummary:
+    """Agent model IDs should appear at the top of the CLI summary when present."""
+
+    def _make_console(self) -> tuple:
+        from io import StringIO
+
+        from rich.console import Console
+
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=False, width=120)
+        return string_io, test_console
+
+    def test_agent_model_shown_in_summary(self) -> None:
+        """When sessions have model_id, the agent model should appear in CLI summary."""
+        from raki.model.report import EvalReport, MetricResult, SampleResult
+
+        sample = make_sample("s1", model_id="claude-opus-4")
+        metric = MetricResult(
+            name="first_pass_success_rate",
+            score=0.9,
+            sample_scores={"s1": 0.9},
+        )
+        report = EvalReport(
+            run_id="agent-model-test",
+            aggregate_scores={"first_pass_success_rate": 0.9},
+            sample_results=[SampleResult(sample=sample, scores=[metric])],
+        )
+        string_io, test_console = self._make_console()
+        print_summary(report, session_count=1, console=test_console)
+        output = string_io.getvalue()
+        assert "claude-opus-4" in output
+        assert "Agent" in output
+
+    def test_no_agent_model_when_absent(self) -> None:
+        """When no session has model_id, the agent model line should not appear."""
+        report = _make_report()
+        string_io, test_console = self._make_console()
+        print_summary(report, session_count=38, console=test_console)
+        output = string_io.getvalue()
+        assert "Agent:" not in output
+
+    def test_multiple_agent_models_shown(self) -> None:
+        """When sessions use different model IDs, all should appear."""
+        from raki.model.report import EvalReport, SampleResult
+
+        sample_a = make_sample("s1", model_id="claude-opus-4")
+        sample_b = make_sample("s2", model_id="claude-sonnet-4-6")
+        report = EvalReport(
+            run_id="multi-model-test",
+            aggregate_scores={"first_pass_success_rate": 0.8},
+            sample_results=[
+                SampleResult(sample=sample_a, scores=[]),
+                SampleResult(sample=sample_b, scores=[]),
+            ],
+        )
+        string_io, test_console = self._make_console()
+        print_summary(report, session_count=2, console=test_console)
+        output = string_io.getvalue()
+        assert "claude-opus-4" in output
+        assert "claude-sonnet-4-6" in output

@@ -445,6 +445,19 @@ def rework_cycles_color(value: float) -> str:
     return "red"
 
 
+def collect_agent_models(report: EvalReport) -> list[str]:
+    """Collect distinct agent model IDs from sample results, sorted for determinism.
+
+    Returns an empty list when no sample has a model_id set.
+    """
+    models: set[str] = set()
+    for sample_result in report.sample_results:
+        model_id = sample_result.sample.session.model_id
+        if model_id:
+            models.add(model_id)
+    return sorted(models)
+
+
 def _collect_recurring_failures(report: EvalReport) -> list[RecurringFailure]:
     """Find issues that recur across multiple sessions, sorted by count descending."""
     issue_counter: Counter[str] = Counter()
@@ -557,6 +570,7 @@ def write_html_report(
     drill_down_rows = compute_drill_down_rows(report.sample_results)
     needs_attention_rows = [row for row in drill_down_rows if row.verdict in ("fail", "rework")]
     needs_attention_count = len(needs_attention_rows)
+    agent_models = collect_agent_models(report)
 
     if not include_sessions:
         # Strip session data from a serialized copy, then reload as a clean report
@@ -629,6 +643,7 @@ def write_html_report(
         needs_attention_count=needs_attention_count,
         format_duration=_format_duration,
         no_data_metrics=no_data_metrics,
+        agent_models=agent_models,
     )
 
     output.write_text(html_content, encoding="utf-8")
