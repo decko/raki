@@ -13,6 +13,7 @@ from raki.adapters.session_schema import SessionSchemaAdapter
 
 FIXTURES = Path(__file__).parent / "fixtures" / "sessions"
 ALCOVE_FIXTURE = FIXTURES / "alcove-simple.json"
+ALCOVE_ID_ONLY_FIXTURE = FIXTURES / "alcove-id-only.json"
 
 
 def test_session_schema_adapter_detects_valid_session(
@@ -197,6 +198,28 @@ def test_dataset_loader_loads_alcove_files(tmp_path):
     loader = DatasetLoader(registry)
     dataset = loader.load_directory(tmp_path)
     assert len(dataset.samples) == 1
+
+
+def test_alcove_adapter_detects_id_only_session():
+    """detect() must accept sessions that use 'id' instead of 'session_id'.
+
+    Some Claude Code exports use a top-level 'id' key with no 'session_id' and
+    no 'task_id'.  Previously detect() required 'task_id' alongside 'id' (the
+    bridge format fingerprint), so these sessions were silently rejected.
+    """
+    adapter = AlcoveAdapter()
+    assert adapter.detect(ALCOVE_ID_ONLY_FIXTURE)
+
+
+def test_alcove_adapter_loads_id_only_session():
+    """load() must extract session_id from the top-level 'id' field."""
+    adapter = AlcoveAdapter()
+    sample = adapter.load(ALCOVE_ID_ONLY_FIXTURE)
+    assert sample.session.session_id == "f3c2a1b0-dead-beef-abcd-ef1234567890"
+    assert sample.session.total_cost_usd == 0.015
+    assert sample.session.model_id == "claude-sonnet-4-20250514"
+    assert len(sample.phases) == 1
+    assert sample.phases[0].name == "session"
 
 
 # --- Redaction tests ---

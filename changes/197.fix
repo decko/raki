@@ -1,0 +1,1 @@
+Alcove adapter ``detect()`` now accepts session files that use a top-level ``"id"`` key instead of ``"session_id"``. Previously, only the bridge format (``id`` + ``task_id`` together) was recognised; files with ``id`` alone were silently skipped by the loader.
