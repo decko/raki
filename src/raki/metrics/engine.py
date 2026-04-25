@@ -1,9 +1,10 @@
 import uuid
 from collections.abc import Sequence
 
+from raki.metrics.health import run_health_checks
 from raki.metrics.protocol import Metric, MetricConfig, TokenAccumulator
 from raki.model import EvalDataset
-from raki.model.report import EvalReport, MetricResult, SampleResult
+from raki.model.report import EvalReport, MetricResult, MetricWarning, SampleResult
 
 
 class MetricsEngine:
@@ -33,6 +34,12 @@ class MetricsEngine:
         sample_results = self._build_sample_results(dataset, results)
         llm_used = not skip_judge
 
+        # Run health checks for all computed metrics and collect warnings.
+        total_sessions = len(dataset.samples)
+        all_warnings: list[MetricWarning] = []
+        for result in results:
+            all_warnings.extend(run_health_checks(result, total_sessions))
+
         report_config: dict = {
             "llm_provider": self._config.llm_provider if llm_used else None,
             "llm_model": self._config.llm_model if llm_used else None,
@@ -56,6 +63,7 @@ class MetricsEngine:
             metric_details=details,
             sample_results=sample_results,
             manifest_hash=dataset.manifest_hash,
+            warnings=all_warnings,
         )
 
     @staticmethod
