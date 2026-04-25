@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from raki.model import EvalDataset
 from raki.model.report import MetricResult
 
-LLMProvider = Literal["vertex-anthropic", "anthropic", "google"]
+LLMProvider = Literal["vertex-anthropic", "anthropic", "google", "litellm"]
 
 
 @dataclass
