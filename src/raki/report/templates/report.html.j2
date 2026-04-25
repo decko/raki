@@ -1039,6 +1039,12 @@
           <span class="phase-duration">{{ format_duration(phase.duration_ms // 1000) }}</span>
           {% endif %}
         </div>
+        {% if phase.output and phase.output != "<stripped>" %}
+        <details class="phase-transcript">
+          <summary>View transcript</summary>
+          <pre class="phase-transcript-content">{{ phase.output }}</pre>
+        </details>
+        {% endif %}
         {% endfor %}
       </div>
       {% else %}
