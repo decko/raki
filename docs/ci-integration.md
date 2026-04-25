@@ -228,6 +228,72 @@ nightly-judge-gate:
     when: always
 ```
 
+## SODA pipeline quality gate
+
+Use `raki gate-check` to evaluate SODA pipeline sessions on a per-milestone cadence.
+Unlike `raki run`, which evaluates sessions and computes metrics, `gate-check` operates
+on an already-generated JSON report and applies SODA-tuned thresholds in one fast step.
+
+Default SODA gates (applied automatically with no additional flags):
+- `first_pass_success_rate>=0.6` — target to improve from the v0.8.0 baseline of 0.44
+- `rework_cycles<=0.5` — target to reduce from the v0.8.0 baseline of 0.72
+
+### Quick start
+
+```bash
+# Step 1: Run evaluation on SODA sessions
+uv run raki run -m examples/soda-gate.yaml -o results/
+
+# Step 2: Check gates with SODA defaults
+uv run raki gate-check results/raki-report-*.json
+
+# Step 3: Compare against a previous milestone baseline
+uv run raki gate-check results/current.json --baseline results/previous.json
+
+# Step 4: Use custom thresholds or a manifest
+uv run raki gate-check results/current.json -m examples/soda-gate.yaml
+```
+
+### GitHub Actions snippet for milestone gate checks
+
+```yaml
+name: SODA Milestone Quality Gate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  soda-gate-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - name: Install RAKI
+        run: uv sync --python 3.12 --all-extras
+      - name: Run SODA session evaluation
+        run: |
+          uv run raki run \
+            --manifest examples/soda-gate.yaml \
+            --output results/ \
+            --quiet
+      - name: Check SODA quality gates
+        run: |
+          uv run raki gate-check results/raki-report-*.json \
+            --manifest examples/soda-gate.yaml
+      - name: Upload evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: soda-quality-report
+          path: results/
+          retention-days: 90
+```
+
+See [docs/soda-pipeline-gate.md](soda-pipeline-gate.md) for the full per-milestone workflow,
+baseline threshold table, and interpretation guide.
+
 ## Tips
 
 - **Start with operational gates only.** They run fast, need no API keys, and catch the most common issues. Add analytical gates after you have stable baselines.

@@ -3142,3 +3142,232 @@ class TestCliStrictWarnings:
                 ["run", "-m", str(manifest), "-o", str(output_dir), "-q"],
             )
         assert result.exit_code == 0
+
+
+class TestGateCheckCommand:
+    """Tests for the `raki gate-check` command."""
+
+    def test_help_shows_gate_check(self):
+        """raki --help should list the gate-check command."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["--help"])
+        assert result.exit_code == 0
+        assert "gate-check" in result.output
+
+    def test_gate_check_default_gates_pass(self, tmp_path):
+        """Default SODA gates pass when scores meet the thresholds."""
+        report_file = tmp_path / "report.json"
+        _write_diff_report_json(
+            report_file,
+            run_id="eval-pass",
+            aggregate_scores={"first_pass_success_rate": 0.80, "rework_cycles": 0.3},
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["gate-check", str(report_file)])
+        assert result.exit_code == 0
+        assert "PASS" in result.output
+
+    def test_gate_check_default_gates_fail(self, tmp_path):
+        """Default SODA gates fail when scores are below the thresholds."""
+        report_file = tmp_path / "report.json"
+        _write_diff_report_json(
+            report_file,
+            run_id="eval-fail",
+            aggregate_scores={"first_pass_success_rate": 0.40, "rework_cycles": 0.8},
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["gate-check", str(report_file)])
+        assert result.exit_code == 1
+        assert "FAIL" in result.output
+
+    def test_gate_check_custom_gate_overrides_defaults(self, tmp_path):
+        """--gate overrides SODA defaults entirely; only the specified gate applies."""
+        report_file = tmp_path / "report.json"
+        _write_diff_report_json(
+            report_file,
+            run_id="eval-custom",
+            # first_pass_success_rate=0.50 would fail SODA default (>=0.6)
+            # but the custom gate is >=0.40, which passes
+            aggregate_scores={"first_pass_success_rate": 0.50},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["gate-check", str(report_file), "--gate", "first_pass_success_rate>=0.40"],
+        )
+        assert result.exit_code == 0
+
+    def test_gate_check_manifest_thresholds_override_defaults(self, tmp_path):
+        """Manifest thresholds override SODA defaults when no --gate is given."""
+        report_file = tmp_path / "report.json"
+        _write_diff_report_json(
+            report_file,
+            run_id="eval-manifest",
+            # first_pass_success_rate=0.50 would fail SODA default (>=0.6)
+            # but manifest threshold is >=0.40, which passes
+            aggregate_scores={"first_pass_success_rate": 0.50},
+        )
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(
+            f"sessions:\n  path: {sessions_dir}\n  format: auto\n"
+            "thresholds:\n  - 'first_pass_success_rate>=0.40'\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["gate-check", str(report_file), "-m", str(manifest_file)],
+        )
+        assert result.exit_code == 0
+
+    def test_gate_check_cli_gate_overrides_manifest(self, tmp_path):
+        """CLI --gate wins over manifest thresholds (manifest is strict but CLI is lenient)."""
+        report_file = tmp_path / "report.json"
+        _write_diff_report_json(
+            report_file,
+            run_id="eval-cli-wins",
+            aggregate_scores={"first_pass_success_rate": 0.50},
+        )
+        sessions_dir = tmp_path / "sessions"
+        sessions_dir.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(
+            f"sessions:\n  path: {sessions_dir}\n  format: auto\n"
+            # Strict manifest threshold that would fail
+            "thresholds:\n  - 'first_pass_success_rate>=0.99'\n"
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            # CLI gate is lenient and should win over manifest
+            [
+                "gate-check",
+                str(report_file),
+                "-m",
+                str(manifest_file),
+                "--gate",
+                "first_pass_success_rate>=0.40",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_gate_check_baseline_regression_detected(self, tmp_path):
+        """Exit code 3 and regression message when scores drop vs baseline."""
+        baseline_file = tmp_path / "baseline.json"
+        current_file = tmp_path / "current.json"
+        _write_diff_report_json(
+            baseline_file,
+            run_id="eval-baseline",
+            aggregate_scores={"first_pass_success_rate": 0.90},
+        )
+        # current drops significantly — regression should be detected
+        _write_diff_report_json(
+            current_file,
+            run_id="eval-current",
+            aggregate_scores={"first_pass_success_rate": 0.60},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "gate-check",
+                str(current_file),
+                "--baseline",
+                str(baseline_file),
+                "--gate",
+                "first_pass_success_rate>=0.50",  # gate passes; only regression triggers exit 3
+            ],
+        )
+        assert result.exit_code == 3
+        assert "Regression" in result.output or "regression" in result.output.lower()
+
+    def test_gate_check_baseline_no_regression(self, tmp_path):
+        """Exit code 0 when scores are stable or improved vs baseline."""
+        baseline_file = tmp_path / "baseline.json"
+        current_file = tmp_path / "current.json"
+        _write_diff_report_json(
+            baseline_file,
+            run_id="eval-baseline",
+            aggregate_scores={"first_pass_success_rate": 0.70},
+        )
+        # Current is same score — no regression
+        _write_diff_report_json(
+            current_file,
+            run_id="eval-current",
+            aggregate_scores={"first_pass_success_rate": 0.70},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "gate-check",
+                str(current_file),
+                "--baseline",
+                str(baseline_file),
+                "--gate",
+                "first_pass_success_rate>=0.60",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_gate_check_json_output(self, tmp_path):
+        """--json flag produces valid JSON with passed, gates, and regressions keys."""
+        report_file = tmp_path / "report.json"
+        _write_diff_report_json(
+            report_file,
+            run_id="eval-json",
+            aggregate_scores={"first_pass_success_rate": 0.80, "rework_cycles": 0.3},
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["gate-check", str(report_file), "--json"])
+        assert result.exit_code == 0
+        parsed = json.loads(result.output)
+        assert "passed" in parsed
+        assert "gates" in parsed
+        assert "regressions" in parsed
+        assert isinstance(parsed["passed"], bool)
+        assert isinstance(parsed["gates"], list)
+        assert isinstance(parsed["regressions"], list)
+
+    def test_gate_check_quiet_mode(self, tmp_path):
+        """--quiet suppresses gate results output."""
+        report_file = tmp_path / "report.json"
+        _write_diff_report_json(
+            report_file,
+            run_id="eval-quiet",
+            aggregate_scores={"first_pass_success_rate": 0.80, "rework_cycles": 0.3},
+        )
+        runner = CliRunner()
+        result = runner.invoke(main, ["gate-check", str(report_file), "-q"])
+        assert result.exit_code == 0
+        assert "Quality Gates" not in result.output
+
+    def test_gate_check_missing_report_exits_2(self, tmp_path):
+        """Exit code 2 when report file does not exist."""
+        runner = CliRunner()
+        result = runner.invoke(main, ["gate-check", str(tmp_path / "nonexistent.json")])
+        assert result.exit_code == 2
+
+    def test_gate_check_require_metric_fails_on_na(self, tmp_path):
+        """--require-metric fails the gate when the metric is N/A."""
+        report_file = tmp_path / "report.json"
+        # faithfulness is absent from aggregate_scores — will be treated as N/A
+        _write_diff_report_json(
+            report_file,
+            run_id="eval-require",
+            aggregate_scores={"first_pass_success_rate": 0.80},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "gate-check",
+                str(report_file),
+                "--gate",
+                "faithfulness>=0.8",
+                "--require-metric",
+                "faithfulness",
+            ],
+        )
+        assert result.exit_code == 1

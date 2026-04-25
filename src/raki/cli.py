@@ -1168,5 +1168,207 @@ def trends(
     render_trends_table(trend_list, console=console)
 
 
+# SODA pipeline quality gate defaults (v0.8.0 baseline data)
+SODA_DEFAULT_GATES: tuple[str, ...] = (
+    "first_pass_success_rate>=0.6",
+    "rework_cycles<=0.5",
+)
+
+
+@main.command("gate-check")
+@click.argument("report_path")
+@click.option(
+    "--gate",
+    "gate_thresholds",
+    multiple=True,
+    help="Override default gates: 'metric>=value'. Replaces SODA defaults entirely.",
+)
+@click.option(
+    "-m",
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Path to manifest file. Uses its thresholds: block if no --gate flags given.",
+)
+@click.option(
+    "--baseline",
+    "baseline_path",
+    default=None,
+    help="Path to baseline JSON report for regression comparison.",
+)
+@click.option(
+    "--require-metric",
+    "required_metrics",
+    multiple=True,
+    help="Fail if metric is N/A instead of skipping threshold.",
+)
+@click.option("--json", "json_output", is_flag=True, help="Print JSON result to stdout.")
+@click.option("-q", "--quiet", is_flag=True, help="Suppress non-essential output.")
+def gate_check(
+    report_path: str,
+    gate_thresholds: tuple[str, ...],
+    manifest_path: str | None,
+    baseline_path: str | None,
+    required_metrics: tuple[str, ...],
+    json_output: bool,
+    quiet: bool,
+) -> None:
+    """Evaluate a saved RAKI report against SODA pipeline quality gates.
+
+    Checks first_pass_success_rate>=0.6 and rework_cycles<=0.5 by default.
+    Override with --gate or provide a manifest with thresholds:.
+
+    Use --baseline to compare against a previous report for regression detection.
+    See docs/soda-pipeline-gate.md for the full workflow.
+    """
+    out = _stderr_console() if json_output else console
+
+    # --- Load the report ---
+    report_file = Path(report_path)
+    if not report_file.exists():
+        out.print(f"[red]Error: report file not found: {report_file}[/red]")
+        raise SystemExit(2)
+
+    try:
+        from raki.report.json_report import load_json_report
+
+        eval_report = load_json_report(report_file)
+    except Exception as exc:
+        out.print(f"[red]Error loading report: {redact_sensitive(str(exc))}[/red]")
+        raise SystemExit(2) from exc
+
+    # --- Determine effective thresholds ---
+    # Priority: CLI --gate > manifest thresholds: > SODA defaults
+    effective_thresholds: list[str] = list(gate_thresholds)
+
+    if not effective_thresholds and manifest_path is not None:
+        try:
+            manifest_file = Path(manifest_path)
+            if not manifest_file.exists():
+                out.print(f"[red]Error: manifest file not found: {manifest_file}[/red]")
+                raise SystemExit(2)
+            from raki.ground_truth.manifest import load_manifest
+
+            manifest = load_manifest(manifest_file)
+            if manifest.thresholds:
+                effective_thresholds = list(manifest.thresholds)
+        except SystemExit:
+            raise
+        except Exception as exc:
+            out.print(f"[yellow]Warning: could not load manifest thresholds: {exc}[/yellow]")
+
+    if not effective_thresholds:
+        effective_thresholds = list(SODA_DEFAULT_GATES)
+
+    # --- Parse thresholds ---
+    from raki.gates.thresholds import evaluate_all, format_threshold_results, parse_threshold
+
+    try:
+        parsed_thresholds = [parse_threshold(raw) for raw in effective_thresholds]
+    except ValueError as exc:
+        out.print(f"[red]Error: {exc}[/red]")
+        raise SystemExit(2) from exc
+
+    # --- Evaluate gates ---
+    required_set = set(required_metrics) if required_metrics else None
+    gate_results = evaluate_all(
+        parsed_thresholds, eval_report.aggregate_scores, required_metrics=required_set
+    )
+    has_violation = any(not result.passed for result in gate_results)
+
+    if not quiet and not json_output:
+        out.print(format_threshold_results(gate_results))
+
+    # --- Regression detection (optional) ---
+    regression_results_list: list = []
+    regression_detected = False
+
+    if baseline_path is not None:
+        baseline_file = Path(baseline_path)
+        if not baseline_file.exists():
+            out.print(f"[red]Error: baseline file not found: {baseline_file}[/red]")
+            raise SystemExit(2)
+
+        try:
+            from raki.report.json_report import load_json_report
+
+            baseline_report = load_json_report(baseline_file)
+        except Exception as exc:
+            out.print(f"[red]Error loading baseline report: {redact_sensitive(str(exc))}[/red]")
+            raise SystemExit(2) from exc
+
+        from raki.gates.regression import Direction, detect_regressions
+        from raki.report.diff import is_higher_is_better
+
+        all_metric_names = set(baseline_report.aggregate_scores.keys()) | set(
+            eval_report.aggregate_scores.keys()
+        )
+        metric_directions: dict[str, Direction] = {
+            metric_name: "higher_is_better"
+            if is_higher_is_better(metric_name)
+            else "lower_is_better"
+            for metric_name in all_metric_names
+        }
+
+        regression_results_list = detect_regressions(
+            baseline_report.aggregate_scores,
+            eval_report.aggregate_scores,
+            metric_directions,
+        )
+        regressed = [result for result in regression_results_list if result.regressed]
+        regression_detected = bool(regressed)
+
+        if not quiet and not json_output and regression_detected:
+            out.print("\n[red]Regressions detected:[/red]")
+            for result in regressed:
+                out.print(
+                    f"  {result.metric}: {result.baseline:.4f} -> "
+                    f"{result.current:.4f} ({result.direction})"
+                )
+
+    # --- JSON output ---
+    if json_output:
+        import json as json_mod
+
+        gates_output = [
+            {
+                "metric": result.threshold.metric,
+                "operator": result.threshold.operator,
+                "target": result.threshold.value,
+                "actual": result.actual,
+                "passed": result.passed,
+                "skipped": result.skipped,
+                "reason": result.reason,
+            }
+            for result in gate_results
+        ]
+        regressions_output = [
+            {
+                "metric": result.metric,
+                "baseline": result.baseline,
+                "current": result.current,
+                "direction": result.direction,
+                "regressed": result.regressed,
+            }
+            for result in regression_results_list
+        ]
+        json_result = {
+            "passed": not has_violation and not regression_detected,
+            "gates": gates_output,
+            "regressions": regressions_output,
+        }
+        click.echo(json_mod.dumps(json_result, indent=2))
+
+    # --- Exit code ---
+    from raki.gates.regression import compute_exit_code
+
+    exit_code = compute_exit_code(
+        threshold_violated=has_violation,
+        regression_detected=regression_detected,
+    )
+    if exit_code != 0:
+        raise SystemExit(exit_code)
+
+
 if __name__ == "__main__":
     main()

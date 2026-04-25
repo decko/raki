@@ -1,0 +1,26 @@
+# SODA Pipeline Quality Gate — RAKI evaluation manifest
+# Use with: raki gate-check <report.json> -m examples/soda-gate.yaml
+#
+# This manifest defines SODA-tuned thresholds for pipeline quality evaluation.
+# Thresholds are based on v0.8.0 cycle baseline data.
+#
+# Workflow:
+#   1. Run evaluation on SODA sessions:
+#      uv run raki run -m examples/soda-gate.yaml -o results/
+#   2. Check gates against SODA defaults (or manifest thresholds below):
+#      uv run raki gate-check results/raki-report-*.json -m examples/soda-gate.yaml
+#   3. Compare against a previous milestone report:
+#      uv run raki gate-check results/current.json --baseline results/previous.json
+
+sessions:
+  path: .soda/          # SODA session transcripts directory
+  format: auto
+
+# SODA pipeline quality thresholds (v0.8.0 baseline)
+# These gates are used by `raki gate-check` when this manifest is provided.
+# They override the built-in SODA defaults (first_pass_success_rate>=0.6, rework_cycles<=0.5).
+thresholds:
+  - "first_pass_success_rate>=0.6"      # Target: improve from v0.8.0 baseline of 0.44
+  - "rework_cycles<=0.5"                # Target: reduce from v0.8.0 baseline of 0.72
+  - "review_severity_distribution>=0.5" # Track finding patterns; v0.8.0 baseline: 0.63
+  - "cost_efficiency<=10.0"             # Cost per session cap ($); v0.8.0 average: $7.28
