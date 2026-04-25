@@ -1,3 +1,58 @@
+## [0.9.1] — 2026-04-25
+
+### Breaking Changes
+
+- The ``--no-llm`` flag has been removed from ``raki run``.
+
+  It was deprecated in v0.7.0 because skipping LLM-backed metrics is now the default behaviour; use ``--judge`` to opt in. Passing ``--no-llm`` now produces "No such option: --no-llm". (#195)
+
+### Features
+
+- Add metric health checks to detect degenerate and dead metrics. After each evaluation run, RAKI now automatically checks every metric for two conditions:
+
+  - **dead_metric** (error): the metric is N/A for more than 95% of sessions, indicating the sessions lack required data fields.
+  - **degenerate_metric** (warning): the metric has a constant score across all sessions (zero variance), indicating no discriminating signal.
+
+  Warnings are shown in the CLI summary (``⚠ Metric health:`` block) and in the HTML report (Metric Health table). They are also persisted in the JSON report (``EvalReport.warnings``) and in the history log (``HistoryEntry.warning_count``).
+
+  Use ``--strict-warnings`` with ``raki run`` to exit non-zero when error-severity health issues are detected.
+
+  (#162)
+- Track LLM judge token usage and display cost summary in CLI and HTML reports. (#174)
+- ``SessionMeta`` gains three optional fields — ``orchestrator``, ``provider``, and
+  ``pipeline_phases`` — that expose pipeline/orchestrator metadata from each session.
+
+  Both adapters now populate these fields automatically:
+
+  - **session-schema**: ``orchestrator`` is inferred from the ``branch`` prefix (e.g.
+    ``"soda/101"`` → ``"soda"``); ``pipeline_phases`` is the ordered list of phase
+    names from the session's phases dict.
+  - **alcove / bridge**: ``orchestrator`` is ``"bridge"`` for bridge-format sessions
+    and ``"alcove"`` for classic Claude Code transcripts; ``provider`` is taken from
+    the top-level ``provider`` field when present; ``pipeline_phases`` is populated
+    from the phases dict.
+
+  All three fields default to ``None``, so existing code and serialised data are
+  100% backward-compatible. (#175)
+- Renamed ``skip_llm`` to ``skip_judge`` in report JSON config. Old reports using ``skip_llm`` are still loaded correctly with automatic migration. (#178)
+- Reports now distinguish the **agent model** (the LLM the agent used to complete
+  sessions) from the **judge model** (the LLM used to score retrieval quality).
+
+  - **CLI summary** — a new ``Agent:`` line appears at the top of ``raki run``
+    output whenever sessions carry a ``model_id`` (e.g. ``claude-opus-4``).
+  - **HTML report header** — an **Agent model** field appears alongside Run,
+    Timestamp, and Sessions when model IDs are present.
+  - **Diff reports** — ``DiffReport`` gains an ``agent_model_mismatch`` field
+    (mirroring ``judge_config_mismatch``). Both CLI and HTML diff output now show
+    a warning banner when the agent model set differs between the two runs being
+    compared. The HTML diff also gained a **Judge configuration mismatch** banner
+    (previously only shown in the CLI). (#179)
+
+### Bug Fixes
+
+- Alcove adapter ``detect()`` now accepts session files that use a top-level ``"id"`` key instead of ``"session_id"``. Previously, only the bridge format (``id`` + ``task_id`` together) was recognised; files with ``id`` alone were silently skipped by the loader. (#197)
+
+
 ## [0.9.0] — 2026-04-24
 
 ### Features
