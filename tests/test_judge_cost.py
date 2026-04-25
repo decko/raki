@@ -279,6 +279,82 @@ class TestCliSummaryJudgeCost:
         output = string_io.getvalue()
         assert "Judge:" not in output
 
+    def test_judge_model_and_provider_shown_in_summary(self) -> None:
+        """When llm_model and llm_provider are set, both appear in the judge cost line."""
+        from rich.console import Console
+
+        from raki.report.cli_summary import print_summary
+
+        report = EvalReport(
+            run_id="judge-model-provider-test",
+            config={
+                "llm_model": "claude-sonnet-4-6",
+                "llm_provider": "vertex-anthropic",
+                "judge_cost": {
+                    "input_tokens": 41861,
+                    "output_tokens": 11558,
+                    "calls": 20,
+                },
+            },
+            aggregate_scores={"first_pass_success_rate": 0.8},
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=False, width=120)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "claude-sonnet-4-6" in output
+        assert "vertex-anthropic" in output
+        assert "20 calls" in output
+
+    def test_judge_model_only_shown_in_summary(self) -> None:
+        """When only llm_model is set (no provider), model appears without provider."""
+        from rich.console import Console
+
+        from raki.report.cli_summary import print_summary
+
+        report = EvalReport(
+            run_id="judge-model-only-test",
+            config={
+                "llm_model": "claude-opus-4",
+                "judge_cost": {
+                    "input_tokens": 5000,
+                    "output_tokens": 1000,
+                    "calls": 5,
+                },
+            },
+            aggregate_scores={"first_pass_success_rate": 0.8},
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=False, width=120)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "claude-opus-4" in output
+        assert "(" not in output or "vertex-anthropic" not in output
+        assert "5 calls" in output
+
+    def test_judge_cost_only_no_model_in_summary(self) -> None:
+        """When llm_model is absent, no model prefix appears in the judge cost line."""
+        from rich.console import Console
+
+        from raki.report.cli_summary import print_summary
+
+        report = EvalReport(
+            run_id="judge-cost-only-test",
+            config={
+                "judge_cost": {
+                    "input_tokens": 15000,
+                    "output_tokens": 3000,
+                    "calls": 24,
+                },
+            },
+            aggregate_scores={"first_pass_success_rate": 0.8},
+        )
+        string_io = StringIO()
+        test_console = Console(file=string_io, force_terminal=False, width=120)
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Judge: 24 calls" in output
+
 
 # --- HTML report tests ---
 
@@ -323,3 +399,70 @@ class TestHtmlReportJudgeCost:
         write_html_report(report, output_path, session_count=10)
         html_content = output_path.read_text()
         assert "Judge:" not in html_content
+
+    def test_judge_model_and_provider_in_html_report(self, tmp_path: Path) -> None:
+        """When llm_model and llm_provider are set, both appear in the HTML header."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="html-judge-model-provider-test",
+            config={
+                "llm_model": "claude-sonnet-4-6",
+                "llm_provider": "vertex-anthropic",
+                "judge_cost": {
+                    "input_tokens": 41861,
+                    "output_tokens": 11558,
+                    "calls": 20,
+                },
+            },
+            aggregate_scores={"first_pass_success_rate": 0.8},
+        )
+        output_path = tmp_path / "report.html"
+        write_html_report(report, output_path, session_count=10)
+        html_content = output_path.read_text()
+        assert "claude-sonnet-4-6" in html_content
+        assert "vertex-anthropic" in html_content
+        assert "20 calls" in html_content
+
+    def test_judge_model_only_in_html_report(self, tmp_path: Path) -> None:
+        """When only llm_model is set, model appears without provider in HTML header."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="html-judge-model-only-test",
+            config={
+                "llm_model": "claude-opus-4",
+                "judge_cost": {
+                    "input_tokens": 5000,
+                    "output_tokens": 1000,
+                    "calls": 5,
+                },
+            },
+            aggregate_scores={"first_pass_success_rate": 0.8},
+        )
+        output_path = tmp_path / "report.html"
+        write_html_report(report, output_path, session_count=10)
+        html_content = output_path.read_text()
+        assert "claude-opus-4" in html_content
+        assert "5 calls" in html_content
+
+    def test_judge_cost_only_no_model_in_html_report(self, tmp_path: Path) -> None:
+        """When llm_model is absent, no model prefix appears in the HTML judge span."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="html-judge-cost-only-test",
+            config={
+                "judge_cost": {
+                    "input_tokens": 15000,
+                    "output_tokens": 3000,
+                    "calls": 24,
+                },
+            },
+            aggregate_scores={"first_pass_success_rate": 0.8},
+        )
+        output_path = tmp_path / "report.html"
+        write_html_report(report, output_path, session_count=10)
+        html_content = output_path.read_text()
+        assert "24 calls" in html_content
+        assert "Judge:" in html_content
