@@ -1625,6 +1625,261 @@ class TestGoogleProvider:
 
 
 # ---------------------------------------------------------------------------
+# LiteLLM provider tests — verify create_ragas_llm dispatches to LiteLLM
+# ---------------------------------------------------------------------------
+
+
+class TestLiteLLMProvider:
+    """Tests for the 'litellm' provider branch in create_ragas_llm()."""
+
+    def _setup_litellm_mocks(self, monkeypatch):
+        """Set up common mocks for litellm provider tests."""
+        import sys
+        from importlib import reload
+
+        mock_litellm = MagicMock()
+        monkeypatch.setitem(sys.modules, "litellm", mock_litellm)
+
+        mock_llm = MagicMock()
+        mock_factory = MagicMock(return_value=mock_llm)
+        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        return {
+            "litellm": mock_litellm,
+            "llm": mock_llm,
+            "factory": mock_factory,
+            "module": llm_setup,
+        }
+
+    def test_litellm_provider_creates_llm(self, monkeypatch):
+        """litellm provider dispatches to llm_factory with provider='litellm'."""
+        mocks = self._setup_litellm_mocks(monkeypatch)
+
+        config = MetricConfig(llm_provider="litellm", llm_model="gpt-4o")
+        result = mocks["module"].create_ragas_llm(config)
+
+        mocks["factory"].assert_called_once()
+        call_kwargs = mocks["factory"].call_args
+        assert call_kwargs[0][0] == "gpt-4o"
+        assert call_kwargs[1]["provider"] == "litellm"
+        assert result is mocks["llm"]
+
+    def test_litellm_provider_passes_litellm_module_as_client(self, monkeypatch):
+        """The litellm module itself must be passed as the client."""
+        mocks = self._setup_litellm_mocks(monkeypatch)
+
+        config = MetricConfig(llm_provider="litellm", llm_model="gpt-4o")
+        mocks["module"].create_ragas_llm(config)
+
+        call_kwargs = mocks["factory"].call_args
+        assert call_kwargs[1]["client"] is mocks["litellm"]
+
+    def test_litellm_provider_forwards_temperature(self, monkeypatch):
+        """Temperature from MetricConfig is passed to llm_factory."""
+        mocks = self._setup_litellm_mocks(monkeypatch)
+
+        config = MetricConfig(llm_provider="litellm", llm_model="gpt-4o", temperature=0.3)
+        mocks["module"].create_ragas_llm(config)
+
+        call_kwargs = mocks["factory"].call_args
+        assert call_kwargs[1]["temperature"] == 0.3
+
+    def test_litellm_provider_removes_top_p(self, monkeypatch):
+        """top_p must be removed from model_args to avoid backend rejection."""
+        mocks = self._setup_litellm_mocks(monkeypatch)
+
+        # Give the mock llm a real model_args dict so pop is testable
+        mock_llm = mocks["llm"]
+        mock_llm.model_args = {"top_p": 0.9, "temperature": 0.0}
+        mocks["factory"].return_value = mock_llm
+
+        config = MetricConfig(llm_provider="litellm", llm_model="gpt-4o")
+        mocks["module"].create_ragas_llm(config)
+
+        assert "top_p" not in mock_llm.model_args
+
+    def test_litellm_in_supported_providers(self):
+        """'litellm' must appear in SUPPORTED_PROVIDERS."""
+        from raki.metrics.ragas.llm_setup import SUPPORTED_PROVIDERS
+
+        assert "litellm" in SUPPORTED_PROVIDERS
+
+    def test_litellm_provider_no_token_accumulator_skips_patch(self, monkeypatch):
+        """When token_accumulator is None, acompletion must not be patched."""
+        import sys
+        from importlib import reload
+
+        mock_litellm = MagicMock()
+        original_acompletion = mock_litellm.acompletion
+        monkeypatch.setitem(sys.modules, "litellm", mock_litellm)
+        monkeypatch.setitem(
+            sys.modules, "ragas.llms", MagicMock(llm_factory=MagicMock(return_value=MagicMock()))
+        )
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="litellm", llm_model="gpt-4o", token_accumulator=None)
+        llm_setup.create_ragas_llm(config)
+
+        # acompletion must not have been replaced
+        assert mock_litellm.acompletion is original_acompletion
+
+
+class TestPatchLiteLLMForTokenTracking:
+    """Tests for patch_litellm_for_token_tracking()."""
+
+    def _make_usage(self, prompt_tokens: int, completion_tokens: int):
+        usage = MagicMock()
+        usage.prompt_tokens = prompt_tokens
+        usage.completion_tokens = completion_tokens
+        return usage
+
+    def test_tracks_input_and_output_tokens(self):
+        """Wrapping acompletion should increment input_tokens and output_tokens."""
+        import asyncio
+
+        from raki.metrics.protocol import TokenAccumulator
+        from raki.metrics.ragas.llm_setup import patch_litellm_for_token_tracking
+
+        accumulator = TokenAccumulator()
+        mock_response = MagicMock()
+        mock_response.usage = self._make_usage(prompt_tokens=10, completion_tokens=5)
+
+        mock_litellm = MagicMock()
+        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+        patch_litellm_for_token_tracking(mock_litellm, accumulator)
+        asyncio.run(mock_litellm.acompletion(model="gpt-4o", messages=[]))
+
+        assert accumulator.input_tokens == 10
+        assert accumulator.output_tokens == 5
+        assert accumulator.calls == 1
+
+    def test_accumulates_across_multiple_calls(self):
+        """Accumulator totals should grow with each acompletion call."""
+        import asyncio
+
+        from raki.metrics.protocol import TokenAccumulator
+        from raki.metrics.ragas.llm_setup import patch_litellm_for_token_tracking
+
+        accumulator = TokenAccumulator()
+        mock_litellm = MagicMock()
+
+        call_count = 0
+
+        async def fake_acompletion(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            resp = MagicMock()
+            resp.usage = self._make_usage(prompt_tokens=4, completion_tokens=2)
+            return resp
+
+        mock_litellm.acompletion = fake_acompletion
+
+        patch_litellm_for_token_tracking(mock_litellm, accumulator)
+        asyncio.run(mock_litellm.acompletion())
+        asyncio.run(mock_litellm.acompletion())
+        asyncio.run(mock_litellm.acompletion())
+
+        assert accumulator.input_tokens == 12
+        assert accumulator.output_tokens == 6
+        assert accumulator.calls == 3
+
+    def test_missing_usage_does_not_crash(self):
+        """When the response has no usage attribute, accumulator.calls still increments."""
+        import asyncio
+
+        from raki.metrics.protocol import TokenAccumulator
+        from raki.metrics.ragas.llm_setup import patch_litellm_for_token_tracking
+
+        accumulator = TokenAccumulator()
+        mock_response = MagicMock(spec=[])  # no attributes at all
+        mock_litellm = MagicMock()
+        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+        patch_litellm_for_token_tracking(mock_litellm, accumulator)
+        asyncio.run(mock_litellm.acompletion())
+
+        assert accumulator.input_tokens == 0
+        assert accumulator.output_tokens == 0
+        assert accumulator.calls == 1
+
+    def test_none_usage_does_not_crash(self):
+        """When response.usage is None, accumulator.calls still increments."""
+        import asyncio
+
+        from raki.metrics.protocol import TokenAccumulator
+        from raki.metrics.ragas.llm_setup import patch_litellm_for_token_tracking
+
+        accumulator = TokenAccumulator()
+        mock_response = MagicMock()
+        mock_response.usage = None
+        mock_litellm = MagicMock()
+        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+        patch_litellm_for_token_tracking(mock_litellm, accumulator)
+        asyncio.run(mock_litellm.acompletion())
+
+        assert accumulator.input_tokens == 0
+        assert accumulator.output_tokens == 0
+        assert accumulator.calls == 1
+
+    def test_original_response_returned_unmodified(self):
+        """The response object must be returned intact."""
+        import asyncio
+
+        from raki.metrics.protocol import TokenAccumulator
+        from raki.metrics.ragas.llm_setup import patch_litellm_for_token_tracking
+
+        sentinel = object()
+        mock_response = MagicMock()
+        mock_response.usage = self._make_usage(1, 1)
+        mock_response._sentinel = sentinel
+
+        accumulator = TokenAccumulator()
+        mock_litellm = MagicMock()
+        mock_litellm.acompletion = AsyncMock(return_value=mock_response)
+
+        patch_litellm_for_token_tracking(mock_litellm, accumulator)
+        result = asyncio.run(mock_litellm.acompletion())
+
+        assert result is mock_response
+
+    def test_litellm_provider_with_accumulator_patches_acompletion(self, monkeypatch):
+        """When token_accumulator is set, acompletion is replaced on the module."""
+        import sys
+        from importlib import reload
+
+        from raki.metrics.protocol import TokenAccumulator
+
+        accumulator = TokenAccumulator()
+        mock_litellm = MagicMock()
+        original_acompletion = mock_litellm.acompletion
+        monkeypatch.setitem(sys.modules, "litellm", mock_litellm)
+        monkeypatch.setitem(
+            sys.modules, "ragas.llms", MagicMock(llm_factory=MagicMock(return_value=MagicMock()))
+        )
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(
+            llm_provider="litellm", llm_model="gpt-4o", token_accumulator=accumulator
+        )
+        llm_setup.create_ragas_llm(config)
+
+        # acompletion must have been replaced by the wrapper
+        assert mock_litellm.acompletion is not original_acompletion
+
+
+# ---------------------------------------------------------------------------
 # instructor#1658 silent-zero detection tests
 # ---------------------------------------------------------------------------
 
