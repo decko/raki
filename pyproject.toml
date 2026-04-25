@@ -26,6 +26,9 @@ ragas = [
     "google-genai>=1.0",
     "langchain-google-vertexai>=2.0",
 ]
+litellm = [
+    "litellm>=1.0",
+]
 html = [
     "jinja2>=3.0",
 ]
@@ -36,7 +39,7 @@ dev = [
     "towncrier>=24.8",
     "ty",
 ]
-all = ["raki[ragas,html,dev]"]
+all = ["raki[ragas,litellm,html,dev]"]
 
 [project.scripts]
 raki = "raki.cli:main"
