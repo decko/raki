@@ -1,0 +1,15 @@
+Fix ``knowledge_miss_rate`` and ``knowledge_gap_rate`` returning 1.0 / 0.0 on SODA sessions.
+
+Two root causes were fixed:
+
+* **Knowledge metrics false positives**: ``_compute_with_knowledge_context()`` in both
+  ``miss_rate.py`` and ``gap_rate.py`` never checked ``sample.context_source``, so
+  synthesized context (built from transcript tool-call outputs) trivially matched every
+  finding via 1-token overlap, pushing miss_rate to 1.0 and gap_rate to 0.0 for all
+  SODA sessions.  Both methods now skip samples with ``context_source == "synthesized"``
+  and return N/A instead.
+
+* **Alcove adapter missing ``output_structured``**: ``_build_phases()`` never passed
+  ``output_structured`` to ``PhaseResult``, so ``_extract_domains()`` always saw an
+  empty dict and ground-truth matching produced zero matches.  Phase results now carry
+  ``output_structured=redact_dict(phase_meta)`` from the phases dict metadata.
