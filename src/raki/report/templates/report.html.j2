@@ -706,6 +706,43 @@
     text-align: center;
   }
 
+  /* Phase transcript */
+  details.phase-transcript {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    margin: 0 0 0 1.4rem;
+    overflow: visible;
+  }
+
+  details.phase-transcript > summary {
+    padding: 0.15rem 0;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 400;
+  }
+
+  details.phase-transcript > summary::before {
+    font-size: 0.55rem;
+    margin-right: 0.3rem;
+  }
+
+  .phase-transcript-content {
+    margin-top: 0.4rem;
+    padding: 0.75rem;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 20rem;
+    overflow-y: auto;
+    line-height: 1.5;
+  }
+
   /* Empty state */
   .empty-state {
     color: var(--text-muted);
@@ -1002,6 +1039,12 @@
           <span class="phase-duration">{{ format_duration(phase.duration_ms // 1000) }}</span>
           {% endif %}
         </div>
+        {% if phase.output and phase.output != "<stripped>" %}
+        <details class="phase-transcript">
+          <summary>View transcript</summary>
+          <pre class="phase-transcript-content">{{ phase.output }}</pre>
+        </details>
+        {% endif %}
         {% endfor %}
       </div>
       {% else %}
