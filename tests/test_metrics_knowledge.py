@@ -1150,3 +1150,177 @@ class TestKnowledgeGapRateStrictDocChunks:
         # 'domain' tier → covered → not uncovered
         assert result.details["uncovered_findings"] == 0
         assert result.score == 0.0
+
+
+# --- Synthesized context: knowledge metrics must not count it (fix #183) ---
+
+
+class TestKnowledgeMissRateSynthesizedContext:
+    """KnowledgeMissRate._compute_with_knowledge_context skips synthesized samples."""
+
+    def _make_sample_with_context(
+        self,
+        session_id: str,
+        knowledge_context: str,
+        context_source: str | None,
+    ) -> EvalSample:
+        meta = SessionMeta(
+            session_id=session_id,
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=2,
+            rework_cycles=1,
+        )
+        phase = PhaseResult(
+            name="session",
+            generation=1,
+            status="completed",
+            output="done",
+            knowledge_context=knowledge_context,
+        )
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing authentication token validation",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[phase],
+            findings=[finding],
+            events=[],
+        )
+        # EvalSample.context_source is a Literal field; set it directly
+        sample.context_source = context_source  # type: ignore[assignment]
+        return sample
+
+    def test_synthesized_context_returns_na(self):
+        """When context_source is 'synthesized', miss_rate returns N/A (score=None).
+
+        Synthesized context is built from tool-call outputs and is too broad;
+        it trivially matches every finding, inflating miss_rate to 1.0 falsely.
+        """
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        # Knowledge context covers the finding's words — without the fix this
+        # would produce score=1.0 (false positive).
+        sample = self._make_sample_with_context(
+            session_id="synth-miss",
+            knowledge_context="Authentication tokens must be validated before processing",
+            context_source="synthesized",
+        )
+        dataset = make_dataset(sample)
+        result = KnowledgeMissRate().compute(dataset, MetricConfig())
+        assert result.score is None, "Synthesized context must be skipped (N/A expected)"
+        assert result.details["total_rework_findings"] == 0
+
+    def test_explicit_context_is_still_used(self):
+        """When context_source is 'explicit', miss_rate processes the sample normally."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        sample = self._make_sample_with_context(
+            session_id="explicit-miss",
+            knowledge_context="Authentication tokens must be validated before processing",
+            context_source="explicit",
+        )
+        dataset = make_dataset(sample)
+        result = KnowledgeMissRate().compute(dataset, MetricConfig())
+        # Finding overlaps with knowledge_context → covered → score=1.0
+        assert result.score == 1.0
+        assert result.details["covered_findings"] == 1
+
+    def test_none_context_source_is_still_used(self):
+        """When context_source is None (legacy), miss_rate processes the sample normally."""
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        sample = self._make_sample_with_context(
+            session_id="none-source-miss",
+            knowledge_context="Authentication tokens must be validated before processing",
+            context_source=None,
+        )
+        dataset = make_dataset(sample)
+        result = KnowledgeMissRate().compute(dataset, MetricConfig())
+        assert result.score == 1.0
+        assert result.details["covered_findings"] == 1
+
+
+class TestKnowledgeGapRateSynthesizedContext:
+    """KnowledgeGapRate._compute_with_knowledge_context skips synthesized samples."""
+
+    def _make_sample_with_context(
+        self,
+        session_id: str,
+        knowledge_context: str,
+        context_source: str | None,
+    ) -> EvalSample:
+        meta = SessionMeta(
+            session_id=session_id,
+            started_at=datetime(2026, 4, 10, tzinfo=timezone.utc),
+            total_phases=2,
+            rework_cycles=1,
+        )
+        phase = PhaseResult(
+            name="session",
+            generation=1,
+            status="completed",
+            output="done",
+            knowledge_context=knowledge_context,
+        )
+        finding = ReviewFinding(
+            reviewer="ai-review",
+            severity="critical",
+            issue="Missing authentication token validation",
+        )
+        sample = EvalSample(
+            session=meta,
+            phases=[phase],
+            findings=[finding],
+            events=[],
+        )
+        sample.context_source = context_source  # type: ignore[assignment]
+        return sample
+
+    def test_synthesized_context_returns_na(self):
+        """When context_source is 'synthesized', gap_rate returns N/A (score=None).
+
+        Synthesized context matches too broadly; it covers every finding and
+        pushes gap_rate toward 0.0 (a false negative — appearing gap-free).
+        """
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        sample = self._make_sample_with_context(
+            session_id="synth-gap",
+            knowledge_context="Authentication tokens must be validated before processing",
+            context_source="synthesized",
+        )
+        dataset = make_dataset(sample)
+        result = KnowledgeGapRate().compute(dataset, MetricConfig())
+        assert result.score is None, "Synthesized context must be skipped (N/A expected)"
+        assert result.details["total_rework_findings"] == 0
+
+    def test_explicit_context_is_still_used(self):
+        """When context_source is 'explicit', gap_rate processes the sample normally."""
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        sample = self._make_sample_with_context(
+            session_id="explicit-gap",
+            knowledge_context="Authentication tokens must be validated before processing",
+            context_source="explicit",
+        )
+        dataset = make_dataset(sample)
+        result = KnowledgeGapRate().compute(dataset, MetricConfig())
+        # Finding overlaps with knowledge_context → covered → uncovered_findings=0, score=0.0
+        assert result.score == 0.0
+        assert result.details["uncovered_findings"] == 0
+
+    def test_none_context_source_is_still_used(self):
+        """When context_source is None (legacy), gap_rate processes the sample normally."""
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        sample = self._make_sample_with_context(
+            session_id="none-source-gap",
+            knowledge_context="Authentication tokens must be validated before processing",
+            context_source=None,
+        )
+        dataset = make_dataset(sample)
+        result = KnowledgeGapRate().compute(dataset, MetricConfig())
+        assert result.score == 0.0
+        assert result.details["uncovered_findings"] == 0

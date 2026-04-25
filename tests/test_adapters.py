@@ -2926,3 +2926,93 @@ def test_alcove_classic_fixture_orchestrator():
     assert sample.session.orchestrator == "alcove"
     assert sample.session.pipeline_phases is None
     assert sample.session.provider is None
+
+
+# --- Alcove output_structured from phases dict (fix #183) ---
+
+
+def test_alcove_phases_output_structured_populated(tmp_path):
+    """PhaseResult.output_structured must be populated from the phases dict metadata.
+
+    Without this fix, _build_phases() never passed output_structured to
+    PhaseResult, so _extract_domains() always returned {} and ground-truth
+    matching was broken for all alcove/bridge sessions.
+    """
+    phases_data = {
+        "triage": {
+            "status": "completed",
+            "cost_usd": 0.3,
+            "generation": 1,
+            "approach": "Patch the dependency version",
+            "code_area": "deps",
+        },
+        "implement": {
+            "status": "completed",
+            "cost_usd": 1.2,
+            "generation": 1,
+        },
+    }
+    source = _bridge_session(tmp_path, overrides={"phases": phases_data})
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+
+    triage_phases = [phase for phase in sample.phases if phase.name == "triage"]
+    assert len(triage_phases) == 1
+    triage = triage_phases[0]
+
+    # output_structured must be populated so ground-truth matching can read it
+    assert triage.output_structured is not None
+    assert triage.output_structured.get("approach") == "Patch the dependency version"
+    assert triage.output_structured.get("code_area") == "deps"
+
+
+def test_alcove_phases_empty_phase_meta_output_structured_none(tmp_path):
+    """When a phase entry in the phases dict is None (null), output_structured must be None.
+
+    A None/empty phase_meta means there is no metadata to store; passing None
+    to redact_dict() would error, so the adapter must guard with 'if phase_meta'.
+    """
+    # phases dict with a null value for triage
+    data = {
+        "id": "bridge-null-phase",
+        "task_id": "task-null",
+        "started_at": "2026-04-22T10:00:00Z",
+        "status": "completed",
+        "transcript": [
+            {"type": "system", "model": "claude-sonnet-4-6"},
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [{"type": "text", "text": "done"}],
+                },
+            },
+            {"type": "result", "total_cost_usd": 0.01, "duration_ms": 1000},
+        ],
+        "phases": {"triage": None},
+    }
+    session_file = tmp_path / "null-phase.json"
+    session_file.write_text(json.dumps(data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(session_file)
+
+    triage_phases = [phase for phase in sample.phases if phase.name == "triage"]
+    assert len(triage_phases) == 1
+    # Null phase_meta → output_structured must be None (not an empty dict)
+    assert triage_phases[0].output_structured is None
+
+
+def test_alcove_no_phases_dict_output_structured_none(tmp_path):
+    """When no phases dict is present, the single 'session' phase has output_structured=None.
+
+    The single-phase fallback path in _build_phases() always had output_structured=None
+    (not affected by the fix).  This test verifies the unchanged path still works.
+    """
+    source = _bridge_session(tmp_path)  # no phases override → falls back to single phase
+    adapter = AlcoveAdapter()
+    sample = adapter.load(source)
+
+    assert len(sample.phases) == 1
+    assert sample.phases[0].name == "session"
+    assert sample.phases[0].output_structured is None
