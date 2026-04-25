@@ -40,6 +40,9 @@ uv run raki run --manifest raki.yaml --docs-path ./docs
 
 # Add analytical metrics (requires LLM credentials)
 uv run raki run --manifest raki.yaml --judge --judge-provider anthropic
+
+# Add analytical metrics via LiteLLM (e.g. OpenAI)
+uv run raki run --manifest raki.yaml --judge --judge-provider litellm --judge-model gpt-4o
 ```
 
 ## Usage
@@ -50,6 +53,9 @@ uv run raki run --manifest raki.yaml --docs-path ./docs --judge
 
 # Run with direct Anthropic API
 uv run raki run --manifest raki.yaml --judge --judge-provider anthropic
+
+# Run with LiteLLM (any LiteLLM-supported model)
+uv run raki run --manifest raki.yaml --judge --judge-provider litellm --judge-model gpt-4o
 
 # Run specific metrics only
 uv run raki run --manifest raki.yaml --metrics cost_efficiency,rework_cycles

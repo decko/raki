@@ -114,6 +114,10 @@ uv run raki run --manifest raki.yaml --judge --judge-provider anthropic
 
 # Google AI
 uv run raki run --manifest raki.yaml --judge --judge-provider google
+
+# LiteLLM (any model via the LiteLLM proxy, e.g. OpenAI)
+uv run raki run --manifest raki.yaml --judge \
+  --judge-provider litellm --judge-model gpt-4o
 ```
 
 This adds four Ragas-backed metrics:
@@ -124,6 +128,11 @@ This adds four Ragas-backed metrics:
 - **Context recall** -- was all needed context retrieved? (requires ground truth)
 
 Set `ANTHROPIC_API_KEY` for direct Anthropic API, or configure Google Cloud credentials for Vertex AI.
+For LiteLLM, set the appropriate provider credentials (e.g. `OPENAI_API_KEY`) and install the extra:
+
+```bash
+uv pip install raki[litellm]
+```
 
 See [Analytical Metrics Reference](metrics/analytical.md) for details.
 
