@@ -1243,3 +1243,123 @@ class TestAgentModelInCliSummary:
         output = string_io.getvalue()
         assert "claude-opus-4" in output
         assert "claude-sonnet-4-6" in output
+
+
+# --- Metric health warnings in CLI summary (ticket #162) ---
+
+
+class TestMetricHealthWarningsInCLI:
+    """Metric health warnings should appear in the CLI summary when present."""
+
+    def _make_console(self) -> tuple:
+        """Return a (StringIO, Console) pair with color/highlight disabled for reliable assertions."""
+        from io import StringIO
+
+        from rich.console import Console
+
+        string_io = StringIO()
+        # highlight=False disables Rich's number highlighter which otherwise splits
+        # tokens like "1 error" across separate ANSI spans, breaking substring checks.
+        test_console = Console(file=string_io, highlight=False, force_terminal=False, width=120)
+        return string_io, test_console
+
+    def test_no_warning_block_when_no_warnings(self) -> None:
+        """When report.warnings is empty, no warning block should appear."""
+        report = _make_report()
+        string_io, test_console = self._make_console()
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Metric health" not in output
+
+    def test_warning_block_appears_when_warnings_present(self) -> None:
+        """When report.warnings has entries, the ⚠ Metric health block should appear."""
+        from raki.model.report import MetricWarning
+
+        report = EvalReport(
+            run_id="warn-test",
+            aggregate_scores={"first_pass_success_rate": 0.8},
+            warnings=[
+                MetricWarning(
+                    metric_name="token_efficiency",
+                    check="dead_metric",
+                    severity="error",
+                    message="Token efficiency is N/A for 98% of sessions.",
+                )
+            ],
+        )
+        string_io, test_console = self._make_console()
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "Metric health" in output
+        # Check name is rendered in parentheses: (dead_metric)
+        assert "(dead_metric)" in output
+
+    def test_error_severity_warning_shows_in_banner(self) -> None:
+        """An error-severity warning should show '1 error' in the banner."""
+        from raki.model.report import MetricWarning
+
+        report = EvalReport(
+            run_id="error-warn-test",
+            aggregate_scores={"token_efficiency": 0.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="token_efficiency",
+                    check="dead_metric",
+                    severity="error",
+                    message="Dead metric: token_efficiency is N/A for 98% of sessions.",
+                )
+            ],
+        )
+        string_io, test_console = self._make_console()
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        # The banner should say "1 error"
+        assert "1 error" in output
+
+    def test_warning_severity_shows_in_banner(self) -> None:
+        """A warning-severity entry should show '1 warning' in the banner."""
+        from raki.model.report import MetricWarning
+
+        report = EvalReport(
+            run_id="degen-warn-test",
+            aggregate_scores={"first_pass_success_rate": 1.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="first_pass_success_rate",
+                    check="degenerate_metric",
+                    severity="warning",
+                    message="Constant score of 1.0 across all sessions.",
+                )
+            ],
+        )
+        string_io, test_console = self._make_console()
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "1 warning" in output
+
+    def test_multiple_warnings_counted_correctly(self) -> None:
+        """Multiple warnings of the same severity should be counted correctly."""
+        from raki.model.report import MetricWarning
+
+        report = EvalReport(
+            run_id="multi-warn-test",
+            aggregate_scores={"first_pass_success_rate": 1.0, "rework_cycles": 0.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="first_pass_success_rate",
+                    check="degenerate_metric",
+                    severity="warning",
+                    message="Constant score.",
+                ),
+                MetricWarning(
+                    metric_name="rework_cycles",
+                    check="degenerate_metric",
+                    severity="warning",
+                    message="Constant score.",
+                ),
+            ],
+        )
+        string_io, test_console = self._make_console()
+        print_summary(report, session_count=10, console=test_console)
+        output = string_io.getvalue()
+        assert "2 warnings" in output

@@ -346,6 +346,35 @@ def print_summary(
             f"[dim]  {session_count} evaluated, {skipped_count} skipped, {error_count} errors[/dim]"
         )
 
+    # Render metric health warnings when present.
+    if report.warnings:
+        error_count_warnings = sum(1 for w in report.warnings if w.severity == "error")
+        warning_count_only = sum(1 for w in report.warnings if w.severity == "warning")
+
+        # Banner line summarising warning count — use separate prints to avoid
+        # Rich's number highlighter splitting the count and the label.
+        banner_parts: list[str] = []
+        if error_count_warnings:
+            plural = "s" if error_count_warnings > 1 else ""
+            banner_parts.append(f"{error_count_warnings} error{plural}")
+        if warning_count_only:
+            plural = "s" if warning_count_only > 1 else ""
+            banner_parts.append(f"{warning_count_only} warning{plural}")
+        banner_text = ", ".join(banner_parts)
+        output_console.print(f"\n[bold yellow]⚠ Metric health: {banner_text}[/bold yellow]")
+        for metric_warning in report.warnings:
+            if metric_warning.severity == "error":
+                color = "red"
+                icon = "✗"
+            else:
+                color = "yellow"
+                icon = "⚠"
+            # Use parentheses for the check label to avoid Rich treating [check_name]
+            # as an unknown markup tag that it silently drops.
+            output_console.print(
+                f"  [{color}]{icon} ({metric_warning.check}) {metric_warning.message}[/{color}]"
+            )
+
 
 def _format_delta_value(value: float, display_format: str) -> str:
     """Format a metric value for the diff summary."""
