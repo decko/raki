@@ -1,7 +1,7 @@
 import uuid
 from collections.abc import Sequence
 
-from raki.metrics.protocol import Metric, MetricConfig
+from raki.metrics.protocol import Metric, MetricConfig, TokenAccumulator
 from raki.model import EvalDataset
 from raki.model.report import EvalReport, MetricResult, SampleResult
 
@@ -17,6 +17,9 @@ class MetricsEngine:
         skip_judge: bool = False,
         skip_ground_truth: bool = False,
     ) -> EvalReport:
+        accumulator = TokenAccumulator()
+        self._config.token_accumulator = accumulator
+
         results: list[MetricResult] = []
         for metric in self._metrics:
             if skip_judge and metric.requires_llm:
@@ -29,16 +32,26 @@ class MetricsEngine:
         details = {result.name: result.details for result in results if result.details}
         sample_results = self._build_sample_results(dataset, results)
         llm_used = not skip_judge
+
+        report_config: dict = {
+            "llm_provider": self._config.llm_provider if llm_used else None,
+            "llm_model": self._config.llm_model if llm_used else None,
+            "llm_temperature": self._config.temperature if llm_used else None,
+            "llm_max_tokens": self._config.max_tokens if llm_used else None,
+            "metrics": [metric.name for metric in self._metrics],
+            "skip_judge": skip_judge,
+        }
+
+        if accumulator.calls > 0:
+            report_config["judge_cost"] = {
+                "input_tokens": accumulator.input_tokens,
+                "output_tokens": accumulator.output_tokens,
+                "calls": accumulator.calls,
+            }
+
         return EvalReport(
             run_id=f"eval-{uuid.uuid4().hex[:8]}",
-            config={
-                "llm_provider": self._config.llm_provider if llm_used else None,
-                "llm_model": self._config.llm_model if llm_used else None,
-                "llm_temperature": self._config.temperature if llm_used else None,
-                "llm_max_tokens": self._config.max_tokens if llm_used else None,
-                "metrics": [metric.name for metric in self._metrics],
-                "skip_judge": skip_judge,
-            },
+            config=report_config,
             aggregate_scores=aggregate,
             metric_details=details,
             sample_results=sample_results,

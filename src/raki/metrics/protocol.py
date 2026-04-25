@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -9,6 +10,15 @@ from raki.model import EvalDataset
 from raki.model.report import MetricResult
 
 LLMProvider = Literal["vertex-anthropic", "anthropic", "google"]
+
+
+@dataclass
+class TokenAccumulator:
+    """Accumulates token usage across LLM judge calls."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    calls: int = 0
 
 
 class MetricConfig(BaseModel):
@@ -22,6 +32,7 @@ class MetricConfig(BaseModel):
     judge_log_path: Path | None = None  # path to judge_log.jsonl for audit logging
     project_root: Path | None = None  # root directory for path validation
     doc_chunks: list[Any] = Field(default_factory=list)  # list[DocChunk], Any to avoid import
+    token_accumulator: TokenAccumulator | None = Field(default=None, repr=False)
 
 
 @runtime_checkable

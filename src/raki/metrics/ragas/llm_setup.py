@@ -6,17 +6,47 @@ Uses Ragas 0.4 llm_factory with configurable LLM client:
 - google: Google GenAI client via Vertex AI
 """
 
+from __future__ import annotations
+
+import functools
 import json
 import logging
 from pathlib import Path
-from typing import get_args
+from typing import TYPE_CHECKING, get_args
 
 from raki.adapters.redact import redact_sensitive
 from raki.metrics.protocol import LLMProvider, MetricConfig
 
+if TYPE_CHECKING:
+    from raki.metrics.protocol import TokenAccumulator
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_PROVIDERS = get_args(LLMProvider)
+
+
+def patch_client_for_token_tracking(client: object, accumulator: TokenAccumulator) -> None:
+    """Monkey-patch an Anthropic client to track token usage.
+
+    Wraps ``client.messages.create`` so that every call increments the
+    accumulator with the response's ``usage.input_tokens`` and
+    ``usage.output_tokens``.  The response is returned unmodified.
+
+    Only intended for Anthropic-style clients (AsyncAnthropic /
+    AsyncAnthropicVertex) whose ``messages.create`` is an async method.
+    """
+    original_create = client.messages.create  # ty: ignore[unresolved-attribute]
+
+    @functools.wraps(original_create)
+    async def tracked_create(*args, **kwargs):  # type: ignore[no-untyped-def]
+        response = await original_create(*args, **kwargs)
+        if hasattr(response, "usage"):
+            accumulator.input_tokens += response.usage.input_tokens
+            accumulator.output_tokens += response.usage.output_tokens
+        accumulator.calls += 1
+        return response
+
+    client.messages.create = tracked_create  # ty: ignore[unresolved-attribute]
 
 
 def create_ragas_llm(config: MetricConfig):
@@ -71,6 +101,9 @@ def create_ragas_llm(config: MetricConfig):
         raise ValueError(
             f"Unknown LLM provider: '{config.llm_provider}'. Supported providers: {supported_list}"
         )
+
+    if config.token_accumulator is not None:
+        patch_client_for_token_tracking(client, config.token_accumulator)
 
     from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
 

@@ -620,6 +620,8 @@ def write_html_report(
         fmt = str(meta["display_format"])
         return html_color_for_score(score, higher, fmt)
 
+    judge_cost = report.config.get("judge_cost")
+
     html_content = template.render(
         report=report,
         operational_scores=operational_scores,
@@ -644,6 +646,7 @@ def write_html_report(
         format_duration=_format_duration,
         no_data_metrics=no_data_metrics,
         agent_models=agent_models,
+        judge_cost=judge_cost,
     )
 
     output.write_text(html_content, encoding="utf-8")
