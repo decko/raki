@@ -167,13 +167,17 @@ def generate_summary_sentence(report: EvalReport, session_count: int) -> str:
     if rework is not None:
         parts.append(f"with an average of {rework:.1f} rework cycles")
 
-    # Count findings from sample_results
+    # Count findings from sample_results, separating review from synthesized
     severity_counter: Counter[str] = Counter()
+    synthesized_count = 0
     for sample_result in report.sample_results:
         for finding in sample_result.sample.findings:
-            severity_counter[finding.severity] += 1
+            if finding.finding_source == "synthesized":
+                synthesized_count += 1
+            else:
+                severity_counter[finding.severity] += 1
 
-    if severity_counter:
+    if severity_counter or synthesized_count:
         finding_parts: list[str] = []
         for severity_level in ("critical", "major", "minor"):
             count = severity_counter.get(severity_level, 0)
@@ -181,7 +185,16 @@ def generate_summary_sentence(report: EvalReport, session_count: int) -> str:
                 finding_parts.append(f"{count} {severity_level}")
         if finding_parts:
             finding_text = ", ".join(finding_parts)
-            parts.append(f"Reviewers found {finding_text} issues across all sessions")
+            verb = "found"
+            note = (
+                f" ({synthesized_count} synthesized from test failures)"
+                if synthesized_count > 0
+                else ""
+            )
+            parts.append(f"Reviewers {verb} {finding_text} issues across all sessions{note}")
+        elif synthesized_count > 0:
+            # Only synthesized findings — no explicit review findings
+            parts.append(f"{synthesized_count} issue(s) synthesized from test/lint failures")
 
     cost = scores.get("cost_efficiency")
     if cost is not None:

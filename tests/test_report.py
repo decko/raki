@@ -737,6 +737,66 @@ class TestGenerateSummarySentence:
         sentence = generate_summary_sentence(report, session_count=0)
         assert isinstance(sentence, str)
 
+    def test_synthesized_findings_noted_in_sentence(self) -> None:
+        """Summary sentence notes synthesized findings alongside review ones."""
+        review_finding = ReviewFinding(
+            reviewer="go-specialist",
+            severity="major",
+            issue="Race condition",
+            finding_source="review",
+        )
+        synthesized_finding = ReviewFinding(
+            reviewer="synthesized",
+            severity="major",
+            issue="FAILED tests/test_x.py::test_y",
+            finding_source="synthesized",
+        )
+        sample = make_sample("s1", findings=[review_finding, synthesized_finding])
+        report = EvalReport(
+            run_id="summary-synth",
+            aggregate_scores={"first_pass_success_rate": 0.80},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        sentence = generate_summary_sentence(report, session_count=1)
+        # Review finding appears in count; synthesized noted in parenthetical
+        assert "1 major" in sentence
+        assert "synthesized" in sentence
+
+    def test_synthesized_only_findings_separate_message(self) -> None:
+        """When only synthesized findings exist, uses a distinct message."""
+        synthesized_finding = ReviewFinding(
+            reviewer="synthesized",
+            severity="major",
+            issue="FAILED tests/test_x.py::test_y",
+            finding_source="synthesized",
+        )
+        sample = make_sample("s1", findings=[synthesized_finding])
+        report = EvalReport(
+            run_id="summary-synth-only",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        sentence = generate_summary_sentence(report, session_count=1)
+        assert "synthesized" in sentence
+
+    def test_no_synthesized_note_when_only_review_findings(self) -> None:
+        """When all findings are review, the sentence does not mention 'synthesized'."""
+        review_finding = ReviewFinding(
+            reviewer="go-specialist",
+            severity="major",
+            issue="Race condition",
+            finding_source="review",
+        )
+        sample = make_sample("s1", findings=[review_finding])
+        report = EvalReport(
+            run_id="summary-review-only",
+            aggregate_scores={"first_pass_success_rate": 0.80},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        sentence = generate_summary_sentence(report, session_count=1)
+        assert "synthesized" not in sentence
+        assert "1 major" in sentence
+
 
 # --- No-data metric display tests ---
 

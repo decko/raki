@@ -1010,18 +1010,22 @@
 
       {# Findings #}
       {% if sample.findings %}
+      {% set has_synthesized = sample.findings | selectattr("finding_source", "equalto", "synthesized") | list | length > 0 %}
       <h3>Findings</h3>
       <div class="findings-list">
         {% for finding in sample.findings %}
         <div class="finding-item finding-{{ finding.severity }}">
           <div class="finding-header">
             <span class="severity-badge severity-{{ finding.severity }}">{{ finding.severity }}</span>
+            {% if finding.finding_source == "synthesized" %}
+            <span class="severity-badge" style="background: rgba(100,100,100,0.2); color: var(--text-muted); font-size: 0.7rem;">synthesized</span>
+            {% endif %}
             <span class="finding-issue">{{ finding.issue }}</span>
           </div>
           {% if finding.file %}
           <div class="finding-location">{{ finding.file }}{% if finding.line %}:{{ finding.line }}{% endif %}</div>
           {% endif %}
-          {% if finding.reviewer %}
+          {% if finding.reviewer and finding.finding_source != "synthesized" %}
           <div class="finding-reviewer">Reviewer: {{ finding.reviewer }}</div>
           {% endif %}
           {% if finding.suggestion %}
@@ -1030,6 +1034,12 @@
         </div>
         {% endfor %}
       </div>
+      {% if has_synthesized %}
+      <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+        † Synthesized findings are inferred from test/lint tool failures in the transcript.
+        They count toward severity score but are excluded from knowledge gap/miss rate and self-correction rate.
+      </p>
+      {% endif %}
       {% else %}
       <p class="empty-state">No review findings in this session</p>
       {% endif %}
