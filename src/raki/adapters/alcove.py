@@ -434,6 +434,7 @@ class AlcoveAdapter:
                     else (tokens_out if is_last else None),
                     output=output if is_last else "",
                     tool_calls=tool_calls if is_last else [],
+                    output_structured=redact_dict(phase_meta) if phase_meta else None,
                 )
             )
         return phases
