@@ -14,6 +14,7 @@ from raki.adapters.session_schema import SessionSchemaAdapter
 FIXTURES = Path(__file__).parent / "fixtures" / "sessions"
 ALCOVE_FIXTURE = FIXTURES / "alcove-simple.json"
 ALCOVE_ID_ONLY_FIXTURE = FIXTURES / "alcove-id-only.json"
+ALCOVE_FAILURES_FIXTURE = FIXTURES / "alcove-with-failures.json"
 
 
 def test_session_schema_adapter_detects_valid_session(
@@ -220,6 +221,210 @@ def test_alcove_adapter_loads_id_only_session():
     assert sample.session.model_id == "claude-sonnet-4-20250514"
     assert len(sample.phases) == 1
     assert sample.phases[0].name == "session"
+
+
+# --- Synthesized findings tests ---
+
+
+def test_alcove_adapter_synthesizes_findings_from_test_failures():
+    """AlcoveAdapter creates synthesized findings when transcript has test failures."""
+    adapter = AlcoveAdapter()
+    sample = adapter.load(ALCOVE_FAILURES_FIXTURE)
+    # Should produce at least one synthesized finding (pytest failure)
+    synthesized = [f for f in sample.findings if f.finding_source == "synthesized"]
+    assert len(synthesized) >= 1
+
+
+def test_alcove_adapter_synthesized_findings_have_major_severity():
+    """Synthesized findings from test failures are rated major severity."""
+    adapter = AlcoveAdapter()
+    sample = adapter.load(ALCOVE_FAILURES_FIXTURE)
+    synthesized = [f for f in sample.findings if f.finding_source == "synthesized"]
+    for finding in synthesized:
+        assert finding.severity == "major"
+
+
+def test_alcove_adapter_synthesized_findings_have_synthesized_reviewer():
+    """Synthesized findings carry 'synthesized' as reviewer name."""
+    adapter = AlcoveAdapter()
+    sample = adapter.load(ALCOVE_FAILURES_FIXTURE)
+    synthesized = [f for f in sample.findings if f.finding_source == "synthesized"]
+    for finding in synthesized:
+        assert finding.reviewer == "synthesized"
+
+
+def test_alcove_adapter_no_synthesized_findings_when_explicit_findings_present(tmp_path):
+    """When explicit findings are provided in the JSON, no synthesis occurs."""
+    transcript_data = {
+        "session_id": "explicit-findings-test",
+        "findings": [{"issue": "Manual review issue", "severity": "minor", "source": "reviewer"}],
+        "transcript": [
+            {
+                "type": "system",
+                "model": "claude-sonnet-4-20250514",
+                "tools": ["Bash"],
+                "subtype": "init",
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg_01",
+                    "role": "assistant",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [
+                        {
+                            "id": "toolu_test1",
+                            "name": "Bash",
+                            "type": "tool_use",
+                            "input": {"command": "pytest tests/ -v"},
+                        }
+                    ],
+                },
+            },
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "content": "FAILED tests/test_foo.py::test_bar",
+                            "is_error": False,
+                            "tool_use_id": "toolu_test1",
+                        }
+                    ],
+                },
+                "timestamp": "2026-04-20T10:00:00.000Z",
+            },
+        ],
+    }
+    fixture = tmp_path / "explicit.json"
+    fixture.write_text(json.dumps(transcript_data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    # Only the explicit finding should be present (no synthesized ones)
+    assert len(sample.findings) == 1
+    assert sample.findings[0].finding_source == "review"
+    assert sample.findings[0].issue == "Manual review issue"
+
+
+def test_alcove_adapter_deduplicates_repeated_test_failures(tmp_path):
+    """The same failure text repeated across test runs produces only one finding."""
+    duplicate_failure = "FAILED tests/test_foo.py::test_bar - AssertionError"
+    transcript_data = {
+        "session_id": "dedup-test",
+        "transcript": [
+            {
+                "type": "system",
+                "model": "claude-sonnet-4-20250514",
+                "tools": ["Bash"],
+                "subtype": "init",
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg_01",
+                    "role": "assistant",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [
+                        {
+                            "id": "toolu_t1",
+                            "name": "Bash",
+                            "type": "tool_use",
+                            "input": {"command": "pytest tests/ -v"},
+                        }
+                    ],
+                },
+            },
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "content": duplicate_failure,
+                            "is_error": False,
+                            "tool_use_id": "toolu_t1",
+                        }
+                    ],
+                },
+                "timestamp": "2026-04-20T10:00:00.000Z",
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "id": "msg_02",
+                    "role": "assistant",
+                    "model": "claude-sonnet-4-20250514",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                    "content": [
+                        {
+                            "id": "toolu_t2",
+                            "name": "Bash",
+                            "type": "tool_use",
+                            "input": {"command": "pytest tests/ -v"},
+                        }
+                    ],
+                },
+            },
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "content": duplicate_failure,
+                            "is_error": False,
+                            "tool_use_id": "toolu_t2",
+                        }
+                    ],
+                },
+            },
+        ],
+    }
+    fixture = tmp_path / "dedup.json"
+    fixture.write_text(json.dumps(transcript_data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    synthesized = [f for f in sample.findings if f.finding_source == "synthesized"]
+    # Same failure text → 1 finding, not 2
+    assert len(synthesized) == 1
+
+
+def test_alcove_adapter_no_synthesis_when_no_failures():
+    """When no test failures occur in the transcript, no findings are synthesized."""
+    adapter = AlcoveAdapter()
+    # alcove-simple.json has no test failures in the transcript
+    sample = adapter.load(ALCOVE_FIXTURE)
+    assert sample.findings == []
+
+
+def test_alcove_adapter_parsed_findings_tagged_as_review(tmp_path):
+    """Explicitly provided findings get finding_source='review'."""
+    transcript_data = {
+        "session_id": "review-tag-test",
+        "findings": [
+            {"issue": "Use context manager", "severity": "major", "source": "reviewer"},
+            {"issue": "Missing type hint", "severity": "minor"},
+        ],
+        "transcript": [
+            {
+                "type": "system",
+                "model": "claude-sonnet-4-20250514",
+                "tools": [],
+                "subtype": "init",
+            }
+        ],
+    }
+    fixture = tmp_path / "review_tagged.json"
+    fixture.write_text(json.dumps(transcript_data))
+    adapter = AlcoveAdapter()
+    sample = adapter.load(fixture)
+    assert all(f.finding_source == "review" for f in sample.findings)
 
 
 # --- Redaction tests ---
