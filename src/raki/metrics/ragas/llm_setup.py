@@ -4,6 +4,7 @@ Uses Ragas 0.4 llm_factory with configurable LLM client:
 - vertex-anthropic (default): AsyncAnthropicVertex for Vertex AI
 - anthropic: AsyncAnthropic for direct Anthropic API
 - google: Google GenAI client via Vertex AI
+- litellm: LiteLLM module via Ragas's LiteLLMAdapter
 """
 
 from __future__ import annotations
@@ -49,6 +50,30 @@ def patch_client_for_token_tracking(client: object, accumulator: TokenAccumulato
     client.messages.create = tracked_create  # ty: ignore[unresolved-attribute]
 
 
+def patch_litellm_for_token_tracking(litellm_module: object, accumulator: TokenAccumulator) -> None:
+    """Monkey-patch the litellm module to track token usage.
+
+    Wraps ``litellm.acompletion`` so that every call increments the accumulator
+    with the response's ``usage.prompt_tokens`` and ``usage.completion_tokens``.
+    The response is returned unmodified.
+
+    Ragas passes the ``litellm`` module itself as the client to
+    ``LiteLLMAdapter``, so patching at module level is the correct approach.
+    """
+    original_acompletion = litellm_module.acompletion  # ty: ignore[unresolved-attribute]
+
+    @functools.wraps(original_acompletion)
+    async def tracked_acompletion(*args, **kwargs):  # type: ignore[no-untyped-def]
+        response = await original_acompletion(*args, **kwargs)
+        if hasattr(response, "usage") and response.usage is not None:
+            accumulator.input_tokens += response.usage.prompt_tokens
+            accumulator.output_tokens += response.usage.completion_tokens
+        accumulator.calls += 1
+        return response
+
+    litellm_module.acompletion = tracked_acompletion  # ty: ignore[unresolved-attribute]
+
+
 def create_ragas_llm(config: MetricConfig):
     """Create a Ragas LLM using the 0.4 llm_factory.
 
@@ -57,8 +82,9 @@ def create_ragas_llm(config: MetricConfig):
     - ``vertex-anthropic`` (default) -- uses ``AsyncAnthropicVertex``
     - ``anthropic`` -- uses ``AsyncAnthropic`` (direct Anthropic API)
     - ``google`` -- uses ``google.genai.Client`` via Vertex AI
+    - ``litellm`` -- uses the ``litellm`` module via Ragas's ``LiteLLMAdapter``
 
-    Defers ragas and anthropic/google imports so this module can be imported
+    Defers ragas and provider-specific imports so this module can be imported
     without those packages installed.
 
     Raises:
@@ -91,6 +117,23 @@ def create_ragas_llm(config: MetricConfig):
             config.llm_model,
             provider="google",
             client=client,
+            temperature=config.temperature,
+            max_tokens=4096,
+        )
+        llm.model_args.pop("top_p", None)  # ty: ignore[unresolved-attribute]
+        return llm
+    elif config.llm_provider == "litellm":
+        import litellm  # ty: ignore[unresolved-import]
+
+        if config.token_accumulator is not None:
+            patch_litellm_for_token_tracking(litellm, config.token_accumulator)
+
+        from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
+
+        llm = llm_factory(
+            config.llm_model,
+            provider="litellm",
+            client=litellm,
             temperature=config.temperature,
             max_tokens=4096,
         )
