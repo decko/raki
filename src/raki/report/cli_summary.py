@@ -331,6 +331,16 @@ def print_summary(
         )
         output_console.print()
 
+    judge_cost = report.config.get("judge_cost")
+    if judge_cost:
+        judge_calls = judge_cost["calls"]
+        judge_in = f"{judge_cost['input_tokens']:,}"
+        judge_out = f"{judge_cost['output_tokens']:,}"
+        output_console.print(
+            f"[dim]Judge: {judge_calls} calls, {judge_in} in / {judge_out} out tokens[/dim]"
+        )
+        output_console.print()
+
     if skipped_count > 0 or error_count > 0:
         output_console.print(
             f"[dim]  {session_count} evaluated, {skipped_count} skipped, {error_count} errors[/dim]"
