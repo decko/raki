@@ -1276,7 +1276,7 @@ def gate_check(
     )
     has_violation = any(not result.passed for result in gate_results)
 
-    if not quiet:
+    if not quiet and not json_output:
         out.print(format_threshold_results(gate_results))
 
     # --- Regression detection (optional) ---
@@ -1318,7 +1318,7 @@ def gate_check(
         regressed = [result for result in regression_results_list if result.regressed]
         regression_detected = bool(regressed)
 
-        if not quiet and regression_detected:
+        if not quiet and not json_output and regression_detected:
             out.print("\n[red]Regressions detected:[/red]")
             for result in regressed:
                 out.print(
