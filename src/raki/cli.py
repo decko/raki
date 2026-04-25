@@ -179,6 +179,13 @@ def main():
     default=False,
     help="Skip writing to the JSONL history log",
 )
+@click.option(
+    "--strict-warnings",
+    "strict_warnings",
+    is_flag=True,
+    default=False,
+    help="Exit non-zero when metric health errors are detected",
+)
 def run(
     manifest_path: str | None,
     output_dir: str,
@@ -198,6 +205,7 @@ def run(
     verbose: bool,
     history_path_arg: str | None,
     no_history: bool,
+    strict_warnings: bool,
 ) -> None:
     """Run evaluation against sessions."""
     if no_history and history_path_arg is not None:
@@ -523,6 +531,18 @@ def run(
 
         has_violation = any(not result.passed for result in gate_results)
         if has_violation:
+            raise SystemExit(1)
+
+    # --strict-warnings: exit 1 if any metric health errors were detected.
+    # Only "error" severity triggers exit code 1; "warning" severity is informational.
+    if strict_warnings:
+        error_warnings = [w for w in report.warnings if w.severity == "error"]
+        if error_warnings:
+            if not quiet:
+                out.print(
+                    f"[red]Strict warnings: {len(error_warnings)} metric health error"
+                    f"{'s' if len(error_warnings) > 1 else ''} detected — exiting with code 1[/red]"
+                )
             raise SystemExit(1)
 
 
