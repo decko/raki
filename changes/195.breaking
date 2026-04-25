@@ -1,3 +1,0 @@
-The ``--no-llm`` flag has been removed from ``raki run``.
-
-It was deprecated in v0.7.0 because skipping LLM-backed metrics is now the default behaviour; use ``--judge`` to opt in. Passing ``--no-llm`` now produces "No such option: --no-llm". (#195)
