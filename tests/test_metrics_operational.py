@@ -788,3 +788,92 @@ class TestOperationalMetricRationale:
         from raki.metrics.protocol import Metric
 
         assert hasattr(Metric, "rationale")
+
+
+# --- Synthesized findings exclusion (ticket #186) ---
+
+
+class TestSelfCorrectionRateExcludesSynthesized:
+    """SelfCorrectionRate must not count synthesized findings from transcript failures."""
+
+    def _make_rework_sample(
+        self,
+        session_id: str,
+        *,
+        review_findings: int = 0,
+        synthesized_findings: int = 0,
+        verify_status: str = "completed",
+    ):
+        from raki.model import EvalSample, PhaseResult, ReviewFinding, SessionMeta
+
+        from datetime import datetime, timezone
+
+        findings = []
+        for i in range(review_findings):
+            findings.append(
+                ReviewFinding(
+                    reviewer="reviewer",
+                    severity="major",
+                    issue=f"Review issue {i}",
+                    finding_source="review",
+                )
+            )
+        for i in range(synthesized_findings):
+            findings.append(
+                ReviewFinding(
+                    reviewer="synthesized",
+                    severity="major",
+                    issue=f"FAILED tests/test_x.py::test_{i}",
+                    finding_source="synthesized",
+                )
+            )
+        meta = SessionMeta(
+            session_id=session_id,
+            started_at=datetime(2026, 4, 20, tzinfo=timezone.utc),
+            total_phases=3,
+            rework_cycles=1,
+        )
+        phases = [
+            PhaseResult(name="implement", generation=1, status="completed", output="done"),
+            PhaseResult(
+                name="verify",
+                generation=2,
+                status=verify_status,
+                output="PASS" if verify_status == "completed" else "FAIL",
+            ),
+        ]
+        return EvalSample(session=meta, phases=phases, findings=findings, events=[])
+
+    def test_synthesized_only_returns_na(self):
+        """Session with only synthesized findings → N/A (no rework findings counted)."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+        from raki.model import EvalDataset
+
+        sample = self._make_rework_sample("s1", synthesized_findings=3)
+        dataset = EvalDataset(samples=[sample])
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        assert result.score is None
+
+    def test_review_findings_still_counted(self):
+        """Review findings (finding_source='review') are still counted normally."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+        from raki.model import EvalDataset
+
+        sample = self._make_rework_sample("s2", review_findings=2, verify_status="completed")
+        dataset = EvalDataset(samples=[sample])
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        assert result.score == 1.0
+        assert result.details["total_rework_findings"] == 2
+
+    def test_mixed_only_review_findings_counted(self):
+        """When session has both review and synthesized findings, only review are counted."""
+        from raki.metrics.operational.self_correction import SelfCorrectionRate
+        from raki.model import EvalDataset
+
+        sample = self._make_rework_sample(
+            "s3", review_findings=1, synthesized_findings=5, verify_status="completed"
+        )
+        dataset = EvalDataset(samples=[sample])
+        result = SelfCorrectionRate().compute(dataset, MetricConfig())
+        assert result.score == 1.0
+        assert result.details["total_rework_findings"] == 1
