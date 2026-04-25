@@ -111,6 +111,9 @@ class KnowledgeGapRate:
             if sample.session.rework_cycles == 0:
                 continue
 
+            if sample.context_source == "synthesized":
+                continue  # Synthesized context matches too loosely; skip for knowledge metrics
+
             knowledge_text = extract_knowledge_context(sample)
             if not knowledge_text:
                 continue  # Skip this entire session -- don't count its findings
