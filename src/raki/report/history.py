@@ -52,6 +52,7 @@ class HistoryEntry(BaseModel):
     manifest: str | None = None
     config_hash: str = ""
     git_sha: str | None = None
+    warning_count: int = 0
 
 
 def append_history_entry(
@@ -93,6 +94,7 @@ def append_history_entry(
         manifest=manifest_file.name if manifest_file is not None else None,
         config_hash=_config_hash(report.config),
         git_sha=_git_sha(),
+        warning_count=len(report.warnings),
     )
 
     line = json.dumps(entry.model_dump(mode="json"), default=str)

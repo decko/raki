@@ -867,6 +867,39 @@
     {% endif %}
   </section>
 
+  {# --- Metric Health Warnings --- #}
+  {% if metric_warnings %}
+  <section>
+    <h2>Metric Health <span style="font-size:0.8em; font-weight:normal; color:var(--yellow);">{{ metric_warnings | length }} warning{{ "s" if metric_warnings | length != 1 else "" }}</span></h2>
+    <table class="failures-table">
+      <thead>
+        <tr>
+          <th>Severity</th>
+          <th>Metric</th>
+          <th>Check</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for warning in metric_warnings %}
+        <tr>
+          <td>
+            {% if warning.severity == "error" %}
+            <span class="severity-badge severity-critical">error</span>
+            {% else %}
+            <span class="severity-badge severity-major">warning</span>
+            {% endif %}
+          </td>
+          <td><code>{{ warning.metric_name }}</code></td>
+          <td><code>{{ warning.check }}</code></td>
+          <td>{{ warning.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
   {# --- Recurring Failures --- #}
   <section>
     <h2>Recurring Failures</h2>

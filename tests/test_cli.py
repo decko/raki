@@ -763,8 +763,12 @@ class TestCliSummaryDisplayName:
         assert "Rework cycles" in result.output
         assert "Cost / session" in result.output
 
-    def test_summary_does_not_show_raw_names(self, manifest_with_session):
-        """CLI summary should not show raw snake_case metric names."""
+    def test_summary_does_not_show_raw_names_in_metric_lines(self, manifest_with_session):
+        """CLI summary metric score lines should use display names, not raw snake_case names.
+
+        Note: the Metric Health section (if present) intentionally includes raw metric
+        names for diagnostics — this test only checks the metric score display lines.
+        """
         manifest, _sessions = manifest_with_session
         runner = CliRunner()
         result = runner.invoke(
@@ -772,10 +776,12 @@ class TestCliSummaryDisplayName:
             ["run", "-m", str(manifest)],
         )
         assert result.exit_code == 0
-        # Raw snake_case names should not appear in the summary lines
-        assert "first_pass_success_rate" not in result.output
-        assert "rework_cycles" not in result.output
-        assert "cost_efficiency" not in result.output
+        # Split at the Metric Health warning block (if present) to check only score lines.
+        # Raw snake_case names must not appear in the metric score display section.
+        metric_section = result.output.split("Metric health")[0]
+        assert "first_pass_success_rate" not in metric_section
+        assert "rework_cycles" not in metric_section
+        assert "cost_efficiency" not in metric_section
 
 
 class TestCliSummaryMetricDescription:
@@ -2960,3 +2966,133 @@ class TestTrendsCommand:
         )
         assert fps is not None
         assert fps["direction"] == "improving"
+
+
+# --- --strict-warnings flag (ticket #162) ---
+
+
+class TestCliStrictWarnings:
+    """--strict-warnings exits 1 when metric health errors are detected."""
+
+    def test_strict_warnings_no_effect_without_errors(
+        self, manifest_with_session, tmp_path
+    ) -> None:
+        """--strict-warnings should not change exit code when there are no error warnings."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport
+
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+
+        # Report with no warnings at all
+        fake_report = EvalReport(
+            run_id="no-warn",
+            aggregate_scores={"first_pass_success_rate": 0.9},
+            warnings=[],
+        )
+
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                ["run", "-m", str(manifest), "--strict-warnings", "-o", str(output_dir), "-q"],
+            )
+        assert result.exit_code == 0
+
+    def test_strict_warnings_exits_1_on_error_severity(
+        self, manifest_with_session, tmp_path
+    ) -> None:
+        """--strict-warnings should exit 1 when warnings contain severity='error'."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport, MetricWarning
+
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+
+        fake_report = EvalReport(
+            run_id="error-warn",
+            aggregate_scores={"token_efficiency": 0.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="token_efficiency",
+                    check="dead_metric",
+                    severity="error",
+                    message="Dead metric: token_efficiency is N/A for 99% of sessions.",
+                )
+            ],
+        )
+
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                ["run", "-m", str(manifest), "--strict-warnings", "-o", str(output_dir), "-q"],
+            )
+        assert result.exit_code == 1
+
+    def test_strict_warnings_no_exit_on_warning_severity_only(
+        self, manifest_with_session, tmp_path
+    ) -> None:
+        """--strict-warnings should NOT exit 1 for severity='warning' (only 'error')."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport, MetricWarning
+
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+
+        fake_report = EvalReport(
+            run_id="only-warn",
+            aggregate_scores={"first_pass_success_rate": 1.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="first_pass_success_rate",
+                    check="degenerate_metric",
+                    severity="warning",
+                    message="Constant score of 1.0 across all sessions.",
+                )
+            ],
+        )
+
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                ["run", "-m", str(manifest), "--strict-warnings", "-o", str(output_dir), "-q"],
+            )
+        assert result.exit_code == 0
+
+    def test_without_strict_warnings_no_exit_on_error_severity(
+        self, manifest_with_session, tmp_path
+    ) -> None:
+        """Without --strict-warnings, error-severity warnings should NOT trigger exit 1."""
+        from unittest.mock import patch
+
+        from raki.model.report import EvalReport, MetricWarning
+
+        manifest, _sessions = manifest_with_session
+        output_dir = tmp_path / "results"
+
+        fake_report = EvalReport(
+            run_id="no-strict",
+            aggregate_scores={"token_efficiency": 0.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="token_efficiency",
+                    check="dead_metric",
+                    severity="error",
+                    message="Dead metric.",
+                )
+            ],
+        )
+
+        with patch("raki.metrics.MetricsEngine.run", return_value=fake_report):
+            runner = CliRunner()
+            result = runner.invoke(
+                main,
+                # Note: NO --strict-warnings flag
+                ["run", "-m", str(manifest), "-o", str(output_dir), "-q"],
+            )
+        assert result.exit_code == 0

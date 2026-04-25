@@ -647,6 +647,7 @@ def write_html_report(
         no_data_metrics=no_data_metrics,
         agent_models=agent_models,
         judge_cost=judge_cost,
+        metric_warnings=report.warnings,
     )
 
     output.write_text(html_content, encoding="utf-8")

@@ -2093,3 +2093,115 @@ class TestAgentModelInHtmlHeader:
         content = output.read_text()
         assert "claude-opus-4" in content
         assert "claude-sonnet-4-6" in content
+
+
+# --- Metric health warnings in HTML report (ticket #162) ---
+
+
+class TestMetricHealthWarningsInHTML:
+    """Metric health warnings should appear in the HTML report when present."""
+
+    def test_no_warnings_section_when_empty(self, tmp_path: Path) -> None:
+        """When report.warnings is empty, no 'Metric Health' section should appear."""
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="no-warn-html",
+            aggregate_scores={"first_pass_success_rate": 0.8},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "Metric Health" not in content
+
+    def test_warnings_section_appears_when_warnings_present(self, tmp_path: Path) -> None:
+        """When report.warnings has entries, the Metric Health section should appear."""
+        from raki.model.report import MetricWarning
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="warn-html",
+            aggregate_scores={"token_efficiency": 0.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="token_efficiency",
+                    check="dead_metric",
+                    severity="error",
+                    message="Token efficiency is N/A for 98% of sessions.",
+                )
+            ],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "Metric Health" in content
+        assert "dead_metric" in content
+        assert "token_efficiency" in content
+
+    def test_error_severity_uses_critical_badge(self, tmp_path: Path) -> None:
+        """Error-severity warnings should use the severity-critical CSS class."""
+        from raki.model.report import MetricWarning
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="error-badge-html",
+            aggregate_scores={"token_efficiency": 0.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="token_efficiency",
+                    check="dead_metric",
+                    severity="error",
+                    message="Dead metric.",
+                )
+            ],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "severity-critical" in content
+
+    def test_warning_severity_uses_major_badge(self, tmp_path: Path) -> None:
+        """Warning-severity warnings should use the severity-major CSS class."""
+        from raki.model.report import MetricWarning
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="warn-badge-html",
+            aggregate_scores={"first_pass_success_rate": 1.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="first_pass_success_rate",
+                    check="degenerate_metric",
+                    severity="warning",
+                    message="Constant score of 1.0.",
+                )
+            ],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "severity-major" in content
+
+    def test_warning_message_is_escaped_in_html(self, tmp_path: Path) -> None:
+        """Warning message with HTML special chars should be escaped in output."""
+        from raki.model.report import MetricWarning
+        from raki.report.html_report import write_html_report
+
+        report = EvalReport(
+            run_id="escape-html",
+            aggregate_scores={"some_metric": 0.5},
+            warnings=[
+                MetricWarning(
+                    metric_name="some_metric",
+                    check="dead_metric",
+                    severity="error",
+                    message="Score < 0.05 for all & every session.",
+                )
+            ],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Jinja2's autoescape should convert < to &lt; and & to &amp;
+        assert "&lt;" in content
+        assert "&amp;" in content
