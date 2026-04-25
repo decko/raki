@@ -15,19 +15,33 @@ uv run raki run --manifest raki.yaml --judge --judge-provider anthropic
 
 # Using Google AI
 uv run raki run --manifest raki.yaml --judge --judge-provider google
+
+# Using LiteLLM (any supported model, e.g. OpenAI)
+uv run raki run --manifest raki.yaml --judge \
+  --judge-provider litellm --judge-model gpt-4o
 ```
 
 Provider options for `--judge-provider`:
 - `vertex-anthropic` (default) -- Claude via Vertex AI
 - `anthropic` -- direct Anthropic API (requires `ANTHROPIC_API_KEY`)
 - `google` -- Google AI
+- `litellm` -- any model via [LiteLLM](https://docs.litellm.ai/) (requires `raki[litellm]` and the appropriate provider credentials, e.g. `OPENAI_API_KEY`)
 
 The default judge model is `claude-sonnet-4-6`. Override with `--judge-model`.
+
+When using `litellm`, embeddings are served by `text-embedding-3-small` (OpenAI) via LiteLLM.
+Set `OPENAI_API_KEY` or configure the LiteLLM proxy for a different embedding provider.
 
 Install with all extras to get Ragas dependencies:
 
 ```bash
 uv sync --python 3.12 --all-extras
+```
+
+Or install only what you need:
+
+```bash
+uv pip install raki[ragas,litellm]
 ```
 
 > **Note:** The `ragas` extra pulls `scikit-network`, which requires a C++ compiler (`g++`).

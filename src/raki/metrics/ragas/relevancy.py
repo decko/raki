@@ -77,7 +77,7 @@ class AnswerRelevancyMetric:
         )
 
         llm = create_ragas_llm(config)
-        embeddings = create_ragas_embeddings()
+        embeddings = create_ragas_embeddings(config)
         ragas_metric = RagasAnswerRelevancy(llm=llm, embeddings=embeddings)
 
         judge_logger: JudgeLogger | None = None

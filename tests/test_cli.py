@@ -680,6 +680,35 @@ class TestCliJudgeProvider:
         )
         assert result.exit_code == 0
 
+    def test_judge_provider_litellm_accepted(self, empty_manifest):
+        """litellm provider must be accepted by --judge-provider."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--judge-provider",
+                "litellm",
+            ],
+        )
+        assert result.exit_code == 0
+
+    def test_judge_provider_google_accepted(self, empty_manifest):
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--judge-provider",
+                "google",
+            ],
+        )
+        assert result.exit_code == 0
+
     def test_judge_provider_invalid_rejected(self, empty_manifest):
         runner = CliRunner()
         result = runner.invoke(
@@ -693,6 +722,23 @@ class TestCliJudgeProvider:
             ],
         )
         assert result.exit_code == 2
+
+    def test_judge_provider_litellm_rejected_when_not_in_choices_regression(self, empty_manifest):
+        """Regression: 'litellm' must NOT be rejected as an invalid choice (it was missing before #208)."""
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "run",
+                "-m",
+                str(empty_manifest),
+                "--judge-provider",
+                "litellm",
+            ],
+        )
+        # Must succeed — exit code 2 would mean Click rejected it
+        assert result.exit_code == 0
+        assert "Invalid value" not in result.output
 
     def test_judge_provider_default(self, empty_manifest):
         """Default judge provider (vertex-anthropic) should be accepted without errors."""

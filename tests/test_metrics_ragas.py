@@ -1378,7 +1378,8 @@ class TestCreateRagasEmbeddings:
         monkeypatch.setenv("VERTEXAI_LOCATION", "us-east1")
 
         mocks = self._setup_embeddings_mocks(monkeypatch)
-        result = mocks["create_fn"]()
+        config = MetricConfig(llm_provider="vertex-anthropic")
+        result = mocks["create_fn"](config)
 
         mocks["embeddings_class"].assert_called_once_with(
             client=mocks["genai_client"],
@@ -1393,7 +1394,8 @@ class TestCreateRagasEmbeddings:
         monkeypatch.setenv("VERTEXAI_LOCATION", "europe-west4")
 
         mocks = self._setup_embeddings_mocks(monkeypatch)
-        mocks["create_fn"]()
+        config = MetricConfig(llm_provider="vertex-anthropic")
+        mocks["create_fn"](config)
 
         mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="client-project", location="europe-west4"
@@ -1409,7 +1411,8 @@ class TestCreateRagasEmbeddings:
         monkeypatch.setenv("VERTEXAI_LOCATION", "europe-west1")
 
         mocks = self._setup_embeddings_mocks(monkeypatch)
-        mocks["create_fn"]()
+        config = MetricConfig(llm_provider="vertex-anthropic")
+        mocks["create_fn"](config)
 
         mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="my-project", location="europe-west1"
@@ -1422,7 +1425,8 @@ class TestCreateRagasEmbeddings:
         monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
 
         mocks = self._setup_embeddings_mocks(monkeypatch)
-        mocks["create_fn"]()
+        config = MetricConfig(llm_provider="vertex-anthropic")
+        mocks["create_fn"](config)
 
         mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="primary-project", location="us-central1"
@@ -1435,7 +1439,8 @@ class TestCreateRagasEmbeddings:
         monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
 
         mocks = self._setup_embeddings_mocks(monkeypatch)
-        mocks["create_fn"]()
+        config = MetricConfig(llm_provider="vertex-anthropic")
+        mocks["create_fn"](config)
 
         mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="fallback-project", location="us-central1"
@@ -1447,9 +1452,98 @@ class TestCreateRagasEmbeddings:
         monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
 
         mocks = self._setup_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="vertex-anthropic")
 
         with pytest.raises(ValueError, match="GOOGLE_CLOUD_PROJECT or VERTEXAI_PROJECT"):
-            mocks["create_fn"]()
+            mocks["create_fn"](config)
+
+    def test_google_provider_also_uses_google_embeddings(self, monkeypatch: pytest.MonkeyPatch):
+        """google provider must also route to GoogleEmbeddings (not LiteLLMEmbeddings)."""
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="google")
+        result = mocks["create_fn"](config)
+
+        mocks["embeddings_class"].assert_called_once()
+        assert result is mocks["embeddings_instance"]
+
+    def test_anthropic_provider_also_uses_google_embeddings(self, monkeypatch: pytest.MonkeyPatch):
+        """anthropic provider must also route to GoogleEmbeddings (not LiteLLMEmbeddings)."""
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="anthropic")
+        result = mocks["create_fn"](config)
+
+        mocks["embeddings_class"].assert_called_once()
+        assert result is mocks["embeddings_instance"]
+
+
+class TestLiteLLMEmbeddings:
+    """Tests for LiteLLMEmbeddings dispatch in create_ragas_embeddings()."""
+
+    def _setup_litellm_embeddings_mocks(self, monkeypatch: pytest.MonkeyPatch) -> dict:
+        """Set up common mocks for litellm embeddings tests."""
+        import importlib
+        import sys
+
+        mock_litellm_embeddings_instance = MagicMock()
+        mock_litellm_embeddings_class = MagicMock(return_value=mock_litellm_embeddings_instance)
+        mock_ragas_embeddings = MagicMock()
+        mock_ragas_embeddings.LiteLLMEmbeddings = mock_litellm_embeddings_class
+
+        monkeypatch.setitem(sys.modules, "ragas", MagicMock())
+        monkeypatch.setitem(sys.modules, "ragas.embeddings", mock_ragas_embeddings)
+
+        import raki.metrics.ragas.llm_setup
+
+        importlib.reload(raki.metrics.ragas.llm_setup)
+
+        return {
+            "embeddings_class": mock_litellm_embeddings_class,
+            "embeddings_instance": mock_litellm_embeddings_instance,
+            "create_fn": raki.metrics.ragas.llm_setup.create_ragas_embeddings,
+        }
+
+    def test_litellm_provider_uses_litellm_embeddings(self, monkeypatch: pytest.MonkeyPatch):
+        """litellm provider must use LiteLLMEmbeddings, not GoogleEmbeddings."""
+        mocks = self._setup_litellm_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="litellm")
+        result = mocks["create_fn"](config)
+
+        mocks["embeddings_class"].assert_called_once_with(model="text-embedding-3-small")
+        assert result is mocks["embeddings_instance"]
+
+    def test_litellm_embeddings_default_model(self, monkeypatch: pytest.MonkeyPatch):
+        """litellm embeddings default model must be text-embedding-3-small."""
+        mocks = self._setup_litellm_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="litellm")
+        mocks["create_fn"](config)
+
+        call_kwargs = mocks["embeddings_class"].call_args
+        assert call_kwargs[1]["model"] == "text-embedding-3-small"
+
+    def test_litellm_embeddings_does_not_need_google_env(self, monkeypatch: pytest.MonkeyPatch):
+        """litellm embeddings must not require GOOGLE_CLOUD_PROJECT env var."""
+        monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+        monkeypatch.delenv("VERTEXAI_PROJECT", raising=False)
+
+        mocks = self._setup_litellm_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="litellm")
+        # Must not raise a ValueError about missing project
+        result = mocks["create_fn"](config)
+        assert result is mocks["embeddings_instance"]
+
+    def test_litellm_embeddings_returns_instance(self, monkeypatch: pytest.MonkeyPatch):
+        """create_ragas_embeddings with litellm must return the LiteLLMEmbeddings instance."""
+        mocks = self._setup_litellm_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="litellm")
+        result = mocks["create_fn"](config)
+
+        assert result is mocks["embeddings_instance"]
 
 
 # ---------------------------------------------------------------------------
