@@ -2205,3 +2205,155 @@ class TestMetricHealthWarningsInHTML:
         # Jinja2's autoescape should convert < to &lt; and & to &amp;
         assert "&lt;" in content
         assert "&amp;" in content
+
+
+# --- Ticket #194: Phase output/transcript in HTML drill-down ---
+
+
+class TestPhaseTranscriptInDrillDown:
+    """Phase output/transcript is shown in the session drill-down when available."""
+
+    def _make_report_with_phase_output(self, session_id: str, output_text: str) -> EvalReport:
+        """Build a minimal report with one session whose phase has a known output string."""
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+
+        meta = _make_session_meta_helper(session_id)
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output=output_text,
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        return EvalReport(
+            run_id="transcript-test",
+            aggregate_scores={"first_pass_success_rate": 1.0},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+
+    def test_transcript_shown_when_include_sessions(self, tmp_path: Path) -> None:
+        """Phase output should appear in HTML when include_sessions=True."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_phase_output(
+            "session-transcript-01",
+            "Implementation complete. All tests pass.",
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        assert "Implementation complete. All tests pass." in content
+        assert "phase-transcript" in content
+        assert "View transcript" in content
+
+    def test_transcript_hidden_when_stripped(self, tmp_path: Path) -> None:
+        """Phase transcript should not appear when output is '<stripped>' (default mode)."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_phase_output(
+            "session-transcript-02",
+            "Implementation complete. All tests pass.",
+        )
+        output = tmp_path / "report.html"
+        # Default: include_sessions=False — phase.output becomes "<stripped>"
+        write_html_report(report, output, include_sessions=False)
+        content = output.read_text()
+        # The raw output text should not appear; no transcript element either
+        assert "Implementation complete. All tests pass." not in content
+        assert "View transcript" not in content
+
+    def test_transcript_content_is_html_escaped(self, tmp_path: Path) -> None:
+        """Phase output with HTML special characters should be safely escaped."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_phase_output(
+            "session-escape-01",
+            "Result: x < 10 & y > 0",
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        # Jinja2 autoescape converts < > & to HTML entities
+        assert "&lt;" in content or "x &lt; 10" in content
+        assert "&amp;" in content or "&amp; y" in content
+        # The raw unescaped string should NOT appear verbatim
+        assert "x < 10 & y > 0" not in content
+
+    def test_transcript_uses_preformatted_block(self, tmp_path: Path) -> None:
+        """Phase transcript should be in a <pre> block with phase-transcript-content class."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_phase_output(
+            "session-pre-01",
+            "line one\nline two",
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        assert "phase-transcript-content" in content
+        assert "<pre" in content
+
+    def test_no_transcript_element_when_output_is_empty(self, tmp_path: Path) -> None:
+        """No transcript element should be rendered when phase output is an empty string."""
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        meta = _make_session_meta_helper("session-empty-output")
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="",
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        report = EvalReport(
+            run_id="empty-output-test",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        # Empty output should not render a transcript element
+        assert "View transcript" not in content
+
+    def test_multiple_phases_each_get_transcript(self, tmp_path: Path) -> None:
+        """Every phase with non-empty output should get its own transcript block."""
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        meta = _make_session_meta_helper("session-multi-phase")
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="Implementation transcript here.",
+            ),
+            PhaseResult(
+                name="verify",
+                generation=1,
+                status="completed",
+                output="Verification transcript here.",
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        report = EvalReport(
+            run_id="multi-phase-transcript",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        assert "Implementation transcript here." in content
+        assert "Verification transcript here." in content
+        # Both phases should have transcript elements
+        assert content.count("View transcript") == 2
