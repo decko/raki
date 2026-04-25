@@ -763,8 +763,12 @@ class TestCliSummaryDisplayName:
         assert "Rework cycles" in result.output
         assert "Cost / session" in result.output
 
-    def test_summary_does_not_show_raw_names(self, manifest_with_session):
-        """CLI summary should not show raw snake_case metric names."""
+    def test_summary_does_not_show_raw_names_in_metric_lines(self, manifest_with_session):
+        """CLI summary metric score lines should use display names, not raw snake_case names.
+
+        Note: the Metric Health section (if present) intentionally includes raw metric
+        names for diagnostics — this test only checks the metric score display lines.
+        """
         manifest, _sessions = manifest_with_session
         runner = CliRunner()
         result = runner.invoke(
@@ -772,10 +776,12 @@ class TestCliSummaryDisplayName:
             ["run", "-m", str(manifest)],
         )
         assert result.exit_code == 0
-        # Raw snake_case names should not appear in the summary lines
-        assert "first_pass_success_rate" not in result.output
-        assert "rework_cycles" not in result.output
-        assert "cost_efficiency" not in result.output
+        # Split at the Metric Health warning block (if present) to check only score lines.
+        # Raw snake_case names must not appear in the metric score display section.
+        metric_section = result.output.split("Metric health")[0]
+        assert "first_pass_success_rate" not in metric_section
+        assert "rework_cycles" not in metric_section
+        assert "cost_efficiency" not in metric_section
 
 
 class TestCliSummaryMetricDescription:

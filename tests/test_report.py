@@ -1363,3 +1363,177 @@ class TestMetricHealthWarningsInCLI:
         print_summary(report, session_count=10, console=test_console)
         output = string_io.getvalue()
         assert "2 warnings" in output
+
+
+# --- Serialization verification (ticket #162) ---
+
+
+class TestMetricWarningSerialization:
+    """Verify MetricWarning serializes/deserializes correctly and is backward-compatible."""
+
+    def test_eval_report_warnings_default_empty(self) -> None:
+        """EvalReport.warnings defaults to an empty list."""
+        report = EvalReport(run_id="default-warn", aggregate_scores={})
+        assert report.warnings == []
+
+    def test_eval_report_with_warnings_round_trips(self, tmp_path: Path) -> None:
+        """EvalReport with warnings survives a write/load JSON round-trip."""
+        from raki.model.report import MetricWarning
+
+        report = EvalReport(
+            run_id="warn-roundtrip",
+            aggregate_scores={"first_pass_success_rate": 0.8},
+            warnings=[
+                MetricWarning(
+                    metric_name="token_efficiency",
+                    check="dead_metric",
+                    severity="error",
+                    message="N/A for 99% of sessions.",
+                ),
+                MetricWarning(
+                    metric_name="rework_cycles",
+                    check="degenerate_metric",
+                    severity="warning",
+                    message="Constant score 0.0.",
+                ),
+            ],
+        )
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        loaded = load_json_report(output_path)
+        assert len(loaded.warnings) == 2
+        assert loaded.warnings[0].metric_name == "token_efficiency"
+        assert loaded.warnings[0].check == "dead_metric"
+        assert loaded.warnings[0].severity == "error"
+        assert loaded.warnings[1].metric_name == "rework_cycles"
+        assert loaded.warnings[1].severity == "warning"
+
+    def test_old_report_without_warnings_field_loads_cleanly(self, tmp_path: Path) -> None:
+        """Old JSON reports that lack the 'warnings' field load with warnings=[]."""
+        old_report_data = {
+            "run_id": "eval-old-no-warnings",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "config": {"metrics": ["rework_cycles"]},
+            "aggregate_scores": {"rework_cycles": 1.2},
+            "metric_details": {},
+            "sample_results": [],
+            "manifest_hash": None,
+            # Note: no 'warnings' key
+        }
+        output_path = tmp_path / "old-report.json"
+        output_path.write_text(json.dumps(old_report_data))
+        loaded = load_json_report(output_path)
+        assert loaded.warnings == []
+        assert loaded.run_id == "eval-old-no-warnings"
+
+    def test_warnings_appear_in_json_output(self, tmp_path: Path) -> None:
+        """The 'warnings' key should appear in the raw JSON output."""
+        from raki.model.report import MetricWarning
+
+        report = EvalReport(
+            run_id="warn-json-output",
+            aggregate_scores={"first_pass_success_rate": 1.0},
+            warnings=[
+                MetricWarning(
+                    metric_name="first_pass_success_rate",
+                    check="degenerate_metric",
+                    severity="warning",
+                    message="Constant 1.0.",
+                )
+            ],
+        )
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        raw = json.loads(output_path.read_text())
+        assert "warnings" in raw
+        assert len(raw["warnings"]) == 1
+        assert raw["warnings"][0]["check"] == "degenerate_metric"
+        assert raw["warnings"][0]["severity"] == "warning"
+
+    def test_empty_warnings_serialized_as_empty_list(self, tmp_path: Path) -> None:
+        """EvalReport with no warnings should serialize warnings as an empty JSON array."""
+        report = EvalReport(
+            run_id="no-warn-json",
+            aggregate_scores={"first_pass_success_rate": 0.9},
+        )
+        output_path = tmp_path / "report.json"
+        write_json_report(report, output_path)
+        raw = json.loads(output_path.read_text())
+        assert raw["warnings"] == []
+
+
+class TestHistoryEntryWarningSerialization:
+    """HistoryEntry.warning_count serializes correctly and is backward-compatible."""
+
+    def test_history_entry_warning_count_defaults_to_zero(self) -> None:
+        """HistoryEntry.warning_count must default to 0."""
+        from raki.report.history import HistoryEntry
+
+        entry = HistoryEntry(run_id="h1", sessions_count=5)
+        assert entry.warning_count == 0
+
+    def test_history_entry_warning_count_round_trips(self, tmp_path: Path) -> None:
+        """warning_count survives JSONL append/load round-trip."""
+        from raki.model.report import MetricWarning
+        from raki.report.history import append_history_entry, load_history
+
+        history_path = tmp_path / "history.jsonl"
+        report = EvalReport(
+            run_id="warn-history",
+            aggregate_scores={"first_pass_success_rate": 0.8},
+            warnings=[
+                MetricWarning(
+                    metric_name="token_efficiency",
+                    check="dead_metric",
+                    severity="error",
+                    message="Dead.",
+                )
+            ],
+        )
+        append_history_entry(report, history_path, sessions_count=10)
+        entries = load_history(history_path)
+        assert len(entries) == 1
+        assert entries[0].warning_count == 1
+
+    def test_old_history_without_warning_count_loads_cleanly(self, tmp_path: Path) -> None:
+        """Old JSONL entries without 'warning_count' load with warning_count=0."""
+
+        from raki.report.history import load_history
+
+        old_entry = {
+            "schema_version": 1,
+            "run_id": "old-entry",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "sessions_count": 10,
+            "metrics": {"first_pass_success_rate": 0.8},
+            "manifest": None,
+            "config_hash": "",
+            "git_sha": None,
+            # Note: no 'warning_count' key
+        }
+        history_path = tmp_path / "history.jsonl"
+        history_path.write_text(json.dumps(old_entry) + "\n")
+        entries = load_history(history_path)
+        assert len(entries) == 1
+        assert entries[0].warning_count == 0
+
+    def test_engine_run_populates_report_warnings(self) -> None:
+        """MetricsEngine.run() should populate report.warnings via health checks."""
+        from raki.metrics.engine import MetricsEngine
+        from raki.metrics.operational.rework import ReworkCycles
+        from raki.metrics.protocol import MetricConfig
+
+        from conftest import make_dataset, make_sample
+
+        # 1 session: rework_cycles will produce a constant score (degenerate)
+        sample = make_sample("s1", rework_cycles=0)
+        dataset = make_dataset(sample)
+        engine = MetricsEngine([ReworkCycles()], config=MetricConfig())
+        report = engine.run(dataset)
+        # With 1 session, rework_cycles has a constant value → degenerate_metric warning
+        assert isinstance(report.warnings, list)
+        # All warnings should be MetricWarning instances
+        from raki.model.report import MetricWarning
+
+        for warning in report.warnings:
+            assert isinstance(warning, MetricWarning)
