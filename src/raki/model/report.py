@@ -1,8 +1,22 @@
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from raki.model.dataset import EvalSample
+
+
+class MetricWarning(BaseModel):
+    """A health-check warning produced for a single metric after evaluation.
+
+    Warnings flag degenerate or dead metrics so operators can investigate data
+    quality issues before drawing conclusions from scores.
+    """
+
+    metric_name: str
+    check: str  # e.g. "dead_metric", "degenerate_metric"
+    severity: Literal["warning", "error"]
+    message: str
 
 
 class MetricResult(BaseModel):
@@ -25,3 +39,4 @@ class EvalReport(BaseModel):
     metric_details: dict[str, dict] = Field(default_factory=dict)
     sample_results: list[SampleResult] = Field(default_factory=list)
     manifest_hash: str | None = None
+    warnings: list[MetricWarning] = Field(default_factory=list)
