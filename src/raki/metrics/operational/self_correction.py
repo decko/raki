@@ -53,7 +53,13 @@ class SelfCorrectionRate:
                 continue
 
             session_findings = [
-                finding for finding in sample.findings if finding.severity in ("critical", "major")
+                finding
+                for finding in sample.findings
+                if finding.severity in ("critical", "major")
+                # Synthesized findings are not actionable review feedback; exclude
+                # them from self-correction rate so repeated test failures don't
+                # artificially inflate the denominator.
+                and finding.finding_source != "synthesized"
             ]
             session_findings_count = len(session_findings)
             if session_findings_count == 0:

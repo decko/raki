@@ -76,6 +76,10 @@ class KnowledgeGapRate:
             for finding in sample.findings:
                 if finding.severity not in ("critical", "major"):
                     continue
+                # Synthesized findings come from raw tool output; they match too
+                # broadly against doc chunks and would inflate gap rate artificially.
+                if finding.finding_source == "synthesized":
+                    continue
                 total_rework_findings += 1
 
                 if not is_finding_covered_by_chunks(finding, config.doc_chunks):

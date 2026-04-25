@@ -327,6 +327,13 @@ class AlcoveAdapter:
         # Explicit values in the JSON take priority; transcript analysis is the fallback.
         tool_sequence = _extract_tool_sequence(transcript)
 
+        # Synthesize findings from test/lint failures when no explicit findings provided.
+        # Synthesized findings are marked with finding_source="synthesized" so that
+        # knowledge metrics and self-correction rate can exclude them.
+        if not findings:
+            synthesized = self._synthesize_findings(tool_sequence)
+            findings = synthesized
+
         if "rework_cycles" in raw:
             rework_cycles = raw["rework_cycles"]
         else:
@@ -444,6 +451,7 @@ class AlcoveAdapter:
 
         Skips malformed entries (missing required ``issue`` key or invalid
         severity).  Applies ``redact_sensitive()`` to free-text fields.
+        Sets ``finding_source="review"`` to mark these as human review findings.
         """
         findings: list[ReviewFinding] = []
         for finding_raw in raw_findings:
@@ -460,10 +468,56 @@ class AlcoveAdapter:
                         suggestion=redact_sensitive(suggestion)
                         if (suggestion := finding_raw.get("suggestion")) is not None
                         else None,
+                        finding_source="review",
                     )
                 )
             except (KeyError, ValueError):
                 continue
+        return findings
+
+    def _synthesize_findings(self, tool_sequence: list[dict]) -> list[ReviewFinding]:
+        """Create ``ReviewFinding`` objects from test/lint failures in the transcript.
+
+        Iterates the tool sequence (produced by ``_extract_tool_sequence``) and
+        collects the result text from every testing-phase tool call that ended in
+        a failure.  Duplicate failure texts are collapsed to a single finding so
+        that repeated test runs of the same broken test don't inflate counts.
+
+        Each synthesized finding has:
+        - ``reviewer="synthesized"``
+        - ``severity="major"`` (tool failures are actionable but not necessarily critical)
+        - ``finding_source="synthesized"``
+
+        Returns an empty list when no testing failures are present.
+        """
+        seen_issues: set[str] = set()
+        findings: list[ReviewFinding] = []
+
+        for record in tool_sequence:
+            if not record["is_failure"]:
+                continue
+            result_content = record["result_content"]
+            if not result_content:
+                continue
+            # Truncate to avoid very long issue strings; the first 500 chars
+            # capture the useful failure summary (e.g. pytest short test ID).
+            issue_text = redact_sensitive(result_content[:500].strip())
+            if issue_text in seen_issues:
+                continue
+            seen_issues.add(issue_text)
+
+            tool_input = record.get("tool_input") or {}
+            command = tool_input.get("command", "").strip() if isinstance(tool_input, dict) else ""
+            findings.append(
+                ReviewFinding(
+                    reviewer="synthesized",
+                    severity="major",
+                    issue=issue_text,
+                    suggestion=f"Fix failures reported by: {command}" if command else None,
+                    finding_source="synthesized",
+                )
+            )
+
         return findings
 
     def _synthesize_context(self, transcript: list[dict]) -> str | None:

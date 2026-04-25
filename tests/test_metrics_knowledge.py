@@ -1324,3 +1324,110 @@ class TestKnowledgeGapRateSynthesizedContext:
         result = KnowledgeGapRate().compute(dataset, MetricConfig())
         assert result.score == 0.0
         assert result.details["uncovered_findings"] == 0
+
+
+# --- Synthesized findings exclusion (ticket #186) ---
+
+
+class TestKnowledgeMetricsExcludeSynthesized:
+    """Knowledge metrics must skip findings with finding_source='synthesized'."""
+
+    def _make_dataset_with_synthesized(self, session_id: str, rework_cycles: int = 1):
+        from datetime import datetime, timezone
+
+        from raki.model import EvalDataset, EvalSample, PhaseResult, ReviewFinding, SessionMeta
+
+        meta = SessionMeta(
+            session_id=session_id,
+            started_at=datetime(2026, 4, 20, tzinfo=timezone.utc),
+            total_phases=2,
+            rework_cycles=rework_cycles,
+        )
+        phases = [PhaseResult(name="implement", generation=1, status="completed", output="done")]
+        # These synthesized findings contain words that overlap with any doc chunk
+        # and would pollute the knowledge metrics if not excluded.
+        findings = [
+            ReviewFinding(
+                reviewer="synthesized",
+                severity="major",
+                issue="FAILED tests/test_auth.py::test_token - AssertionError",
+                finding_source="synthesized",
+            ),
+            ReviewFinding(
+                reviewer="synthesized",
+                severity="major",
+                issue="error: E501 line too long (95 > 88 characters)",
+                finding_source="synthesized",
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=findings, events=[])
+        return EvalDataset(samples=[sample])
+
+    def test_gap_rate_with_doc_chunks_skips_synthesized(self):
+        """gap_rate._compute_with_doc_chunks skips synthesized findings → N/A."""
+        from raki.docs.chunker import DocChunk
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+
+        chunk = DocChunk(
+            text="Authentication token validation must be checked",
+            domain="auth",
+            source_file="docs/auth.md",
+        )
+        config = MetricConfig(doc_chunks=[chunk])
+        dataset = self._make_dataset_with_synthesized("gap-synth-1")
+        result = KnowledgeGapRate().compute(dataset, config)
+        assert result.score is None
+        assert result.details["total_rework_findings"] == 0
+
+    def test_miss_rate_with_doc_chunks_skips_synthesized(self):
+        """miss_rate._compute_with_doc_chunks skips synthesized findings → N/A."""
+        from raki.docs.chunker import DocChunk
+        from raki.metrics.knowledge.miss_rate import KnowledgeMissRate
+
+        chunk = DocChunk(
+            text="Authentication token validation must be checked",
+            domain="auth",
+            source_file="docs/auth.md",
+        )
+        config = MetricConfig(doc_chunks=[chunk])
+        dataset = self._make_dataset_with_synthesized("miss-synth-1")
+        result = KnowledgeMissRate().compute(dataset, config)
+        assert result.score is None
+        assert result.details["total_rework_findings"] == 0
+
+    def test_gap_rate_review_findings_still_counted_with_doc_chunks(self):
+        """gap_rate still counts review findings with finding_source='review' normally."""
+        from datetime import datetime, timezone
+
+        from raki.docs.chunker import DocChunk
+        from raki.metrics.knowledge.gap_rate import KnowledgeGapRate
+        from raki.model import EvalDataset, EvalSample, PhaseResult, ReviewFinding, SessionMeta
+
+        meta = SessionMeta(
+            session_id="gap-review-1",
+            started_at=datetime(2026, 4, 20, tzinfo=timezone.utc),
+            total_phases=2,
+            rework_cycles=1,
+        )
+        phases = [PhaseResult(name="implement", generation=1, status="completed", output="done")]
+        findings = [
+            ReviewFinding(
+                reviewer="reviewer",
+                severity="major",
+                issue="Missing input validation on the API endpoint",
+                finding_source="review",
+            )
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=findings, events=[])
+        dataset = EvalDataset(samples=[sample])
+
+        # chunk covers "validation" but not "api endpoint" → uncovered
+        chunk = DocChunk(
+            text="Authentication token checking required",
+            domain="auth",
+            source_file="docs/auth.md",
+        )
+        config = MetricConfig(doc_chunks=[chunk])
+        result = KnowledgeGapRate().compute(dataset, config)
+        assert result.score is not None
+        assert result.details["total_rework_findings"] == 1

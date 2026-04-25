@@ -108,6 +108,67 @@ def test_review_finding():
     assert finding.severity == "critical"
 
 
+def test_review_finding_source_defaults_to_none():
+    """finding_source defaults to None for backward compatibility."""
+    finding = ReviewFinding(reviewer="bot", severity="minor", issue="nit")
+    assert finding.finding_source is None
+
+
+def test_review_finding_source_review():
+    """finding_source='review' accepted for human review findings."""
+    finding = ReviewFinding(
+        reviewer="go-specialist",
+        severity="major",
+        issue="Race condition",
+        finding_source="review",
+    )
+    assert finding.finding_source == "review"
+
+
+def test_review_finding_source_synthesized():
+    """finding_source='synthesized' accepted for findings inferred from test failures."""
+    finding = ReviewFinding(
+        reviewer="synthesized",
+        severity="major",
+        issue="pytest: FAILED test_foo.py::test_bar",
+        finding_source="synthesized",
+    )
+    assert finding.finding_source == "synthesized"
+
+
+def test_review_finding_source_rejects_invalid():
+    """finding_source rejects values outside the Literal union."""
+    with pytest.raises(ValidationError):
+        ReviewFinding(
+            reviewer="bot",
+            severity="minor",
+            issue="nit",
+            finding_source="human",  # type: ignore[arg-type]
+        )
+
+
+def test_review_finding_source_serialization_roundtrip():
+    """finding_source survives model_dump / model_validate roundtrip."""
+    original = ReviewFinding(
+        reviewer="synthesized",
+        severity="major",
+        issue="FAILED tests/test_x.py::test_y",
+        finding_source="synthesized",
+    )
+    dumped = original.model_dump()
+    restored = ReviewFinding.model_validate(dumped)
+    assert restored.finding_source == "synthesized"
+
+
+def test_review_finding_source_none_roundtrip():
+    """finding_source=None survives model_dump / model_validate (old data compat)."""
+    original = ReviewFinding(reviewer="bot", severity="minor", issue="nit")
+    dumped = original.model_dump()
+    assert dumped["finding_source"] is None
+    restored = ReviewFinding.model_validate(dumped)
+    assert restored.finding_source is None
+
+
 def test_session_event():
     event = SessionEvent(
         timestamp=datetime(2026, 4, 16, 8, 29, tzinfo=timezone.utc),

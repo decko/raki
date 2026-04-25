@@ -34,3 +34,4 @@ class ReviewFinding(BaseModel):
     line: int | None = None
     issue: str
     suggestion: str | None = None
+    finding_source: Literal["review", "synthesized"] | None = None
