@@ -161,20 +161,31 @@ def create_ragas_llm(config: MetricConfig):
     return llm
 
 
-def create_ragas_embeddings():
+def create_ragas_embeddings(config: MetricConfig):
     """Create embeddings for answer_relevancy metric.
 
-    Constructs ``GoogleEmbeddings`` directly with ``use_vertex=True`` and a
-    pre-configured ``genai.Client`` for Vertex AI.  This bypasses
-    ``embedding_factory()`` which does not forward ``use_vertex`` to the
-    constructor, causing ``_resolve_client()`` to take the Gemini path and
-    discard the pre-configured client (see #106).
+    Dispatches on ``config.llm_provider``:
+
+    - ``vertex-anthropic``, ``anthropic``, ``google`` -- uses ``GoogleEmbeddings``
+      constructed directly with ``use_vertex=True`` and a pre-configured
+      ``genai.Client`` for Vertex AI.  This bypasses ``embedding_factory()``
+      which does not forward ``use_vertex`` to the constructor, causing
+      ``_resolve_client()`` to take the Gemini path and discard the
+      pre-configured client (see #106).
+
+    - ``litellm`` -- uses Ragas's built-in ``LiteLLMEmbeddings`` with model
+      ``text-embedding-3-small`` (OpenAI-compatible, routed via LiteLLM).
 
     Resolves project/location from GOOGLE_CLOUD_PROJECT (or VERTEXAI_PROJECT)
-    and VERTEXAI_LOCATION environment variables.
+    and VERTEXAI_LOCATION environment variables (Google providers only).
 
     Defers imports so this module can be imported without dependencies installed.
     """
+    if config.llm_provider == "litellm":
+        from ragas.embeddings import LiteLLMEmbeddings  # ty: ignore[unresolved-import]
+
+        return LiteLLMEmbeddings(model="text-embedding-3-small")
+
     import os
 
     from google import genai  # ty: ignore[unresolved-import]
