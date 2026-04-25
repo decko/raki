@@ -621,6 +621,8 @@ def write_html_report(
         return html_color_for_score(score, higher, fmt)
 
     judge_cost = report.config.get("judge_cost")
+    judge_model = report.config.get("llm_model")
+    judge_provider = report.config.get("llm_provider")
 
     html_content = template.render(
         report=report,
@@ -647,6 +649,8 @@ def write_html_report(
         no_data_metrics=no_data_metrics,
         agent_models=agent_models,
         judge_cost=judge_cost,
+        judge_model=judge_model,
+        judge_provider=judge_provider,
         metric_warnings=report.warnings,
     )
 

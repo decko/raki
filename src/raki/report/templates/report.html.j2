@@ -723,7 +723,7 @@
       <span><strong>Timestamp:</strong> {{ report.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>
       <span><strong>Sessions:</strong> {{ session_count }}</span>
       {% if agent_models %}<span><strong>Agent model:</strong> {{ agent_models | join(", ") }}</span>{% endif %}
-      {% if judge_cost %}<span><strong>Judge:</strong> {{ judge_cost.calls }} calls, {{ "{:,}".format(judge_cost.input_tokens) }} in / {{ "{:,}".format(judge_cost.output_tokens) }} out tokens</span>{% endif %}
+      {% if judge_cost %}<span><strong>Judge:</strong> {% if judge_model %}{{ judge_model }}{% if judge_provider %} ({{ judge_provider }}){% endif %} &middot; {% endif %}{{ judge_cost.calls }} calls, {{ "{:,}".format(judge_cost.input_tokens) }} in / {{ "{:,}".format(judge_cost.output_tokens) }} out tokens</span>{% endif %}
     </div>
   </header>
 
