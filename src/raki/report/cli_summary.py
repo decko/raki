@@ -336,8 +336,16 @@ def print_summary(
         judge_calls = judge_cost["calls"]
         judge_in = f"{judge_cost['input_tokens']:,}"
         judge_out = f"{judge_cost['output_tokens']:,}"
+        judge_model = report.config.get("llm_model")
+        judge_provider = report.config.get("llm_provider")
+        if judge_model and judge_provider:
+            model_prefix = f"{judge_model} ({judge_provider}) · "
+        elif judge_model:
+            model_prefix = f"{judge_model} · "
+        else:
+            model_prefix = ""
         output_console.print(
-            f"[dim]Judge: {judge_calls} calls, {judge_in} in / {judge_out} out tokens[/dim]"
+            f"[dim]Judge: {model_prefix}{judge_calls} calls, {judge_in} in / {judge_out} out tokens[/dim]"
         )
         output_console.print()
 
