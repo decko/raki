@@ -120,7 +120,7 @@ def create_ragas_llm(config: MetricConfig):
             temperature=config.temperature,
             max_tokens=4096,
         )
-        llm.model_args.pop("top_p", None)  # ty: ignore[unresolved-attribute]
+        llm.model_args.pop("top_p", None)
         return llm
     elif config.llm_provider == "litellm":
         import litellm  # ty: ignore[unresolved-import]
@@ -137,7 +137,7 @@ def create_ragas_llm(config: MetricConfig):
             temperature=config.temperature,
             max_tokens=4096,
         )
-        llm.model_args.pop("top_p", None)  # ty: ignore[unresolved-attribute]
+        llm.model_args.pop("top_p", None)
         return llm
     else:
         supported_list = ", ".join(SUPPORTED_PROVIDERS)
@@ -157,7 +157,7 @@ def create_ragas_llm(config: MetricConfig):
         temperature=config.temperature,
         max_tokens=4096,
     )
-    llm.model_args.pop("top_p", None)  # ty: ignore[unresolved-attribute]
+    llm.model_args.pop("top_p", None)
     return llm
 
 
