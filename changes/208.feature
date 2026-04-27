@@ -1,1 +1,0 @@
-Wire ``litellm`` as a fully supported ``--judge-provider`` option. When selected, the CLI routes judge LLM calls through LiteLLM and serves answer-relevancy embeddings via ``LiteLLMEmbeddings``, removing the Google Cloud dependency for that metric path.
