@@ -225,7 +225,7 @@ Use the `/orchestrate` skill in Claude Code to coordinate milestone-level develo
 
 1. **ty is strict** -- Protocol attributes must be satisfied by class variables, not instance attributes.
 2. **Ragas 0.4 + Anthropic** -- `llm_factory()` must receive `provider="anthropic"` explicitly (defaults to `"openai"`). Must pop `top_p` from `llm.model_args` after creation — Anthropic rejects `temperature` + `top_p` together. GoogleEmbeddings ignores pre-configured clients (known bug, #106).
-3. **Large session files** -- some session formats can be 50MB+; `detect()` must read only the first 4KB.
+3. **Large session files** -- some session formats can be 50MB+; `detect()` must read only the first 32KB.
 4. **ReviewFinding.severity** -- `Literal["critical", "major", "minor"]`, not bare `str`.
 5. **Operational metrics** -- return raw values (cost in $, cycles as count), not 0-1 normalized.
 6. **No blended score** -- operational and retrieval metrics are separate categories; never combine them.
