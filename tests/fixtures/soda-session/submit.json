@@ -1,0 +1,8 @@
+{
+  "ticket_key": "223",
+  "pr_url": "https://github.com/example/raki/pull/223",
+  "pr_number": 223,
+  "title": "chore: add SODA session test fixture for adapter integration tests",
+  "branch": "soda/223",
+  "target": "main"
+}

@@ -129,14 +129,15 @@ def malformed_dir(sessions_dir: Path) -> Path:
 
 
 @pytest.fixture
-def soda_simple_dir(sessions_dir: Path) -> Path:
-    """Return the path to the soda-simple session fixture.
+def soda_session_dir(fixtures_dir: Path) -> Path:
+    """Return the path to the soda-session fixture.
 
     This fixture uses the full SODA-schema phase files (triage, plan,
-    implement, verify, review) and is the canonical integration test case
+    implement, verify, review, submit, monitor) with a rework cycle
+    (implement generation 2) and is the canonical integration test case
     for SODA-format sessions.
     """
-    return sessions_dir / "soda-simple"
+    return fixtures_dir / "soda-session"
 
 
 @pytest.fixture
