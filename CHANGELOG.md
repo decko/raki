@@ -1,3 +1,87 @@
+## [0.10.0] — 2026-04-26
+
+### Features
+
+- Add ``"litellm"`` as a supported LLM provider for Ragas judge metrics.
+
+  Set ``llm_provider: litellm`` in your ``MetricConfig`` to route model calls
+  through LiteLLM, enabling any model supported by LiteLLM (OpenAI, Bedrock,
+  Cohere, etc.) as a judge. Token usage is tracked at the ``litellm.acompletion``
+  module level and reported in the standard judge-cost summary.
+
+  Install the optional dependency with ``pip install raki[litellm]``. (#103)
+- Add ``raki gate-check`` command for SODA pipeline quality evaluation.
+
+  Run ``raki gate-check <report.json>`` to evaluate a RAKI report against
+  SODA-tuned quality thresholds (``first_pass_success_rate>=0.6``,
+  ``rework_cycles<=0.5``). Supports ``--baseline`` for regression detection
+  across milestones, ``--gate`` for custom thresholds, and ``--json`` for
+  CI integration. See ``docs/soda-pipeline-gate.md`` for the full workflow. (#184)
+- Synthesize ``ReviewFinding`` objects from Alcove/bridge transcript tool failures.
+
+  When an Alcove transcript contains test or lint command failures (e.g. ``pytest``,
+  ``ruff``, ``cargo test``) and no explicit ``findings`` array is provided in the JSON,
+  the adapter now generates ``ReviewFinding`` objects directly from the failure output.
+  Each synthesized finding has:
+
+  - ``finding_source="synthesized"`` — a new discriminant field on ``ReviewFinding``.
+  - ``severity="major"``, ``reviewer="synthesized"``.
+  - Duplicate failure texts are collapsed to one finding (e.g. repeated test runs).
+
+  Explicit findings parsed from the ``findings`` JSON key are tagged
+  ``finding_source="review"`` so callers can always tell the two apart.
+
+  **Metric impact**
+
+  - ``review_severity_distribution`` — synthesized findings *do* count (real
+    code quality signal).
+  - ``knowledge_gap_rate`` / ``knowledge_miss_rate`` — synthesized findings
+    *excluded* from both the ``doc_chunks`` path and the legacy
+    ``knowledge_context`` path (raw tool output matches too broadly).
+  - ``self_correction_rate`` — synthesized findings *excluded* from the
+    denominator (they are not actionable reviewer feedback).
+
+  **CLI & HTML**
+
+  - Summary sentence notes synthesized findings: e.g.
+    *"Reviewers found 2 major issues (3 synthesized from test failures)"*.
+  - HTML drill-down badges synthesized findings with a grey *"synthesized"* label
+    and shows an explanatory footnote.
+
+  (#186)
+- Phase output/transcript is now shown in the HTML session drill-down. Each phase
+  row gains a collapsible **View transcript** element when the report is generated
+  with ``--include-sessions``. Output is HTML-escaped and rendered in a scrollable
+  monospace block capped at 20 rem height. Transcripts are suppressed in default
+  (stripped) reports. (#194)
+- Show the judge model name and provider in CLI and HTML report headers.
+
+  When a judge model is configured, the judge cost line now reads:
+  ``Judge: claude-sonnet-4-6 (vertex-anthropic) · 20 calls, 41,861 in / 11,558 out tokens``
+  instead of the bare token-count summary. (#207)
+- Wire ``litellm`` as a fully supported ``--judge-provider`` option. When selected, the CLI routes judge LLM calls through LiteLLM and serves answer-relevancy embeddings via ``LiteLLMEmbeddings``, removing the Google Cloud dependency for that metric path. (#208)
+
+### Bug Fixes
+
+- Fix ``knowledge_miss_rate`` and ``knowledge_gap_rate`` returning 1.0 / 0.0 on SODA sessions.
+
+  Two root causes were fixed:
+
+  * **Knowledge metrics false positives**: ``_compute_with_knowledge_context()`` in both
+    ``miss_rate.py`` and ``gap_rate.py`` never checked ``sample.context_source``, so
+    synthesized context (built from transcript tool-call outputs) trivially matched every
+    finding via 1-token overlap, pushing miss_rate to 1.0 and gap_rate to 0.0 for all
+    SODA sessions.  Both methods now skip samples with ``context_source == "synthesized"``
+    and return N/A instead.
+
+  * **Alcove adapter missing ``output_structured``**: ``_build_phases()`` never passed
+    ``output_structured`` to ``PhaseResult``, so ``_extract_domains()`` always saw an
+    empty dict and ground-truth matching produced zero matches.  Phase results now carry
+    ``output_structured=redact_dict(phase_meta)`` from the phases dict metadata.
+
+  (#183)
+
+
 ## [0.9.1] — 2026-04-25
 
 ### Breaking Changes
