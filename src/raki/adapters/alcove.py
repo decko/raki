@@ -6,7 +6,7 @@ from raki.adapters.redact import redact_dict, redact_sensitive
 from raki.model import EvalSample, PhaseResult, ReviewFinding, SessionMeta, ToolCall
 
 MAX_ALCOVE_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
-DETECT_READ_SIZE = 4096  # Only read first 4KB for format detection
+DETECT_READ_SIZE = 32768  # Only read first 32KB for format detection
 MAX_SYNTHESIZED_CONTEXT_CHARS = 50_000
 
 # Bash commands whose output is informational for retrieval context (whitelist).
@@ -224,7 +224,7 @@ class AlcoveAdapter:
     detection_hint: str = "*.json file containing (session_id or id) + transcript"
 
     def detect(self, source: Path) -> bool:
-        """Detect Alcove/bridge format via substring search of first 4KB."""
+        """Detect Alcove/bridge format via substring search of first 32KB."""
         if source.is_symlink():
             return False
         if not source.is_file() or source.suffix != ".json":

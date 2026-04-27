@@ -1,0 +1,1 @@
+``AlcoveAdapter.detect()`` now reads the first 32 KB of a file (up from 4 KB) when detecting the Alcove/bridge format. Sessions whose ``"transcript"`` key was pushed past the 4 KB boundary by a long system prompt were previously silently skipped; they are now correctly detected and loaded.

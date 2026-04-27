@@ -223,6 +223,35 @@ def test_alcove_adapter_loads_id_only_session():
     assert sample.phases[0].name == "session"
 
 
+def test_alcove_adapter_detects_transcript_beyond_4kb(tmp_path):
+    """detect() must find 'transcript' when it falls beyond the first 4KB.
+
+    Sessions with long system prompts push the 'transcript' key past byte 4096.
+    Previously DETECT_READ_SIZE was 4096, so these sessions were silently skipped.
+    """
+    # Build a JSON where "transcript" falls well past the 4KB boundary.
+    # The large "prompt" value pushes "transcript" beyond byte 4096.
+    large_prompt = "A" * 11_000
+    transcript_data = {
+        "id": "large-prompt-session-id",
+        "prompt": large_prompt,
+        "transcript": [],
+    }
+    fixture = tmp_path / "large-prompt.json"
+    fixture.write_text(json.dumps(transcript_data))
+
+    # Sanity-check: "transcript" must NOT appear in the first 4096 bytes,
+    # otherwise this test is not actually exercising the boundary condition.
+    header_4kb = fixture.read_bytes()[:4096].decode("utf-8", errors="replace")
+    assert '"transcript"' not in header_4kb, (
+        "Test precondition failed: 'transcript' appeared in first 4096 bytes; "
+        "increase the prompt padding."
+    )
+
+    adapter = AlcoveAdapter()
+    assert adapter.detect(fixture)
+
+
 # --- Synthesized findings tests ---
 
 
