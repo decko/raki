@@ -39,3 +39,6 @@ results/
 
 # Session memory
 .remember/
+
+# SODA temporary files
+soda-system-prompt-*.md

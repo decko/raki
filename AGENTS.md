@@ -247,6 +247,9 @@ Use the `/orchestrate` skill in Claude Code to coordinate milestone-level develo
 22. **Report config key names** -- judge config fields use `llm_` prefix: `llm_provider`, `llm_model`, `llm_temperature`, `llm_max_tokens`. Not `temperature`, not `batch_size`. All are None when `skip_judge=True`.
 23. **History log at `.raki/history.jsonl`** -- created automatically by `raki run`. Must be in `.gitignore`. `HistoryEntry.metrics` is `dict[str, float]` — absent keys mean metric not computed, not None or 0.0.
 24. **Ticket budget limit** -- SODA tickets should be scoped under 100K tokens. Use the `/scope` skill to estimate. Split tickets that exceed the budget (core logic vs CLI wiring is a natural boundary).
+25. **Towncrier fragment types** -- only `.breaking`, `.feature`, and `.fix` are configured. Using `.change` or other suffixes gets silently ignored by `towncrier build`.
+26. **Manifest symlink path escape** -- manifest session paths cannot be symlinks to external directories. The real path is resolved and checked against project root. Copy sessions into the manifest directory instead of symlinking.
+27. **`soda-system-prompt-*.md` stray files** -- SODA sometimes leaves temporary prompt files in the repo root. These are in `.gitignore` and should never be committed.
 
 ## Things agents often get wrong here
 
