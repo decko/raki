@@ -1,0 +1,17 @@
+{
+  "ticket_key": "223",
+  "code_area": "tests/fixtures/sessions",
+  "files": [
+    "tests/fixtures/sessions/soda-simple/meta.json",
+    "tests/fixtures/sessions/soda-simple/events.jsonl",
+    "tests/conftest.py",
+    "tests/test_adapters.py"
+  ],
+  "complexity": "small",
+  "approach": "Add a soda-simple fixture directory with SODA-schema phase files and register it in conftest for adapter integration tests",
+  "risks": [
+    "Fixture JSON must exactly match SODA schemas to serve as a realistic integration test case"
+  ],
+  "specialists": ["python"],
+  "automatable": true
+}

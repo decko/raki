@@ -1250,7 +1250,8 @@ class TestDatasetLoaderAdapterName:
         registry.register(SessionSchemaAdapter())
         loader = DatasetLoader(registry)
         dataset = loader.load_directory(sessions_dir, adapter_name="session-schema")
-        assert len(dataset.samples) == 2
+        # pass-simple, rework-cycle, and soda-simple are all valid session dirs
+        assert len(dataset.samples) == 3
 
     def test_load_directory_with_invalid_adapter_name(self, sessions_dir):
         registry = AdapterRegistry()
@@ -3221,3 +3222,69 @@ def test_alcove_no_phases_dict_output_structured_none(tmp_path):
     assert len(sample.phases) == 1
     assert sample.phases[0].name == "session"
     assert sample.phases[0].output_structured is None
+
+
+# --- Ticket #223: SODA session fixture ---
+
+
+def test_session_schema_soda_simple_detects(soda_simple_dir: Path):
+    """soda-simple fixture is detected as a valid session by SessionSchemaAdapter."""
+    adapter = SessionSchemaAdapter()
+    assert adapter.detect(soda_simple_dir)
+
+
+def test_session_schema_adapter_loads_soda_simple(soda_simple_dir: Path):
+    """soda-simple fixture loads correctly with expected session metadata."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_simple_dir)
+    assert sample.session.session_id == "223"
+    assert sample.session.ticket == "223"
+    assert sample.session.rework_cycles == 0
+    assert sample.session.total_cost_usd == 8.75
+    assert sample.session.orchestrator == "soda"
+    assert sample.session.pipeline_phases == ["triage", "plan", "implement", "verify", "review"]
+    assert len(sample.events) == 10
+
+
+def test_session_schema_soda_simple_has_all_phases(soda_simple_dir: Path):
+    """soda-simple fixture contains triage, plan, implement, and verify phases."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_simple_dir)
+    phase_names = {phase.name for phase in sample.phases}
+    assert "triage" in phase_names
+    assert "plan" in phase_names
+    assert "implement" in phase_names
+    assert "verify" in phase_names
+
+
+def test_session_schema_soda_simple_triage_structured(soda_simple_dir: Path):
+    """soda-simple triage phase has SODA-schema structured output."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_simple_dir)
+    triage = next(phase for phase in sample.phases if phase.name == "triage")
+    assert triage.output_structured is not None
+    assert triage.output_structured["ticket_key"] == "223"
+    assert triage.output_structured["complexity"] == "small"
+    assert isinstance(triage.output_structured["files"], list)
+    assert triage.output_structured["automatable"] is True
+
+
+def test_session_schema_soda_simple_implement_structured(soda_simple_dir: Path):
+    """soda-simple implement phase has SODA-schema structured output with commits."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_simple_dir)
+    implement = next(phase for phase in sample.phases if phase.name == "implement")
+    assert implement.output_structured is not None
+    assert implement.output_structured["tests_passed"] is True
+    commits = implement.output_structured.get("commits", [])
+    assert len(commits) >= 1
+    assert implement.output_structured["branch"] == "soda/223"
+
+
+def test_session_schema_soda_simple_synthesizes_context(soda_simple_dir: Path):
+    """soda-simple fixture synthesizes retrieval context from SODA phase outputs."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_simple_dir)
+    has_context = any(phase.knowledge_context is not None for phase in sample.phases)
+    assert has_context
+    assert sample.context_source == "synthesized"

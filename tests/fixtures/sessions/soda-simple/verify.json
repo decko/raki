@@ -1,0 +1,36 @@
+{
+  "ticket_key": "223",
+  "verdict": "PASS",
+  "criteria_results": [
+    {
+      "criterion": "soda-simple fixture is detected and loaded without error by SessionSchemaAdapter",
+      "passed": true,
+      "evidence": "test_session_schema_adapter_loads_soda_simple passes"
+    },
+    {
+      "criterion": "SODA-schema phase files are present and contain valid structured output",
+      "passed": true,
+      "evidence": "test_session_schema_soda_simple_has_all_phases and structured-output tests pass"
+    },
+    {
+      "criterion": "Context synthesis produces a non-empty knowledge_context from SODA phase outputs",
+      "passed": true,
+      "evidence": "test_session_schema_soda_simple_synthesizes_context passes"
+    }
+  ],
+  "command_results": [
+    {
+      "command": "uv run pytest tests/test_adapters.py -v -k soda -m 'not slow'",
+      "exit_code": 0,
+      "output": "5 passed in 0.14s",
+      "passed": true
+    }
+  ],
+  "raki_checks": {
+    "metric_registered": true,
+    "na_semantics": true,
+    "redaction_applied": true,
+    "path_safety": true,
+    "version_consistent": true
+  }
+}
