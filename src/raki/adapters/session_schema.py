@@ -329,10 +329,12 @@ class SessionSchemaAdapter:
     def _synthesize_context(self, phases: list[PhaseResult]) -> str | None:
         """Synthesize retrieval context from structured phase outputs.
 
-        Extracts relevant fields from triage, plan, and implement phases:
+        Extracts relevant fields from each SODA pipeline phase:
         - Triage: approach, code_area, files, risks
         - Plan: approach, task descriptions and files
         - Implement: files_changed, commits, deviations; falls back to output text
+        - Submit: title, branch, pr_url, tests_passed
+        - Monitor: tests_passed, comments_handled summary
         """
         context_chunks: list[str] = []
 
@@ -395,6 +397,44 @@ class SessionSchemaAdapter:
                     impl_parts.append(f"Deviations: {deviations}")
                 if impl_parts:
                     context_chunks.append(redact_sensitive("\n".join(impl_parts)))
+
+            elif phase.name == "submit" and phase.output_structured:
+                submit_parts: list[str] = []
+                title = phase.output_structured.get("title")
+                if title and isinstance(title, str):
+                    submit_parts.append(f"PR title: {title}")
+                branch = phase.output_structured.get("branch")
+                if branch and isinstance(branch, str):
+                    submit_parts.append(f"Branch: {branch}")
+                pr_url = phase.output_structured.get("pr_url")
+                if pr_url and isinstance(pr_url, str):
+                    submit_parts.append(f"PR URL: {pr_url}")
+                target = phase.output_structured.get("target")
+                if target and isinstance(target, str):
+                    submit_parts.append(f"Target branch: {target}")
+                if submit_parts:
+                    context_chunks.append(redact_sensitive("\n".join(submit_parts)))
+
+            elif phase.name == "monitor" and phase.output_structured:
+                monitor_parts: list[str] = []
+                tests_passed = phase.output_structured.get("tests_passed")
+                if tests_passed is not None:
+                    monitor_parts.append(
+                        f"Post-merge tests: {'passed' if tests_passed else 'failed'}"
+                    )
+                comments_handled = phase.output_structured.get("comments_handled")
+                if comments_handled and isinstance(comments_handled, list):
+                    resolved_count = sum(
+                        1
+                        for comment in comments_handled
+                        if isinstance(comment, dict)
+                        and comment.get("action") in ("fixed", "explained")
+                    )
+                    monitor_parts.append(
+                        f"Review comments resolved: {resolved_count}/{len(comments_handled)}"
+                    )
+                if monitor_parts:
+                    context_chunks.append(redact_sensitive("\n".join(monitor_parts)))
 
         # Fall back to implement phase output when structured fields are insufficient
         if not context_chunks:
