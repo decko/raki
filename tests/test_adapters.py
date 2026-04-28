@@ -3288,7 +3288,7 @@ def test_session_schema_adapter_loads_soda_session(soda_session_dir: Path):
 
 
 def test_session_schema_soda_session_has_all_phases(soda_session_dir: Path):
-    """soda-session fixture contains triage, plan, implement, and verify phases."""
+    """soda-session fixture contains all seven SODA pipeline phases."""
     adapter = SessionSchemaAdapter()
     sample = adapter.load(soda_session_dir)
     phase_names = {phase.name for phase in sample.phases}
@@ -3296,6 +3296,9 @@ def test_session_schema_soda_session_has_all_phases(soda_session_dir: Path):
     assert "plan" in phase_names
     assert "implement" in phase_names
     assert "verify" in phase_names
+    assert "review" in phase_names
+    assert "submit" in phase_names
+    assert "monitor" in phase_names
 
 
 def test_session_schema_soda_session_triage_structured(soda_session_dir: Path):
@@ -3325,17 +3328,54 @@ def test_session_schema_soda_session_implement_structured(soda_session_dir: Path
 
 
 def test_session_schema_soda_session_review_finding(soda_session_dir: Path):
-    """soda-session fixture has review findings in perspectives structure.
-
-    The current adapter reads top-level 'findings' only. Once #220 lands
-    (perspectives support), this test should assert findings are loaded.
-    For now, verify the adapter does not crash on the SODA review format.
-    """
+    """soda-session fixture has review findings parsed from perspectives structure (#220)."""
     adapter = SessionSchemaAdapter()
     sample = adapter.load(soda_session_dir)
-    # Findings are in perspectives structure (SODA schema), not top-level.
-    # Adapter cannot read them yet (#220). Verify graceful handling.
-    assert sample.findings == []
+    # Findings are in perspectives structure (SODA schema); adapter must parse them.
+    assert len(sample.findings) >= 1
+
+
+def test_session_schema_soda_session_perspectives_severity_mapped(soda_session_dir: Path):
+    """SODA perspectives severity values (MINOR/IMPORTANT/CRITICAL) map to ReviewFinding values."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_session_dir)
+    # soda-session review.json has one MINOR finding from the python perspective
+    minor_findings = [f for f in sample.findings if f.severity == "minor"]
+    assert len(minor_findings) >= 1
+
+
+def test_session_schema_soda_session_perspectives_source_is_perspective_name(
+    soda_session_dir: Path,
+):
+    """Findings parsed from perspectives use the perspective name as reviewer."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_session_dir)
+    # soda-session review.json has findings from the "python" perspective
+    python_findings = [f for f in sample.findings if f.reviewer == "python"]
+    assert len(python_findings) >= 1
+
+
+def test_session_schema_soda_session_submit_phase_loaded(soda_session_dir: Path):
+    """soda-session fixture loads the submit phase as a PhaseResult."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_session_dir)
+    submit_phases = [phase for phase in sample.phases if phase.name == "submit"]
+    assert len(submit_phases) == 1
+    submit_phase = submit_phases[0]
+    assert submit_phase.output_structured is not None
+    assert submit_phase.output_structured["ticket_key"] == "223"
+    assert "pr_url" in submit_phase.output_structured
+
+
+def test_session_schema_soda_session_monitor_phase_loaded(soda_session_dir: Path):
+    """soda-session fixture loads the monitor phase as a PhaseResult."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_session_dir)
+    monitor_phases = [phase for phase in sample.phases if phase.name == "monitor"]
+    assert len(monitor_phases) == 1
+    monitor_phase = monitor_phases[0]
+    assert monitor_phase.output_structured is not None
+    assert monitor_phase.output_structured["ticket_key"] == "223"
 
 
 def test_session_schema_soda_session_synthesizes_context(soda_session_dir: Path):
@@ -3344,6 +3384,30 @@ def test_session_schema_soda_session_synthesizes_context(soda_session_dir: Path)
     sample = adapter.load(soda_session_dir)
     has_context = any(phase.knowledge_context is not None for phase in sample.phases)
     assert has_context
+
+
+def test_session_schema_soda_session_submit_context_included(soda_session_dir: Path):
+    """Context synthesis includes submit phase data (PR URL, title)."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_session_dir)
+    # Find the phase that holds the synthesized context
+    context_phase = next(
+        (phase for phase in sample.phases if phase.knowledge_context is not None), None
+    )
+    assert context_phase is not None
+    assert (
+        "PR" in context_phase.knowledge_context or "pr" in context_phase.knowledge_context.lower()
+    )
+
+
+def test_session_schema_soda_session_perspectives_empty_findings_skipped(soda_session_dir: Path):
+    """Perspectives with empty findings lists contribute zero ReviewFindings."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_session_dir)
+    # soda-session review.json has a "security" perspective with 0 findings.
+    # Total findings should be exactly the count from non-empty perspectives.
+    security_findings = [f for f in sample.findings if f.reviewer == "security"]
+    assert len(security_findings) == 0
 
 
 # --- Ticket 219: rework_cycles resolution from generation ---
