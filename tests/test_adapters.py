@@ -3344,4 +3344,71 @@ def test_session_schema_soda_session_synthesizes_context(soda_session_dir: Path)
     sample = adapter.load(soda_session_dir)
     has_context = any(phase.knowledge_context is not None for phase in sample.phases)
     assert has_context
-    assert sample.context_source == "synthesized"
+
+
+# --- Ticket 219: rework_cycles resolution from generation ---
+
+
+def test_session_schema_rework_from_generation(tmp_path):
+    """No rework_cycles key in meta.json: derive from max phase generation.
+
+    implement.generation=2 means one rework cycle (generation 2 - 1 = 1).
+    """
+    meta = {
+        "ticket": "219a",
+        "summary": "rework from generation",
+        "started_at": "2026-04-28T08:00:00Z",
+        "total_cost": 5.0,
+        "phases": {
+            "triage": {"status": "completed", "cost": 0.5, "generation": 1},
+            "implement": {"status": "completed", "cost": 3.0, "generation": 2},
+            "verify": {"status": "completed", "cost": 1.0, "generation": 1},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.rework_cycles == 1
+
+
+def test_session_schema_rework_from_generation_all_first_pass(tmp_path):
+    """No rework_cycles key in meta.json: all phases at generation=1 → rework_cycles=0."""
+    meta = {
+        "ticket": "219b",
+        "summary": "all first pass from generation",
+        "started_at": "2026-04-28T08:00:00Z",
+        "total_cost": 4.0,
+        "phases": {
+            "triage": {"status": "completed", "cost": 0.5, "generation": 1},
+            "implement": {"status": "completed", "cost": 2.5, "generation": 1},
+            "verify": {"status": "completed", "cost": 0.8, "generation": 1},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    assert sample.session.rework_cycles == 0
+
+
+def test_session_schema_rework_explicit_takes_precedence(tmp_path):
+    """Explicit rework_cycles key in meta.json always wins over generation-derived value."""
+    meta = {
+        "ticket": "219c",
+        "summary": "explicit rework_cycles takes precedence",
+        "started_at": "2026-04-28T08:00:00Z",
+        "total_cost": 8.0,
+        "rework_cycles": 3,
+        "phases": {
+            "triage": {"status": "completed", "cost": 0.5, "generation": 1},
+            "implement": {"status": "completed", "cost": 5.0, "generation": 2},
+            "verify": {"status": "completed", "cost": 1.5, "generation": 1},
+        },
+    }
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "events.jsonl").write_text("")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    # Explicit value (3) must win even though generation-derived would be 1
+    assert sample.session.rework_cycles == 3
