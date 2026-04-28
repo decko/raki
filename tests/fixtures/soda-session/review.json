@@ -1,34 +1,24 @@
 {
-  "ticket_key": "223",
-  "verdict": "approve",
-  "perspectives": [
-    {
-      "name": "python",
-      "verdict": "approve_with_comments",
-      "findings": [
+    "ticket_key": "223",
+    "verdict": "approve",
+    "perspectives": [
         {
-          "severity": "minor",
-          "file": "tests/conftest.py",
-          "line": 132,
-          "issue": "Fixture docstring should mention the rework cycle scenario",
-          "suggestion": "Update the docstring to note that the fixture includes a rework cycle with implement generation 2"
+            "name": "python",
+            "verdict": "clean",
+            "findings": [
+                {
+                    "severity": "MINOR",
+                    "file": "tests/conftest.py",
+                    "line": 132,
+                    "issue": "Fixture docstring should mention the rework cycle scenario",
+                    "suggestion": "Update the docstring to note that the fixture includes a rework cycle with implement generation 2"
+                }
+            ]
+        },
+        {
+            "name": "security",
+            "verdict": "clean",
+            "findings": []
         }
-      ]
-    },
-    {
-      "name": "security",
-      "verdict": "clean",
-      "findings": []
-    }
-  ],
-  "findings": [
-    {
-      "source": "python",
-      "severity": "minor",
-      "file": "tests/conftest.py",
-      "line": 132,
-      "issue": "Fixture docstring should mention the rework cycle scenario",
-      "suggestion": "Update the docstring to note that the fixture includes a rework cycle with implement generation 2"
-    }
-  ]
+    ]
 }

@@ -3,7 +3,7 @@
   "summary": "chore: add SODA session test fixture for adapter integration tests",
   "branch": "soda/223",
   "started_at": "2026-04-27T09:00:00-03:00",
-  "total_cost": 10.15,
+  "total_cost": 12.25,
   "rework_cycles": 1,
   "phases": {
     "triage":    {"status": "completed", "cost": 0.45, "duration_ms":  42000, "generation": 1},
