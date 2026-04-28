@@ -1370,5 +1370,165 @@ def gate_check(
         raise SystemExit(exit_code)
 
 
+@main.command("import-history")
+@click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option(
+    "--history-path",
+    "history_path_arg",
+    default=None,
+    help="Path to JSONL history log (default: .raki/history.jsonl)",
+)
+@click.option("--adapter", "adapter_format", default=None, help="Force adapter (default: auto)")
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    default=False,
+    help="Show what would be imported without writing to history",
+)
+@click.option("-q", "--quiet", is_flag=True, help="Suppress per-session output")
+def import_history(
+    paths: tuple[str, ...],
+    history_path_arg: str | None,
+    adapter_format: str | None,
+    dry_run: bool,
+    quiet: bool,
+) -> None:
+    """Backfill history.jsonl from existing session directories.
+
+    Discovers sessions under each PATH using the adapter registry, computes
+    operational metrics (no LLM calls), and appends one HistoryEntry per
+    session to the JSONL history file.  Sessions already present in the
+    history (matched by run_id) are skipped automatically.
+
+    Use --dry-run to preview what would be imported without writing anything.
+    """
+    from raki.adapters import DatasetLoader
+    from raki.adapters.discovery import discover_sessions
+    from raki.metrics import MetricsEngine
+    from raki.metrics.operational import ALL_OPERATIONAL
+    from raki.metrics.protocol import MetricConfig
+    from raki.model import EvalDataset
+    from raki.report.history import HistoryEntry, import_history_entry, load_run_ids
+
+    registry = _build_registry()
+
+    if adapter_format is not None and registry.get(adapter_format) is None:
+        valid_names = ", ".join(adapter.name for adapter in registry.list_all())
+        raise click.BadParameter(
+            f"Unknown adapter: '{adapter_format}'. Valid adapters: {valid_names}",
+            param_hint="'--adapter'",
+        )
+
+    history_path = (
+        Path(history_path_arg) if history_path_arg else Path.cwd() / ".raki" / "history.jsonl"
+    )
+
+    # Path traversal guard: history path must be a descendant of project root
+    resolved_history = history_path.resolve()
+    project_root = Path.cwd().resolve()
+    try:
+        resolved_history.relative_to(project_root)
+    except ValueError:
+        raise click.UsageError(f"--history-path must be within the project root ({project_root})")
+
+    input_paths = [Path(p) for p in paths]
+    session_paths = discover_sessions(input_paths, registry)
+
+    if not session_paths:
+        console.print("[yellow]No sessions found in the provided paths.[/yellow]")
+        return
+
+    if not quiet:
+        console.print(
+            f"Discovered [bold]{len(session_paths)}[/bold] session"
+            f"{'s' if len(session_paths) != 1 else ''}"
+        )
+
+    existing_ids = load_run_ids(history_path)
+
+    loader = DatasetLoader(registry)
+    config = MetricConfig()
+    engine = MetricsEngine(list(ALL_OPERATIONAL), config=config)
+
+    imported = 0
+    skipped = 0
+    errors = 0
+
+    for session_path in session_paths:
+        try:
+            sample = loader.load_session(session_path, adapter_name=adapter_format)
+        except Exception as exc:
+            errors += 1
+            if not quiet:
+                console.print(
+                    f"  [red]✗[/red] {session_path.name}: load error — {redact_sensitive(str(exc))}"
+                )
+            continue
+
+        # Build a stable run_id from the session_id so re-imports are idempotent
+        run_id = f"import-{sample.session.session_id}"
+
+        if run_id in existing_ids:
+            skipped += 1
+            if not quiet:
+                console.print(f"  [dim]—[/dim] {session_path.name}: already in history")
+            continue
+
+        try:
+            dataset = EvalDataset(samples=[sample])
+            report = engine.run(dataset, skip_judge=True)
+        except Exception as exc:
+            errors += 1
+            if not quiet:
+                console.print(
+                    f"  [red]✗[/red] {session_path.name}: "
+                    f"metrics error — {redact_sensitive(str(exc))}"
+                )
+            continue
+
+        metrics_dict = {k: v for k, v in report.aggregate_scores.items() if v is not None}
+
+        entry = HistoryEntry(
+            run_id=run_id,
+            timestamp=sample.session.started_at,
+            sessions_count=1,
+            metrics=metrics_dict,
+        )
+
+        if dry_run:
+            imported += 1
+            if not quiet:
+                metric_preview = ", ".join(
+                    f"{k}={v:.3f}" for k, v in list(metrics_dict.items())[:3]
+                )
+                console.print(
+                    f"  [dim]○[/dim] {session_path.name}: "
+                    f"would import ({metric_preview}{'...' if len(metrics_dict) > 3 else ''})"
+                )
+        else:
+            try:
+                import_history_entry(entry, history_path, existing_ids)
+                imported += 1
+                if not quiet:
+                    console.print(f"  [green]✓[/green] {session_path.name}: imported")
+            except Exception as exc:
+                errors += 1
+                if not quiet:
+                    console.print(
+                        f"  [red]✗[/red] {session_path.name}: "
+                        f"write error — {redact_sensitive(str(exc))}"
+                    )
+
+    action = "Would import" if dry_run else "Imported"
+    suffix = " (dry run)" if dry_run else ""
+    console.print(
+        f"\n{action} [bold]{imported}[/bold] session"
+        f"{'s' if imported != 1 else ''}{suffix}"
+        f" ({skipped} already present, {errors} error{'s' if errors != 1 else ''})"
+    )
+    if errors > 0 and imported == 0:
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     main()

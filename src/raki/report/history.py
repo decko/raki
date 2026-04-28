@@ -102,6 +102,67 @@ def append_history_entry(
         history_file.write(line + "\n")
 
 
+def load_run_ids(history_path: Path) -> set[str]:
+    """Return the set of ``run_id`` values already present in *history_path*.
+
+    This is a lightweight deduplication helper for ``import-history``: callers
+    can check membership in O(1) before attempting to write a new entry.
+
+    Args:
+        history_path: Path to the JSONL history file.  A missing file is
+            treated as an empty history — an empty set is returned.
+
+    Returns:
+        Set of run_id strings found in the existing history.
+
+    Raises:
+        ValueError: If ``history_path`` is a symlink (security guard).
+    """
+    return {entry.run_id for entry in load_history(history_path)}
+
+
+def import_history_entry(
+    entry: HistoryEntry,
+    history_path: Path,
+    existing_ids: set[str],
+) -> bool:
+    """Append *entry* to the JSONL history file if its ``run_id`` is not already present.
+
+    The caller owns the *existing_ids* set and is responsible for keeping it
+    up-to-date: this function **adds** ``entry.run_id`` to *existing_ids* when
+    a write occurs, so that repeated calls within the same import session remain
+    idempotent without re-reading the file each time.
+
+    Args:
+        entry: The :class:`HistoryEntry` to append.
+        history_path: Path to the JSONL history file.  Parent directories are
+            created on first write.
+        existing_ids: Mutable set of run_ids already in the file.  Updated
+            in-place when an entry is written.
+
+    Returns:
+        ``True`` if the entry was written, ``False`` if it was a duplicate.
+
+    Raises:
+        ValueError: If ``history_path`` is a symlink (security guard).
+    """
+    if entry.run_id in existing_ids:
+        return False
+
+    if history_path.is_symlink():
+        raise ValueError(f"Refusing to write to symlink: {history_path}")
+
+    resolved = history_path.resolve()
+    resolved.parent.mkdir(parents=True, exist_ok=True)
+
+    line = json.dumps(entry.model_dump(mode="json"), default=str)
+    with resolved.open("a", encoding="utf-8") as history_file:
+        history_file.write(line + "\n")
+
+    existing_ids.add(entry.run_id)
+    return True
+
+
 def load_history(history_path: Path) -> list[HistoryEntry]:
     """Load all history entries from a JSONL file.
 
