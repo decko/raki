@@ -1526,6 +1526,8 @@ def import_history(
         f"{'s' if imported != 1 else ''}{suffix}"
         f" ({skipped} already present, {errors} error{'s' if errors != 1 else ''})"
     )
+    if errors > 0 and imported == 0:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

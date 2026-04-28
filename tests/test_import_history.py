@@ -529,7 +529,7 @@ class TestImportHistoryErrors:
             ["import-history", str(sessions), "--history-path", str(history_path)],
             catch_exceptions=False,
         )
-        assert result.exit_code == 0
+        assert result.exit_code == 1
         assert "error" in result.output.lower()
 
     def test_history_path_outside_project_root_rejected(
