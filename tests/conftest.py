@@ -129,6 +129,18 @@ def malformed_dir(sessions_dir: Path) -> Path:
 
 
 @pytest.fixture
+def soda_session_dir(fixtures_dir: Path) -> Path:
+    """Return the path to the soda-session fixture.
+
+    This fixture uses the full SODA-schema phase files (triage, plan,
+    implement, verify, review, submit, monitor) with a rework cycle
+    (implement generation 2) and is the canonical integration test case
+    for SODA-format sessions.
+    """
+    return fixtures_dir / "soda-session"
+
+
+@pytest.fixture
 def manifest_with_session(tmp_path: Path, pass_simple_dir: Path) -> tuple[Path, Path]:
     """Create a tmp_path with a manifest and a copied pass-simple session.
 

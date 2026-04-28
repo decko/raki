@@ -1,0 +1,47 @@
+{
+  "ticket_key": "223",
+  "approach": "Create a soda-simple fixture directory containing all SODA-schema phase files; register a conftest fixture; add integration tests to test_adapters.py",
+  "tasks": [
+    {
+      "id": "T1",
+      "description": "Create tests/fixtures/sessions/soda-simple/ with meta.json and events.jsonl",
+      "files": [
+        "tests/fixtures/sessions/soda-simple/meta.json",
+        "tests/fixtures/sessions/soda-simple/events.jsonl"
+      ],
+      "failing_test": "test_session_schema_adapter_loads_soda_simple",
+      "done_when": "meta.json and events.jsonl exist and are valid JSON/JSONL",
+      "depends_on": []
+    },
+    {
+      "id": "T2",
+      "description": "Create SODA-schema phase files: triage, plan, implement, verify, review",
+      "files": [
+        "tests/fixtures/sessions/soda-simple/triage.json",
+        "tests/fixtures/sessions/soda-simple/plan.json",
+        "tests/fixtures/sessions/soda-simple/implement.json",
+        "tests/fixtures/sessions/soda-simple/verify.json",
+        "tests/fixtures/sessions/soda-simple/review.json"
+      ],
+      "failing_test": "test_session_schema_adapter_loads_soda_simple",
+      "done_when": "All phase files validate against the SODA JSON schemas",
+      "depends_on": ["T1"]
+    },
+    {
+      "id": "T3",
+      "description": "Add soda_simple_dir fixture to conftest.py and integration tests to test_adapters.py",
+      "files": [
+        "tests/conftest.py",
+        "tests/test_adapters.py"
+      ],
+      "failing_test": "test_session_schema_adapter_loads_soda_simple",
+      "done_when": "All new tests pass",
+      "depends_on": ["T2"]
+    }
+  ],
+  "verification": {
+    "commands": [
+      "uv run pytest tests/test_adapters.py -v -k soda -m 'not slow'"
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{"timestamp":"2026-04-27T09:00:00-03:00","phase":"triage","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-27T09:00:42-03:00","phase":"triage","kind":"phase_completed","data":{"cost":0.45,"duration_ms":42000}}
+{"timestamp":"2026-04-27T09:00:42-03:00","phase":"plan","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-27T09:02:17-03:00","phase":"plan","kind":"phase_completed","data":{"cost":1.20,"duration_ms":95000}}
+{"timestamp":"2026-04-27T09:02:17-03:00","phase":"implement","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-27T09:05:00-03:00","phase":"implement","kind":"phase_completed","data":{"cost":2.10,"duration_ms":163000,"summary":"FAIL"}}
+{"timestamp":"2026-04-27T09:05:00-03:00","phase":"implement","kind":"phase_started","data":{"generation":2}}
+{"timestamp":"2026-04-27T09:07:57-03:00","phase":"implement","kind":"phase_completed","data":{"cost":3.80,"duration_ms":340000}}
+{"timestamp":"2026-04-27T09:07:57-03:00","phase":"verify","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-27T09:09:57-03:00","phase":"verify","kind":"phase_completed","data":{"cost":1.55,"duration_ms":120000,"summary":"PASS"}}
+{"timestamp":"2026-04-27T09:09:57-03:00","phase":"review","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-27T09:12:17-03:00","phase":"review","kind":"phase_completed","data":{"cost":1.75,"duration_ms":140000}}
+{"timestamp":"2026-04-27T09:12:17-03:00","phase":"submit","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-27T09:12:47-03:00","phase":"submit","kind":"phase_completed","data":{"cost":0.60,"duration_ms":30000}}
+{"timestamp":"2026-04-27T09:12:47-03:00","phase":"monitor","kind":"phase_started","data":{"generation":1}}
+{"timestamp":"2026-04-27T09:13:42-03:00","phase":"monitor","kind":"phase_completed","data":{"cost":0.80,"duration_ms":55000}}
