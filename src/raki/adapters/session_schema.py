@@ -228,6 +228,83 @@ class SessionSchemaAdapter:
             )
         return results
 
+    # Map SODA review schema severity labels to raki ReviewFinding literals.
+    # SODA uses uppercase (CRITICAL/IMPORTANT/MINOR); raki uses lowercase.
+    # SODA "IMPORTANT" maps to raki "major" (there is no direct equivalent).
+    _SODA_SEVERITY_MAP: dict[str, str] = {
+        "CRITICAL": "critical",
+        "IMPORTANT": "major",
+        "MINOR": "minor",
+        # Passthrough for pre-existing lowercase values (flat-findings format).
+        "critical": "critical",
+        "major": "major",
+        "minor": "minor",
+    }
+
+    def _normalize_severity(self, raw_severity: str | None) -> str:
+        """Normalize a raw severity string to a ReviewFinding-compatible literal.
+
+        Returns 'minor' when the value is absent or unrecognised so that
+        malformed review files never cause a ValidationError.
+        """
+        if raw_severity is None:
+            return "minor"
+        return self._SODA_SEVERITY_MAP.get(str(raw_severity), "minor")
+
+    def _findings_from_flat(self, raw: dict) -> list[ReviewFinding]:
+        """Extract findings from the legacy flat ``findings`` array format."""
+        results: list[ReviewFinding] = []
+        for finding_raw in raw.get("findings") or []:
+            try:
+                results.append(
+                    ReviewFinding(
+                        reviewer=finding_raw.get("source", "unknown"),
+                        severity=self._normalize_severity(finding_raw.get("severity")),
+                        file=finding_raw.get("file"),
+                        line=finding_raw.get("line"),
+                        issue=redact_sensitive(finding_raw["issue"]),
+                        suggestion=redact_sensitive(s)
+                        if (s := finding_raw.get("suggestion")) is not None
+                        else None,
+                    )
+                )
+            except (KeyError, ValueError):
+                continue
+        return results
+
+    def _findings_from_perspectives(self, raw: dict) -> list[ReviewFinding]:
+        """Extract findings from the SODA ``perspectives`` array format.
+
+        Each perspective element has a ``name`` (e.g. ``"python"``) and a nested
+        ``findings`` array.  The perspective name is used as the reviewer
+        identifier, and SODA severity labels (CRITICAL/IMPORTANT/MINOR) are
+        normalised to raki's lowercase literals (critical/major/minor).
+        """
+        results: list[ReviewFinding] = []
+        for perspective in raw.get("perspectives") or []:
+            if not isinstance(perspective, dict):
+                continue
+            reviewer = perspective.get("name", "unknown")
+            for finding_raw in perspective.get("findings") or []:
+                if not isinstance(finding_raw, dict):
+                    continue
+                try:
+                    results.append(
+                        ReviewFinding(
+                            reviewer=str(reviewer),
+                            severity=self._normalize_severity(finding_raw.get("severity")),
+                            file=finding_raw.get("file"),
+                            line=finding_raw.get("line"),
+                            issue=redact_sensitive(finding_raw["issue"]),
+                            suggestion=redact_sensitive(s)
+                            if (s := finding_raw.get("suggestion")) is not None
+                            else None,
+                        )
+                    )
+                except (KeyError, ValueError):
+                    continue
+        return results
+
     def _load_findings(self, source: Path) -> list[ReviewFinding]:
         findings: list[ReviewFinding] = []
         pattern = re.compile(r"^review\.json(\.\d+)?$")
@@ -239,22 +316,12 @@ class SessionSchemaAdapter:
                 raw = json.loads(_read_bounded(file_path))
             except json.JSONDecodeError:
                 continue
-            for finding_raw in raw.get("findings") or []:
-                try:
-                    findings.append(
-                        ReviewFinding(
-                            reviewer=finding_raw.get("source", "unknown"),
-                            severity=finding_raw.get("severity", "minor"),
-                            file=finding_raw.get("file"),
-                            line=finding_raw.get("line"),
-                            issue=redact_sensitive(finding_raw["issue"]),
-                            suggestion=redact_sensitive(s)
-                            if (s := finding_raw.get("suggestion")) is not None
-                            else None,
-                        )
-                    )
-                except (KeyError, ValueError):
-                    continue
+            if raw.get("perspectives") is not None:
+                # SODA format: findings are nested inside perspective objects.
+                findings.extend(self._findings_from_perspectives(raw))
+            else:
+                # Legacy flat format: top-level "findings" array.
+                findings.extend(self._findings_from_flat(raw))
         return findings
 
     def _synthesize_context(self, phases: list[PhaseResult]) -> str | None:
