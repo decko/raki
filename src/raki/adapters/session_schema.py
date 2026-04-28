@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ValidationError
 
@@ -231,7 +231,7 @@ class SessionSchemaAdapter:
     # Map SODA review schema severity labels to raki ReviewFinding literals.
     # SODA uses uppercase (CRITICAL/IMPORTANT/MINOR); raki uses lowercase.
     # SODA "IMPORTANT" maps to raki "major" (there is no direct equivalent).
-    _SODA_SEVERITY_MAP: dict[str, str] = {
+    _SODA_SEVERITY_MAP: dict[str, Literal["critical", "major", "minor"]] = {
         "CRITICAL": "critical",
         "IMPORTANT": "major",
         "MINOR": "minor",
@@ -241,7 +241,9 @@ class SessionSchemaAdapter:
         "minor": "minor",
     }
 
-    def _normalize_severity(self, raw_severity: str | None) -> str:
+    def _normalize_severity(
+        self, raw_severity: str | None
+    ) -> Literal["critical", "major", "minor"]:
         """Normalize a raw severity string to a ReviewFinding-compatible literal.
 
         Returns 'minor' when the value is absent or unrecognised so that
