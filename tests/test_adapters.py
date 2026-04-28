@@ -3387,7 +3387,13 @@ def test_session_schema_soda_session_synthesizes_context(soda_session_dir: Path)
 
 
 def test_session_schema_soda_session_submit_context_included(soda_session_dir: Path):
-    """Context synthesis includes submit phase data (PR URL, title)."""
+    """Context synthesis includes submit phase data (PR URL/title).
+
+    The submit fixture has pr_url 'https://github.com/example/raki/pull/223'
+    and title 'chore: add SODA session test fixture ...'.  The pr_url
+    contains 'pull/223' which only appears in the submit phase output
+    (not in triage/plan/implement) and must be present after #220.
+    """
     adapter = SessionSchemaAdapter()
     sample = adapter.load(soda_session_dir)
     # Find the phase that holds the synthesized context
@@ -3395,9 +3401,9 @@ def test_session_schema_soda_session_submit_context_included(soda_session_dir: P
         (phase for phase in sample.phases if phase.knowledge_context is not None), None
     )
     assert context_phase is not None
-    assert (
-        "PR" in context_phase.knowledge_context or "pr" in context_phase.knowledge_context.lower()
-    )
+    ctx_lower = context_phase.knowledge_context.lower()
+    # PR URL path 'pull/223' is unique to the submit phase output.
+    assert "pull/223" in ctx_lower
 
 
 def test_session_schema_soda_session_perspectives_empty_findings_skipped(soda_session_dir: Path):
