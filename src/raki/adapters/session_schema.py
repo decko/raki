@@ -65,6 +65,25 @@ class SessionSchemaAdapter:
     description: str = "Directory-based session format with structured phases"
     detection_hint: str = "meta.json + events.jsonl"
 
+    @staticmethod
+    def _resolve_rework_cycles(meta_raw: dict[str, Any], phases_dict: dict[str, Any]) -> int:
+        """Resolve rework_cycles from explicit meta or SODA phase generation numbers.
+
+        If ``rework_cycles`` is present in *meta_raw* (even as 0) that value is
+        used as-is for backward compatibility.  Otherwise the value is derived
+        from the highest ``generation`` number found in *phases_dict*:
+        ``max_generation - 1`` (generation 1 == first pass == 0 rework cycles).
+        """
+        if "rework_cycles" in meta_raw:
+            return int(meta_raw["rework_cycles"])
+        if not phases_dict:
+            return 0
+        max_generation = max(
+            (phase.get("generation", 1) if isinstance(phase, dict) else 1)
+            for phase in phases_dict.values()
+        )
+        return max(0, max_generation - 1)
+
     def detect(self, source: Path) -> bool:
         if source.is_symlink():
             return False
@@ -97,7 +116,7 @@ class SessionSchemaAdapter:
             started_at=meta_raw["started_at"],
             total_cost_usd=meta_raw.get("total_cost"),
             total_phases=len(phases_dict),
-            rework_cycles=meta_raw.get("rework_cycles", 0),
+            rework_cycles=self._resolve_rework_cycles(meta_raw, phases_dict),
             model_id=model_id,
             orchestrator=orchestrator,
             pipeline_phases=pipeline_phases,
