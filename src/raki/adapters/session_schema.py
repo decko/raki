@@ -213,11 +213,16 @@ class SessionSchemaAdapter:
             except json.JSONDecodeError:
                 continue
             output_text = redact_sensitive(json.dumps(raw))
+            status = phase_meta.get("status", "completed")
+            if phase_name == "verify" and not suffix_match:
+                verdict = raw.get("verdict")
+                if isinstance(verdict, str) and verdict.upper() == "FAIL":
+                    status = "failed"
             results.append(
                 PhaseResult(
                     name=phase_name,
                     generation=generation,
-                    status=phase_meta.get("status", "completed"),
+                    status=status,
                     cost_usd=phase_meta.get("cost"),
                     duration_ms=phase_meta.get("duration_ms"),
                     tokens_in=tokens_in,
@@ -234,11 +239,8 @@ class SessionSchemaAdapter:
     _SODA_SEVERITY_MAP: dict[str, Literal["critical", "major", "minor"]] = {
         "CRITICAL": "critical",
         "IMPORTANT": "major",
+        "MAJOR": "major",
         "MINOR": "minor",
-        # Passthrough for pre-existing lowercase values (flat-findings format).
-        "critical": "critical",
-        "major": "major",
-        "minor": "minor",
     }
 
     def _normalize_severity(
@@ -246,12 +248,12 @@ class SessionSchemaAdapter:
     ) -> Literal["critical", "major", "minor"]:
         """Normalize a raw severity string to a ReviewFinding-compatible literal.
 
-        Returns 'minor' when the value is absent or unrecognised so that
-        malformed review files never cause a ValidationError.
+        Case-insensitive. Returns 'minor' when the value is absent or
+        unrecognised so that malformed review files never cause a ValidationError.
         """
         if raw_severity is None:
             return "minor"
-        return self._SODA_SEVERITY_MAP.get(str(raw_severity), "minor")
+        return self._SODA_SEVERITY_MAP.get(str(raw_severity).upper(), "minor")
 
     def _findings_from_flat(self, raw: dict) -> list[ReviewFinding]:
         """Extract findings from the legacy flat ``findings`` array format."""

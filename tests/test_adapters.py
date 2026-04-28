@@ -3416,6 +3416,52 @@ def test_session_schema_soda_session_perspectives_empty_findings_skipped(soda_se
     assert len(security_findings) == 0
 
 
+def test_session_schema_verify_verdict_pass_sets_status(soda_session_dir: Path):
+    """Verify phase with verdict PASS keeps status as completed."""
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(soda_session_dir)
+    verify_phases = [phase for phase in sample.phases if phase.name == "verify"]
+    assert len(verify_phases) >= 1
+    assert verify_phases[-1].status == "completed"
+
+
+def test_session_schema_verify_verdict_fail_sets_failed(tmp_path):
+    """Verify phase with verdict FAIL overrides status to failed."""
+    meta = {
+        "ticket": "999",
+        "started_at": "2026-01-01T00:00:00Z",
+        "total_cost": 1.0,
+        "phases": {"verify": {"status": "completed", "cost": 0.5, "generation": 1}},
+    }
+    verify_output = {"ticket_key": "999", "verdict": "FAIL", "criteria_results": []}
+    events = [
+        {"phase": "verify", "event": "phase_started"},
+        {"phase": "verify", "event": "phase_completed", "cost": 0.5},
+    ]
+    (tmp_path / "meta.json").write_text(json.dumps(meta))
+    (tmp_path / "verify.json").write_text(json.dumps(verify_output))
+    (tmp_path / "events.jsonl").write_text("\n".join(json.dumps(event) for event in events) + "\n")
+    adapter = SessionSchemaAdapter()
+    sample = adapter.load(tmp_path)
+    verify_phases = [phase for phase in sample.phases if phase.name == "verify"]
+    assert len(verify_phases) == 1
+    assert verify_phases[0].status == "failed"
+
+
+def test_session_schema_severity_case_insensitive(tmp_path):
+    """Severity normalization is case-insensitive (e.g. 'Critical' maps to 'critical')."""
+    adapter = SessionSchemaAdapter()
+    assert adapter._normalize_severity("CRITICAL") == "critical"
+    assert adapter._normalize_severity("Critical") == "critical"
+    assert adapter._normalize_severity("critical") == "critical"
+    assert adapter._normalize_severity("IMPORTANT") == "major"
+    assert adapter._normalize_severity("Important") == "major"
+    assert adapter._normalize_severity("MINOR") == "minor"
+    assert adapter._normalize_severity("Minor") == "minor"
+    assert adapter._normalize_severity("unknown") == "minor"
+    assert adapter._normalize_severity(None) == "minor"
+
+
 # --- Ticket 219: rework_cycles resolution from generation ---
 
 
