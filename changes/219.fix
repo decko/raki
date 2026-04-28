@@ -1,0 +1,1 @@
+Derive ``rework_cycles`` from SODA phase ``generation`` metadata when the explicit key is absent in ``meta.json``, fixing incorrect ``first_pass_success_rate``, ``self_correction_rate``, and ``rework_cycles`` for SODA sessions with rework.
