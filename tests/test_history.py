@@ -9,7 +9,13 @@ from unittest.mock import patch
 import pytest
 
 from raki.model.report import EvalReport
-from raki.report.history import HistoryEntry, append_history_entry, load_history
+from raki.report.history import (
+    HistoryEntry,
+    append_history_entry,
+    import_history_entry,
+    load_history,
+    load_run_ids,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -353,3 +359,142 @@ class TestLoadHistory:
         ):
             sha = _git_sha()
         assert sha is None
+
+
+# ---------------------------------------------------------------------------
+# load_run_ids
+# ---------------------------------------------------------------------------
+
+
+class TestLoadRunIds:
+    def test_returns_empty_set_when_file_missing(self, tmp_path: Path) -> None:
+        """load_run_ids must return an empty set when the history file does not exist."""
+        history_path = tmp_path / "history.jsonl"
+        ids = load_run_ids(history_path)
+        assert ids == set()
+
+    def test_returns_all_run_ids(self, tmp_path: Path) -> None:
+        """load_run_ids must return all run_id values from the history file."""
+        history_path = tmp_path / "history.jsonl"
+        for run_id in ("eval-a", "eval-b", "eval-c"):
+            report, count = _make_report(run_id=run_id)
+            append_history_entry(report, history_path, sessions_count=count)
+        ids = load_run_ids(history_path)
+        assert ids == {"eval-a", "eval-b", "eval-c"}
+
+    def test_returns_set_not_list(self, tmp_path: Path) -> None:
+        """load_run_ids must return a set for O(1) membership tests."""
+        history_path = tmp_path / "history.jsonl"
+        report, count = _make_report()
+        append_history_entry(report, history_path, sessions_count=count)
+        result = load_run_ids(history_path)
+        assert isinstance(result, set)
+
+    def test_rejects_symlink(self, tmp_path: Path) -> None:
+        """load_run_ids must refuse to read a symlink (delegates to load_history)."""
+        real_file = tmp_path / "real.jsonl"
+        real_file.write_text(
+            '{"run_id":"r","timestamp":"2026-01-01T00:00:00Z","sessions_count":1,"metrics":{}}\n'
+        )
+        link = tmp_path / "link.jsonl"
+        link.symlink_to(real_file)
+        with pytest.raises(ValueError, match="symlink"):
+            load_run_ids(link)
+
+
+# ---------------------------------------------------------------------------
+# import_history_entry
+# ---------------------------------------------------------------------------
+
+
+def _make_entry(run_id: str = "import-101") -> HistoryEntry:
+    return HistoryEntry(
+        run_id=run_id,
+        timestamp=datetime(2026, 4, 10, 8, 0, 0, tzinfo=timezone.utc),
+        sessions_count=1,
+        metrics={"first_pass_success_rate": 1.0},
+    )
+
+
+class TestImportHistoryEntry:
+    def test_writes_new_entry(self, tmp_path: Path) -> None:
+        """import_history_entry must write a new entry and return True."""
+        history_path = tmp_path / "history.jsonl"
+        entry = _make_entry("import-101")
+        existing: set[str] = set()
+        result = import_history_entry(entry, history_path, existing)
+        assert result is True
+        assert history_path.exists()
+
+    def test_skips_duplicate_run_id(self, tmp_path: Path) -> None:
+        """import_history_entry must skip an entry whose run_id is already present."""
+        history_path = tmp_path / "history.jsonl"
+        entry = _make_entry("import-101")
+        existing: set[str] = {"import-101"}
+        result = import_history_entry(entry, history_path, existing)
+        assert result is False
+        assert not history_path.exists()
+
+    def test_updates_existing_ids_on_write(self, tmp_path: Path) -> None:
+        """import_history_entry must add the run_id to existing_ids after writing."""
+        history_path = tmp_path / "history.jsonl"
+        entry = _make_entry("import-101")
+        existing: set[str] = set()
+        import_history_entry(entry, history_path, existing)
+        assert "import-101" in existing
+
+    def test_does_not_update_existing_ids_on_skip(self, tmp_path: Path) -> None:
+        """existing_ids must not be modified when the entry is skipped."""
+        history_path = tmp_path / "history.jsonl"
+        entry = _make_entry("import-101")
+        existing: set[str] = {"import-101"}
+        import_history_entry(entry, history_path, existing)
+        assert existing == {"import-101"}
+
+    def test_appends_multiple_entries(self, tmp_path: Path) -> None:
+        """Multiple import_history_entry calls must produce multiple JSONL lines."""
+        history_path = tmp_path / "history.jsonl"
+        existing: set[str] = set()
+        for i in range(3):
+            entry = _make_entry(f"import-{i}")
+            import_history_entry(entry, history_path, existing)
+        lines = history_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 3
+
+    def test_written_line_is_valid_json(self, tmp_path: Path) -> None:
+        """Each written line must be valid JSON."""
+        history_path = tmp_path / "history.jsonl"
+        entry = _make_entry("import-json")
+        import_history_entry(entry, history_path, set())
+        raw = history_path.read_text(encoding="utf-8").strip()
+        parsed = json.loads(raw)
+        assert parsed["run_id"] == "import-json"
+
+    def test_creates_parent_directories(self, tmp_path: Path) -> None:
+        """import_history_entry must create missing parent directories."""
+        history_path = tmp_path / "deep" / "nested" / "history.jsonl"
+        entry = _make_entry("import-deep")
+        import_history_entry(entry, history_path, set())
+        assert history_path.exists()
+
+    def test_rejects_symlink(self, tmp_path: Path) -> None:
+        """import_history_entry must refuse to write through a symlink."""
+        real_file = tmp_path / "real.jsonl"
+        real_file.write_text("")
+        link = tmp_path / "link.jsonl"
+        link.symlink_to(real_file)
+        entry = _make_entry("import-sym")
+        with pytest.raises(ValueError, match="symlink"):
+            import_history_entry(entry, link, set())
+
+    def test_second_call_same_id_is_idempotent(self, tmp_path: Path) -> None:
+        """After a successful write, calling import_history_entry again with the
+        same run_id must be a no-op (existing_ids is updated in-place)."""
+        history_path = tmp_path / "history.jsonl"
+        entry = _make_entry("import-idem")
+        existing: set[str] = set()
+        import_history_entry(entry, history_path, existing)
+        result = import_history_entry(entry, history_path, existing)
+        assert result is False
+        lines = history_path.read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 1
