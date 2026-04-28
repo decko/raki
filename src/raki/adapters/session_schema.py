@@ -1,14 +1,14 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ValidationError
 
 from raki.adapters.redact import redact_dict, redact_sensitive
 from raki.model import EvalSample, PhaseResult, ReviewFinding, SessionEvent, SessionMeta
 
-PHASE_NAMES = ["triage", "plan", "implement", "verify"]
+PHASE_NAMES = ["triage", "plan", "implement", "verify", "review", "submit", "monitor"]
 
 MAX_SESSION_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 MAX_IMPLEMENT_FALLBACK_CHARS = 10_000
@@ -213,11 +213,16 @@ class SessionSchemaAdapter:
             except json.JSONDecodeError:
                 continue
             output_text = redact_sensitive(json.dumps(raw))
+            status = phase_meta.get("status", "completed")
+            if phase_name == "verify" and not suffix_match:
+                verdict = raw.get("verdict")
+                if isinstance(verdict, str) and verdict.upper() == "FAIL":
+                    status = "failed"
             results.append(
                 PhaseResult(
                     name=phase_name,
                     generation=generation,
-                    status=phase_meta.get("status", "completed"),
+                    status=status,
                     cost_usd=phase_meta.get("cost"),
                     duration_ms=phase_meta.get("duration_ms"),
                     tokens_in=tokens_in,
@@ -226,6 +231,82 @@ class SessionSchemaAdapter:
                     output_structured=redact_dict(raw),
                 )
             )
+        return results
+
+    # Map SODA review schema severity labels to raki ReviewFinding literals.
+    # SODA uses uppercase (CRITICAL/IMPORTANT/MINOR); raki uses lowercase.
+    # SODA "IMPORTANT" maps to raki "major" (there is no direct equivalent).
+    _SODA_SEVERITY_MAP: dict[str, Literal["critical", "major", "minor"]] = {
+        "CRITICAL": "critical",
+        "IMPORTANT": "major",
+        "MAJOR": "major",
+        "MINOR": "minor",
+    }
+
+    def _normalize_severity(
+        self, raw_severity: str | None
+    ) -> Literal["critical", "major", "minor"]:
+        """Normalize a raw severity string to a ReviewFinding-compatible literal.
+
+        Case-insensitive. Returns 'minor' when the value is absent or
+        unrecognised so that malformed review files never cause a ValidationError.
+        """
+        if raw_severity is None:
+            return "minor"
+        return self._SODA_SEVERITY_MAP.get(str(raw_severity).upper(), "minor")
+
+    def _findings_from_flat(self, raw: dict) -> list[ReviewFinding]:
+        """Extract findings from the legacy flat ``findings`` array format."""
+        results: list[ReviewFinding] = []
+        for finding_raw in raw.get("findings") or []:
+            try:
+                results.append(
+                    ReviewFinding(
+                        reviewer=finding_raw.get("source", "unknown"),
+                        severity=self._normalize_severity(finding_raw.get("severity")),
+                        file=finding_raw.get("file"),
+                        line=finding_raw.get("line"),
+                        issue=redact_sensitive(finding_raw["issue"]),
+                        suggestion=redact_sensitive(s)
+                        if (s := finding_raw.get("suggestion")) is not None
+                        else None,
+                    )
+                )
+            except (KeyError, ValueError):
+                continue
+        return results
+
+    def _findings_from_perspectives(self, raw: dict) -> list[ReviewFinding]:
+        """Extract findings from the SODA ``perspectives`` array format.
+
+        Each perspective element has a ``name`` (e.g. ``"python"``) and a nested
+        ``findings`` array.  The perspective name is used as the reviewer
+        identifier, and SODA severity labels (CRITICAL/IMPORTANT/MINOR) are
+        normalised to raki's lowercase literals (critical/major/minor).
+        """
+        results: list[ReviewFinding] = []
+        for perspective in raw.get("perspectives") or []:
+            if not isinstance(perspective, dict):
+                continue
+            reviewer = perspective.get("name", "unknown")
+            for finding_raw in perspective.get("findings") or []:
+                if not isinstance(finding_raw, dict):
+                    continue
+                try:
+                    results.append(
+                        ReviewFinding(
+                            reviewer=str(reviewer),
+                            severity=self._normalize_severity(finding_raw.get("severity")),
+                            file=finding_raw.get("file"),
+                            line=finding_raw.get("line"),
+                            issue=redact_sensitive(finding_raw["issue"]),
+                            suggestion=redact_sensitive(s)
+                            if (s := finding_raw.get("suggestion")) is not None
+                            else None,
+                        )
+                    )
+                except (KeyError, ValueError):
+                    continue
         return results
 
     def _load_findings(self, source: Path) -> list[ReviewFinding]:
@@ -239,31 +320,23 @@ class SessionSchemaAdapter:
                 raw = json.loads(_read_bounded(file_path))
             except json.JSONDecodeError:
                 continue
-            for finding_raw in raw.get("findings") or []:
-                try:
-                    findings.append(
-                        ReviewFinding(
-                            reviewer=finding_raw.get("source", "unknown"),
-                            severity=finding_raw.get("severity", "minor"),
-                            file=finding_raw.get("file"),
-                            line=finding_raw.get("line"),
-                            issue=redact_sensitive(finding_raw["issue"]),
-                            suggestion=redact_sensitive(s)
-                            if (s := finding_raw.get("suggestion")) is not None
-                            else None,
-                        )
-                    )
-                except (KeyError, ValueError):
-                    continue
+            if raw.get("perspectives") is not None:
+                # SODA format: findings are nested inside perspective objects.
+                findings.extend(self._findings_from_perspectives(raw))
+            else:
+                # Legacy flat format: top-level "findings" array.
+                findings.extend(self._findings_from_flat(raw))
         return findings
 
     def _synthesize_context(self, phases: list[PhaseResult]) -> str | None:
         """Synthesize retrieval context from structured phase outputs.
 
-        Extracts relevant fields from triage, plan, and implement phases:
+        Extracts relevant fields from each SODA pipeline phase:
         - Triage: approach, code_area, files, risks
         - Plan: approach, task descriptions and files
         - Implement: files_changed, commits, deviations; falls back to output text
+        - Submit: title, branch, pr_url, tests_passed
+        - Monitor: tests_passed, comments_handled summary
         """
         context_chunks: list[str] = []
 
@@ -326,6 +399,44 @@ class SessionSchemaAdapter:
                     impl_parts.append(f"Deviations: {deviations}")
                 if impl_parts:
                     context_chunks.append(redact_sensitive("\n".join(impl_parts)))
+
+            elif phase.name == "submit" and phase.output_structured:
+                submit_parts: list[str] = []
+                title = phase.output_structured.get("title")
+                if title and isinstance(title, str):
+                    submit_parts.append(f"PR title: {title}")
+                branch = phase.output_structured.get("branch")
+                if branch and isinstance(branch, str):
+                    submit_parts.append(f"Branch: {branch}")
+                pr_url = phase.output_structured.get("pr_url")
+                if pr_url and isinstance(pr_url, str):
+                    submit_parts.append(f"PR URL: {pr_url}")
+                target = phase.output_structured.get("target")
+                if target and isinstance(target, str):
+                    submit_parts.append(f"Target branch: {target}")
+                if submit_parts:
+                    context_chunks.append(redact_sensitive("\n".join(submit_parts)))
+
+            elif phase.name == "monitor" and phase.output_structured:
+                monitor_parts: list[str] = []
+                tests_passed = phase.output_structured.get("tests_passed")
+                if tests_passed is not None:
+                    monitor_parts.append(
+                        f"Post-merge tests: {'passed' if tests_passed else 'failed'}"
+                    )
+                comments_handled = phase.output_structured.get("comments_handled")
+                if comments_handled and isinstance(comments_handled, list):
+                    resolved_count = sum(
+                        1
+                        for comment in comments_handled
+                        if isinstance(comment, dict)
+                        and comment.get("action") in ("fixed", "explained")
+                    )
+                    monitor_parts.append(
+                        f"Review comments resolved: {resolved_count}/{len(comments_handled)}"
+                    )
+                if monitor_parts:
+                    context_chunks.append(redact_sensitive("\n".join(monitor_parts)))
 
         # Fall back to implement phase output when structured fields are insufficient
         if not context_chunks:

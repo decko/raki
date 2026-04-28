@@ -78,13 +78,25 @@ Output from the verification phase.
 
 Output from the review phase. Suffixed files (e.g., `review.json.1`) represent earlier review generations.
 
+The adapter supports two finding formats:
+
+**Legacy flat format** — findings at the top level:
+
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `ticket_key` | string | Yes | Ticket identifier |
 | `verdict` | string | No | Review outcome (e.g., `approved`, `changes_requested`) |
 | `findings` | array of objects | No | List of review findings (see below) |
 
-### findings (nested in review.json)
+**SODA perspectives format** — findings nested inside reviewer perspectives:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `ticket_key` | string | Yes | Ticket identifier |
+| `verdict` | string | No | Review outcome: `approve` or `rework` |
+| `perspectives` | array of objects | No | Per-specialist review perspectives (see below) |
+
+### findings (nested in review.json — flat format)
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -94,6 +106,50 @@ Output from the review phase. Suffixed files (e.g., `review.json.1`) represent e
 | `line` | integer | No | Line number related to the finding |
 | `issue` | string | Yes | Description of the issue found |
 | `suggestion` | string | No | Suggested fix or improvement |
+
+### perspectives (nested in review.json — SODA format)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Specialist name (e.g., `python`, `security`); used as reviewer |
+| `verdict` | string | Yes | Specialist outcome: `clean` or `needs_fixes` |
+| `findings` | array of objects | Yes | Per-finding list (same shape as flat format, but `severity` uses uppercase: `CRITICAL`, `IMPORTANT`, `MINOR`) |
+
+Severity mapping from SODA uppercase labels to raki values: `CRITICAL` → `critical`, `IMPORTANT` → `major`, `MINOR` → `minor`.
+
+## submit.json
+
+Output from the submit phase. Records the pull request created from the implementation.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `ticket_key` | string | Yes | Ticket identifier |
+| `pr_url` | string | Yes | URL of the opened pull request |
+| `pr_number` | integer | Yes | Pull request number |
+| `title` | string | Yes | Pull request title |
+| `branch` | string | Yes | Source branch submitted |
+| `target` | string | Yes | Target branch (e.g., `main`) |
+
+## monitor.json
+
+Output from the monitor phase. Records CI results and review comment handling after the PR is open.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `ticket_key` | string | Yes | Ticket identifier |
+| `pr_url` | string | Yes | URL of the monitored pull request |
+| `comments_handled` | array of objects | Yes | Review comments and how they were handled |
+| `tests_passed` | boolean | Yes | Whether post-merge CI checks passed |
+
+### comments_handled (nested in monitor.json)
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `comment_id` | string | Yes | Unique identifier for the review comment |
+| `author` | string | Yes | Author of the review comment |
+| `content` | string | No | Text of the comment |
+| `action` | string | Yes | How the comment was handled: `fixed`, `explained`, or `deferred` |
+| `response` | string | Yes | Description of the action taken |
 
 ## events.jsonl
 
