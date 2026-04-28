@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from raki.adapters.redact import redact_dict, redact_sensitive
 from raki.model import EvalSample, PhaseResult, ReviewFinding, SessionEvent, SessionMeta
 
-PHASE_NAMES = ["triage", "plan", "implement", "verify"]
+PHASE_NAMES = ["triage", "plan", "implement", "verify", "review", "submit", "monitor"]
 
 MAX_SESSION_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 MAX_IMPLEMENT_FALLBACK_CHARS = 10_000
