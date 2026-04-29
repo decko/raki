@@ -1,3 +1,42 @@
+## [0.11.0] — 2026-04-29
+
+### Features
+
+- The session-schema adapter now loads all seven SODA pipeline phases (triage, plan, implement, verify, review, submit, monitor) as ``PhaseResult`` objects. Previously only four phases were loaded; submit and monitor outputs were silently ignored.
+
+  Review findings are now parsed from the SODA ``perspectives`` structure in addition to the legacy flat ``findings`` array. The perspective name (e.g. ``python``, ``security``) is used as the reviewer identifier. SODA severity labels (``CRITICAL``, ``IMPORTANT``, ``MINOR``) are mapped to raki values (``critical``, ``major``, ``minor``).
+
+  Context synthesis now includes submit-phase data (PR title, branch, PR URL) and monitor-phase data (post-merge test result, review comments resolved). The ``docs/session-schema.md`` reference now documents all seven phases. (#220)
+- Add ``raki import-history`` command to backfill ``history.jsonl`` from existing session directories.
+
+  The new command discovers sessions under one or more input paths using the adapter registry (session-schema and alcove formats are both supported), computes all operational metrics without making any LLM calls, and appends one ``HistoryEntry`` per session to the JSONL history file.  Sessions already present in the history are automatically skipped so repeated imports are idempotent.
+
+  Key options:
+
+  - ``--history-path`` — override the default ``.raki/history.jsonl`` destination
+  - ``--adapter`` — force a specific adapter instead of auto-detecting
+  - ``--dry-run`` — preview what would be imported without writing anything
+  - ``-q / --quiet`` — suppress per-session output lines
+
+  Two new public helpers are also available in ``raki.report.history``:
+
+  - ``load_run_ids(history_path)`` — return the set of ``run_id`` values already in the history file (O(1) deduplication)
+  - ``import_history_entry(entry, history_path, existing_ids)`` — append a ``HistoryEntry`` when its ``run_id`` is not already present, updating the caller-owned ``existing_ids`` set in-place
+
+  A new internal module ``raki.adapters.discovery`` provides ``discover_sessions(paths, registry)`` which walks input paths recursively and returns all detected session paths, respecting symlink safety and deduplication.
+
+  (#221)
+
+### Bug Fixes
+
+- ``AlcoveAdapter.detect()`` now reads the first 32 KB of a file (up from 4 KB) when detecting the Alcove/bridge format. Sessions whose ``"transcript"`` key was pushed past the 4 KB boundary by a long system prompt were previously silently skipped; they are now correctly detected and loaded. (#218)
+- Derive ``rework_cycles`` from SODA phase ``generation`` metadata when the explicit key is absent in ``meta.json``, fixing incorrect ``first_pass_success_rate``, ``self_correction_rate``, and ``rework_cycles`` for SODA sessions with rework. (#219)
+
+### Internal Changes
+
+- Add anonymized SODA session test fixture with all 7 phases, rework history, and review findings. (#223)
+
+
 ## [0.10.0] — 2026-04-26
 
 ### Features
