@@ -2357,3 +2357,116 @@ class TestPhaseTranscriptInDrillDown:
         assert "Verification transcript here." in content
         # Both phases should have transcript elements
         assert content.count("View transcript") == 2
+
+
+class TestHtmlReportHeaderEnrichment:
+    """Tests for project identity and evaluation context in the HTML report header (ticket #236)."""
+
+    def _make_report_with_config(self, config: dict) -> EvalReport:
+        return EvalReport(
+            run_id="eval-header-test",
+            timestamp=datetime(2026, 4, 30, 10, 0, 0, tzinfo=timezone.utc),
+            config=config,
+            aggregate_scores={"first_pass_success_rate": 0.8},
+        )
+
+    def test_title_includes_project_name_when_set(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_config({"project_name": "my-cool-project"})
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "my-cool-project" in content
+        # Should appear in the <title> tag
+        assert "my-cool-project" in content[: content.index("</title>")]
+
+    def test_title_omits_project_name_when_empty(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_config({"project_name": ""})
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        title_end = content.index("</title>")
+        title_section = content[:title_end]
+        # The separator "—" before project name should not appear in title
+        assert "RAKI Evaluation Report" in title_section
+
+    def test_header_shows_project_name(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_config({"project_name": "acme-rag"})
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "acme-rag" in content
+
+    def test_header_omits_project_name_when_absent_from_config(self, tmp_path: Path) -> None:
+        """Old reports without project_name in config should render without error."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_config({})
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Should still render successfully
+        assert "RAKI Evaluation Report" in content
+
+    def test_header_shows_docs_path_basename(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_config({"docs_path": "/home/user/project/docs"})
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Basename should appear in the header
+        assert "docs" in content
+        # Full path should appear in the title tooltip attribute
+        assert "/home/user/project/docs" in content
+
+    def test_header_omits_docs_when_absent(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_config({})
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "<strong>Docs:</strong>" not in content
+
+    def test_header_shows_session_formats(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_config({"session_formats": ["alcove", "session-schema"]})
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "alcove" in content
+        assert "session-schema" in content
+
+    def test_header_omits_format_when_absent(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_config({})
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "<strong>Format:</strong>" not in content
+
+    def test_backward_compat_old_report_renders_without_error(self, tmp_path: Path) -> None:
+        """Reports with no project_name / docs_path / session_formats in config
+        must render without any errors (backward compatibility)."""
+        from raki.report.html_report import write_html_report
+
+        # Simulate an old report without any of the new fields
+        report = EvalReport(
+            run_id="old-report-001",
+            timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            config={"llm_provider": None, "skip_judge": True, "metrics": []},
+            aggregate_scores={"rework_cycles": 0.5},
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert output.exists()
+        assert "RAKI Evaluation Report" in content

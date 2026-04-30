@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RAKI Evaluation Report &mdash; {{ report.run_id }}</title>
+<title>{% if project_name %}{{ project_name }} &mdash; {% endif %}RAKI Evaluation Report &mdash; {{ report.run_id }}</title>
 <style>
   :root {
     --bg-primary: #0f0f1a;
@@ -754,11 +754,13 @@
 <body>
 <div class="container">
   <header>
-    <h1>RAKI Evaluation Report</h1>
+    <h1>{% if project_name %}{{ project_name }} &mdash; {% endif %}RAKI Evaluation Report</h1>
     <div class="meta">
       <span><strong>Run:</strong> {{ report.run_id }}</span>
       <span><strong>Timestamp:</strong> {{ report.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC') }}</span>
       <span><strong>Sessions:</strong> {{ session_count }}</span>
+      {% if session_formats %}<span><strong>Format:</strong> {{ session_formats | join(", ") }}</span>{% endif %}
+      {% if report_docs_path %}<span><strong>Docs:</strong> <span title="{{ report_docs_path }}">{{ report_docs_path.split('/')[-1] }}</span></span>{% endif %}
       {% if agent_models %}<span><strong>Agent model:</strong> {{ agent_models | join(", ") }}</span>{% endif %}
       {% if judge_cost %}<span><strong>Judge:</strong> {% if judge_model %}{{ judge_model }}{% if judge_provider %} ({{ judge_provider }}){% endif %} &middot; {% endif %}{{ judge_cost.calls }} calls, {{ "{:,}".format(judge_cost.input_tokens) }} in / {{ "{:,}".format(judge_cost.output_tokens) }} out tokens</span>{% endif %}
     </div>
