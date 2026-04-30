@@ -3371,3 +3371,127 @@ class TestGateCheckCommand:
             ],
         )
         assert result.exit_code == 1
+
+
+class TestBuildReportConfig:
+    """Tests for _build_report_config() CLI helper (ticket #236)."""
+
+    def _make_minimal_report(self):
+        from raki.model.report import EvalReport
+
+        return EvalReport(
+            run_id="test-report",
+            config={"llm_provider": None, "skip_judge": True, "metrics": []},
+            aggregate_scores={},
+        )
+
+    def _make_manifest(self, name: str = ""):
+        from pathlib import Path
+
+        from raki.ground_truth.manifest import EvalManifest, SessionsConfig
+
+        return EvalManifest(name=name, sessions=SessionsConfig(path=Path("/tmp/sessions")))
+
+    def _make_dataset(self, adapter_formats: list[str]):
+        from datetime import datetime, timezone
+
+        from raki.model import EvalDataset
+        from raki.model.dataset import EvalSample, SessionMeta
+
+        samples = []
+        for i, fmt in enumerate(adapter_formats):
+            meta = SessionMeta(
+                session_id=f"s{i}",
+                started_at=datetime.now(timezone.utc),
+                total_phases=1,
+                rework_cycles=0,
+                adapter_format=fmt,
+            )
+            samples.append(EvalSample(session=meta, phases=[], findings=[], events=[]))
+        return EvalDataset(samples=samples)
+
+    def test_injects_project_name(self):
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest(name="my-project")
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, None)
+        assert report.config["project_name"] == "my-project"
+
+    def test_project_name_empty_string_when_not_set(self):
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest(name="")
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, None)
+        assert report.config["project_name"] == ""
+
+    def test_injects_docs_path_when_provided(self, tmp_path):
+        from raki.cli import _build_report_config
+
+        docs = tmp_path / "docs"
+        docs.mkdir()
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, docs)
+        assert report.config["docs_path"] == str(docs)
+
+    def test_docs_path_absent_when_none(self):
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, None)
+        assert "docs_path" not in report.config
+
+    def test_injects_session_formats(self):
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset(["session-schema", "session-schema", "alcove"])
+        _build_report_config(report, manifest, dataset, None)
+        assert report.config["session_formats"] == ["alcove", "session-schema"]
+
+    def test_session_formats_absent_when_all_empty(self):
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset(["", ""])
+        _build_report_config(report, manifest, dataset, None)
+        assert "session_formats" not in report.config
+
+    def test_session_formats_absent_when_no_samples(self):
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, None)
+        assert "session_formats" not in report.config
+
+    def test_run_command_injects_project_name_into_json_report(
+        self, manifest_with_session, tmp_path
+    ):
+        """The run command should include project_name in the JSON report config."""
+        manifest_path, sessions = manifest_with_session
+        # Rewrite manifest to include a project name
+
+        content = manifest_path.read_text()
+        manifest_path.write_text("name: test-project\n" + content)
+        output_dir = tmp_path / "results"
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["run", "-m", str(manifest_path), "-o", str(output_dir), "-q"],
+        )
+        assert result.exit_code == 0
+        json_files = list(output_dir.glob("*.json"))
+        assert json_files
+        data = json.loads(json_files[0].read_text())
+        assert data["config"]["project_name"] == "test-project"
