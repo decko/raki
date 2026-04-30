@@ -185,6 +185,40 @@ class TestLoadManifest:
 class TestEvalManifest:
     """Tests for EvalManifest model structure."""
 
+    def test_manifest_name_defaults_to_empty_string(self) -> None:
+        from raki.ground_truth.manifest import EvalManifest, SessionsConfig
+
+        manifest = EvalManifest(sessions=SessionsConfig(path=Path("/tmp/sessions")))
+        assert manifest.name == ""
+
+    def test_manifest_name_can_be_set(self) -> None:
+        from raki.ground_truth.manifest import EvalManifest, SessionsConfig
+
+        manifest = EvalManifest(
+            name="my-project", sessions=SessionsConfig(path=Path("/tmp/sessions"))
+        )
+        assert manifest.name == "my-project"
+
+    def test_manifest_name_loaded_from_yaml(self, tmp_path: Path) -> None:
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"name: my-project\nsessions:\n  path: {sessions}\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.name == "my-project"
+
+    def test_manifest_name_absent_from_yaml_defaults_to_empty(self, tmp_path: Path) -> None:
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.name == ""
+
     def test_manifest_has_sessions(self) -> None:
         from raki.ground_truth.manifest import EvalManifest, SessionsConfig
 
