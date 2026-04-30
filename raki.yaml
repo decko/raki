@@ -2,6 +2,8 @@
 # Points at the curated ground truth and session fixtures used during
 # development and CI.
 
+name: raki
+
 sessions:
   path: tests/fixtures/sessions
   format: auto
