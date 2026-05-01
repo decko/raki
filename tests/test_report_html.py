@@ -2425,14 +2425,15 @@ class TestHtmlReportHeaderEnrichment:
         # Full path should appear in the title tooltip attribute
         assert "/home/user/project/docs" in content
 
-    def test_header_omits_docs_when_absent(self, tmp_path: Path) -> None:
+    def test_header_shows_not_configured_when_docs_absent(self, tmp_path: Path) -> None:
         from raki.report.html_report import write_html_report
 
         report = self._make_report_with_config({})
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        assert "<strong>Docs:</strong>" not in content
+        assert "<strong>Docs:</strong>" in content
+        assert "not configured" in content
 
     def test_header_shows_session_formats(self, tmp_path: Path) -> None:
         from raki.report.html_report import write_html_report
