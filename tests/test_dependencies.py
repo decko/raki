@@ -52,3 +52,23 @@ class TestRagasExtraDependencies:
         assert version_tuple >= (1, 0), (
             f"instructor {installed_version} is too old — instructor.from_anthropic requires >= 1.0"
         )
+
+    def test_langchain_google_vertexai_removed_from_ragas_extra(self):
+        """langchain-google-vertexai must NOT appear in the ragas extra.
+
+        The LLM setup code uses google.genai SDK directly via InstructorLLM and
+        GoogleEmbeddings — no LangChain Vertex AI integration is needed.
+        langchain-google-vertexai pulls in heavy transitive deps (google-cloud-aiplatform,
+        google-cloud-storage, pyarrow, bottleneck) that are unused and slow to install.
+        See: https://github.com/<org>/raki/issues/234
+        """
+        pyproject = _load_pyproject()
+        ragas_deps = pyproject["project"]["optional-dependencies"]["ragas"]
+        langchain_vertex_entries = [
+            dep for dep in ragas_deps if "langchain-google-vertexai" in dep.lower()
+        ]
+        assert not langchain_vertex_entries, (
+            "langchain-google-vertexai is listed in the ragas extra but is no longer used — "
+            "the code uses google.genai SDK directly via InstructorLLM / GoogleEmbeddings. "
+            f"Remove these entries: {langchain_vertex_entries}"
+        )

@@ -24,7 +24,6 @@ ragas = [
     "instructor>=1.0",
     "google-auth>=2.0",
     "google-genai>=1.0",
-    "langchain-google-vertexai>=2.0",
 ]
 litellm = [
     "litellm>=1.0",
