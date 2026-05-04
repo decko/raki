@@ -1390,6 +1390,7 @@ class TestCreateRagasEmbeddings:
 
     def test_embeddings_passes_client_through(self, monkeypatch: pytest.MonkeyPatch):
         """The pre-configured genai.Client must not be discarded; it must reach GoogleEmbeddings."""
+        monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
         monkeypatch.setenv("VERTEXAI_PROJECT", "client-project")
         monkeypatch.setenv("VERTEXAI_LOCATION", "europe-west4")
 
@@ -1407,6 +1408,7 @@ class TestCreateRagasEmbeddings:
 
     def test_passes_vertex_project_to_genai_client(self, monkeypatch: pytest.MonkeyPatch):
         """Verify genai.Client is created with vertexai=True and project from env."""
+        monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
         monkeypatch.setenv("VERTEXAI_PROJECT", "my-project")
         monkeypatch.setenv("VERTEXAI_LOCATION", "europe-west1")
 
@@ -1445,6 +1447,43 @@ class TestCreateRagasEmbeddings:
         mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="fallback-project", location="us-central1"
         )
+
+    def test_vertexai_project_sets_google_cloud_project_env(self, monkeypatch: pytest.MonkeyPatch):
+        """When only VERTEXAI_PROJECT is set, GOOGLE_CLOUD_PROJECT must be populated in os.environ.
+
+        GoogleEmbeddings reads GOOGLE_CLOUD_PROJECT internally during embedding calls, not just at
+        construction time. Without this normalisation, answer_relevancy fails even when a valid
+        pre-configured genai.Client is passed (see #231).
+        """
+        import os
+
+        monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+        monkeypatch.setenv("VERTEXAI_PROJECT", "fallback-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="vertex-anthropic")
+        mocks["create_fn"](config)
+
+        assert os.environ.get("GOOGLE_CLOUD_PROJECT") == "fallback-project"
+
+    def test_existing_google_cloud_project_not_overwritten(self, monkeypatch: pytest.MonkeyPatch):
+        """When GOOGLE_CLOUD_PROJECT is already set, it must not be overwritten by VERTEXAI_PROJECT.
+
+        os.environ.setdefault() must be used so that a user-configured GOOGLE_CLOUD_PROJECT is
+        never silently replaced (see #231).
+        """
+        import os
+
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "primary-project")
+        monkeypatch.setenv("VERTEXAI_PROJECT", "other-project")
+        monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
+
+        mocks = self._setup_embeddings_mocks(monkeypatch)
+        config = MetricConfig(llm_provider="vertex-anthropic")
+        mocks["create_fn"](config)
+
+        assert os.environ.get("GOOGLE_CLOUD_PROJECT") == "primary-project"
 
     def test_missing_project_raises_valueerror(self, monkeypatch: pytest.MonkeyPatch):
         """When neither GOOGLE_CLOUD_PROJECT nor VERTEXAI_PROJECT is set, raise ValueError."""

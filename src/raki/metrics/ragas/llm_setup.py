@@ -198,6 +198,11 @@ def create_ragas_embeddings(config: MetricConfig):
         )
     location = os.environ.get("VERTEXAI_LOCATION", "us-central1")
 
+    # Normalise GOOGLE_CLOUD_PROJECT so that GoogleEmbeddings can find the project during
+    # embedding calls (it reads GOOGLE_CLOUD_PROJECT internally, not VERTEXAI_PROJECT).
+    # setdefault leaves an already-configured GOOGLE_CLOUD_PROJECT untouched (see #231).
+    os.environ.setdefault("GOOGLE_CLOUD_PROJECT", project)
+
     client = genai.Client(vertexai=True, project=project, location=location)
 
     return GoogleEmbeddings(

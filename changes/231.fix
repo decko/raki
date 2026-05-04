@@ -1,0 +1,5 @@
+``answer_relevancy`` no longer fails when only ``VERTEXAI_PROJECT`` is set.
+``create_ragas_embeddings`` now normalises ``GOOGLE_CLOUD_PROJECT`` from
+``VERTEXAI_PROJECT`` so that ``GoogleEmbeddings`` can find the project during
+embedding calls (it reads ``GOOGLE_CLOUD_PROJECT`` internally, not
+``VERTEXAI_PROJECT``).
