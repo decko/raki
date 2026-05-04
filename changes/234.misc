@@ -1,0 +1,5 @@
+Remove ``langchain-google-vertexai`` from the ``ragas`` optional-dependencies.
+The LLM setup code uses the ``google.genai`` SDK directly (``InstructorLLM`` +
+``GoogleEmbeddings``) and has no LangChain Vertex AI integration. Dropping this
+dependency removes 28 transitive packages from the lock file (including
+``google-cloud-aiplatform``, ``grpcio``, ``pyarrow``, and ``protobuf``).
