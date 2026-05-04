@@ -251,7 +251,7 @@ Use the `/orchestrate` skill in Claude Code to coordinate milestone-level develo
 26. **Manifest symlink path escape** -- manifest session paths cannot be symlinks to external directories. The real path is resolved and checked against project root. Copy sessions into the manifest directory instead of symlinking.
 27. **`soda-system-prompt-*.md` stray files** -- SODA sometimes leaves temporary prompt files in the repo root. These are in `.gitignore` and should never be committed.
 28. **`--docs-path` must match the project being worked on** -- when evaluating SODA sessions that implement raki code, point `--docs-path` to raki's docs, not SODA's. When evaluating Alcove sessions working on pulp-service, point to pulp-service docs. Wrong docs → knowledge_gap_rate=1.00 because findings reference source files the docs don't cover.
-29. **`vertex-anthropic` is the reliable judge provider** -- `anthropic` needs `ANTHROPIC_API_KEY` (not set by default). `google` has an async/sync client mismatch (#233). `answer_relevancy` always fails because it uses Vertex AI embeddings which need `GOOGLE_CLOUD_PROJECT` in addition to `VERTEXAI_PROJECT` (#231). Default to `--judge-provider vertex-anthropic --judge-model claude-sonnet-4-6`.
+29. **`vertex-anthropic` is the reliable judge provider** -- `anthropic` needs `ANTHROPIC_API_KEY` (not set by default). `google` has an async/sync client mismatch (#233). `answer_relevancy` requires either `GOOGLE_CLOUD_PROJECT` or `VERTEXAI_PROJECT`; `create_ragas_embeddings` normalises `GOOGLE_CLOUD_PROJECT` from `VERTEXAI_PROJECT` so `GoogleEmbeddings` can find the project internally (#231). Default to `--judge-provider vertex-anthropic --judge-model claude-sonnet-4-6`.
 
 ## Things agents often get wrong here
 
