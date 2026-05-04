@@ -623,6 +623,9 @@ def write_html_report(
     judge_cost = report.config.get("judge_cost")
     judge_model = report.config.get("llm_model")
     judge_provider = report.config.get("llm_provider")
+    project_name = report.config.get("project_name", "")
+    report_docs_path = report.config.get("docs_path", "")
+    session_formats = report.config.get("session_formats", [])
 
     html_content = template.render(
         report=report,
@@ -652,6 +655,9 @@ def write_html_report(
         judge_model=judge_model,
         judge_provider=judge_provider,
         metric_warnings=report.warnings,
+        project_name=project_name,
+        report_docs_path=report_docs_path,
+        session_formats=session_formats,
     )
 
     output.write_text(html_content, encoding="utf-8")

@@ -64,6 +64,7 @@ class EvalManifest(BaseModel):
     including session sources, ground truth, and synthetic generation config.
     """
 
+    name: str = ""
     sessions: SessionsConfig
     sources: list[SourceDocument] = Field(default_factory=list)
     ground_truth: GroundTruthConfig = Field(default_factory=GroundTruthConfig)

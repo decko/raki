@@ -3528,3 +3528,40 @@ def test_session_schema_rework_explicit_takes_precedence(tmp_path):
     sample = adapter.load(tmp_path)
     # Explicit value (3) must win even though generation-derived would be 1
     assert sample.session.rework_cycles == 3
+
+
+# --- adapter_format on SessionMeta (ticket #236) ---
+
+
+def test_dataset_loader_sets_adapter_format_on_samples(sessions_dir: Path):
+    """DatasetLoader must stamp adapter_format on every loaded sample."""
+    registry = AdapterRegistry()
+    registry.register(SessionSchemaAdapter())
+    loader = DatasetLoader(registry)
+    dataset = loader.load_directory(sessions_dir)
+    for sample in dataset.samples:
+        assert sample.session.adapter_format == "session-schema"
+
+
+def test_dataset_loader_load_session_sets_adapter_format(pass_simple_dir: Path):
+    """load_session() must also stamp adapter_format."""
+    registry = AdapterRegistry()
+    registry.register(SessionSchemaAdapter())
+    loader = DatasetLoader(registry)
+    sample = loader.load_session(pass_simple_dir)
+    assert sample.session.adapter_format == "session-schema"
+
+
+def test_session_meta_adapter_format_defaults_to_empty_string():
+    """SessionMeta.adapter_format defaults to empty string for backward compat."""
+    from datetime import datetime, timezone
+
+    from raki.model.dataset import SessionMeta
+
+    meta = SessionMeta(
+        session_id="x",
+        started_at=datetime.now(timezone.utc),
+        total_phases=1,
+        rework_cycles=0,
+    )
+    assert meta.adapter_format == ""

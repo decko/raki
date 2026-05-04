@@ -71,6 +71,7 @@ class DatasetLoader:
             if adapter is not None:
                 try:
                     sample = adapter.load(child)
+                    sample.session.adapter_format = adapter.name
                     samples.append(sample)
                 except Exception as exc:
                     self.errors.append(LoadError(path=child, error=str(exc)))
@@ -89,7 +90,9 @@ class DatasetLoader:
             adapter = self._detect_adapter(path)
             if adapter is None:
                 raise ValueError(f"No adapter detected for {path}")
-        return adapter.load(path)
+        sample = adapter.load(path)
+        sample.session.adapter_format = adapter.name
+        return sample
 
     def _detect_adapter(self, path: Path) -> SessionAdapter | None:
         for adapter in self._registry.list_all():

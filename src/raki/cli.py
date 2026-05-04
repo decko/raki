@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from raki.adapters.registry import AdapterRegistry
     from raki.ground_truth.manifest import EvalManifest
     from raki.model import EvalDataset
+    from raki.model.report import EvalReport
 
 console = Console()
 
@@ -25,6 +26,40 @@ console = Console()
 def _stderr_console() -> Console:
     """Return a Console that writes to stderr, for use when --json is active."""
     return Console(stderr=True)
+
+
+def _build_report_config(
+    report: "EvalReport",
+    manifest: "EvalManifest",
+    dataset: "EvalDataset",
+    effective_docs_path: Path | None,
+) -> None:
+    """Inject project identity and evaluation context into ``report.config``.
+
+    Merges three new keys into the existing config dict produced by the
+    MetricsEngine so downstream consumers (HTML renderer, JSON) can surface
+    project identity without any breaking schema changes.
+
+    Args:
+        report: The EvalReport produced by MetricsEngine.run().
+        manifest: The loaded EvalManifest (source of project name).
+        dataset: The EvalDataset used for evaluation (source of adapter formats).
+        effective_docs_path: Resolved docs path used during evaluation, or None.
+    """
+    report.config["project_name"] = manifest.name
+
+    if effective_docs_path is not None:
+        report.config["docs_path"] = str(effective_docs_path)
+
+    formats: list[str] = sorted(
+        {
+            sample.session.adapter_format
+            for sample in dataset.samples
+            if sample.session.adapter_format
+        }
+    )
+    if formats:
+        report.config["session_formats"] = formats
 
 
 def _build_registry():
@@ -397,6 +432,8 @@ def run(
 
     engine = MetricsEngine(all_metrics, config=config)
     report = engine.run(dataset, skip_judge=skip_judge)
+
+    _build_report_config(report, manifest, dataset, effective_docs_path)
 
     if not quiet:
         from raki.report.cli_summary import print_summary

@@ -24,6 +24,7 @@ class SessionMeta(BaseModel):
         None  # LLM provider reported by the orchestrator (distinct from MetricConfig.llm_provider)
     )
     pipeline_phases: list[str] | None = None  # ordered phase names from the session
+    adapter_format: str = ""
 
 
 class EvalSample(BaseModel):
