@@ -1,0 +1,8 @@
+The Google judge provider no longer fails with
+``TypeError: Cannot use agenerate() with a synchronous client`` when
+Ragas's scoring loop calls ``agenerate()``.
+
+``create_ragas_llm()`` now calls ``instructor.from_genai(client, use_async=True)``
+and constructs ``InstructorLLM`` directly instead of routing through
+``llm_factory()``.  This ensures Ragas sees an ``AsyncInstructor`` client and
+sets ``is_async=True``, so ``agenerate()`` works correctly.

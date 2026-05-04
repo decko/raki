@@ -1591,23 +1591,78 @@ class TestLiteLLMEmbeddings:
 
 
 class TestGoogleProvider:
-    def test_google_provider_creates_llm(self, monkeypatch):
-        """Google provider dispatches to llm_factory with provider='google'."""
+    def _make_google_mocks(self, monkeypatch) -> dict:
+        """Set up common mocks for Google provider tests.
+
+        Returns a dict with keys: genai, genai_client, instructor, async_instructor,
+        InstructorLLM, llm, ragas_llms.
+        """
         import sys
 
-        mock_client = MagicMock()
+        mock_genai_client = MagicMock()
         mock_genai = MagicMock()
-        mock_genai.Client.return_value = mock_client
+        mock_genai.Client.return_value = mock_genai_client
         mock_google_module = MagicMock()
         mock_google_module.genai = mock_genai
         monkeypatch.setitem(sys.modules, "google", mock_google_module)
         monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
 
-        mock_llm = MagicMock()
-        mock_factory = MagicMock(return_value=mock_llm)
-        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+        # Async instructor returned by instructor.from_genai(client, use_async=True)
+        mock_async_instructor = MagicMock()
+        mock_async_instructor.__class__ = MagicMock()
+        mock_async_instructor.__class__.__name__ = "AsyncInstructor"
+        mock_from_genai = MagicMock(return_value=mock_async_instructor)
+        mock_instructor_module = MagicMock()
+        mock_instructor_module.from_genai = mock_from_genai
+        monkeypatch.setitem(sys.modules, "instructor", mock_instructor_module)
 
+        # ragas.llms mock providing InstructorLLM
+        mock_llm = MagicMock()
+        mock_llm.model_args = {}
+        mock_instructor_llm_class = MagicMock(return_value=mock_llm)
+        mock_ragas_llms = MagicMock()
+        mock_ragas_llms.InstructorLLM = mock_instructor_llm_class
+        monkeypatch.setitem(sys.modules, "ragas.llms", mock_ragas_llms)
+
+        return {
+            "genai": mock_genai,
+            "genai_client": mock_genai_client,
+            "instructor": mock_instructor_module,
+            "from_genai": mock_from_genai,
+            "async_instructor": mock_async_instructor,
+            "InstructorLLM": mock_instructor_llm_class,
+            "llm": mock_llm,
+            "ragas_llms": mock_ragas_llms,
+        }
+
+    def test_google_provider_uses_async_instructor(self, monkeypatch):
+        """Google provider must call instructor.from_genai(client, use_async=True).
+
+        Regression test for #233: the sync genai.Client caused agenerate() to fail
+        with 'Cannot use agenerate() with a synchronous client. Use generate() instead.'
+        when Ragas's scoring loop called agenerate() on the judge LLM.
+        """
         from importlib import reload
+
+        mocks = self._make_google_mocks(monkeypatch)
+
+        from raki.metrics.ragas import llm_setup
+
+        reload(llm_setup)
+
+        config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
+        monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
+
+        llm_setup.create_ragas_llm(config)
+
+        # Verify from_genai was called with use_async=True — this is the fix for #233.
+        mocks["from_genai"].assert_called_once_with(mocks["genai_client"], use_async=True)
+
+    def test_google_provider_creates_llm(self, monkeypatch):
+        """Google provider creates InstructorLLM with an async instructor client."""
+        from importlib import reload
+
+        mocks = self._make_google_mocks(monkeypatch)
 
         from raki.metrics.ragas import llm_setup
 
@@ -1619,15 +1674,16 @@ class TestGoogleProvider:
 
         result = llm_setup.create_ragas_llm(config)
 
-        mock_genai.Client.assert_called_once_with(
+        mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="test-project", location="us-central1"
         )
-        mock_factory.assert_called_once()
-        call_kwargs = mock_factory.call_args
-        assert call_kwargs[0][0] == "gemini-2.5-pro"
-        assert call_kwargs[1]["provider"] == "google"
-        assert call_kwargs[1]["client"] == mock_client
-        assert result is mock_llm
+        # InstructorLLM is constructed with the async instructor client
+        mocks["InstructorLLM"].assert_called_once()
+        call_kwargs = mocks["InstructorLLM"].call_args
+        assert call_kwargs.kwargs["client"] is mocks["async_instructor"]
+        assert call_kwargs.kwargs["model"] == "gemini-2.5-pro"
+        assert call_kwargs.kwargs["provider"] == "google"
+        assert result is mocks["llm"]
 
     def test_google_in_supported_providers(self):
         """google is listed in SUPPORTED_PROVIDERS."""
@@ -1637,18 +1693,9 @@ class TestGoogleProvider:
 
     def test_google_provider_missing_project_raises(self, monkeypatch):
         """When neither GOOGLE_CLOUD_PROJECT nor VERTEXAI_PROJECT is set, raise ValueError."""
-        import sys
-
-        mock_genai = MagicMock()
-        mock_google_module = MagicMock()
-        mock_google_module.genai = mock_genai
-        monkeypatch.setitem(sys.modules, "google", mock_google_module)
-        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-
-        mock_factory = MagicMock(return_value=MagicMock())
-        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
-
         from importlib import reload
+
+        self._make_google_mocks(monkeypatch)
 
         from raki.metrics.ragas import llm_setup
 
@@ -1663,21 +1710,9 @@ class TestGoogleProvider:
 
     def test_google_provider_vertexai_project_fallback(self, monkeypatch):
         """VERTEXAI_PROJECT is used when GOOGLE_CLOUD_PROJECT is not set."""
-        import sys
-
-        mock_client = MagicMock()
-        mock_genai = MagicMock()
-        mock_genai.Client.return_value = mock_client
-        mock_google_module = MagicMock()
-        mock_google_module.genai = mock_genai
-        monkeypatch.setitem(sys.modules, "google", mock_google_module)
-        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-
-        mock_llm = MagicMock()
-        mock_factory = MagicMock(return_value=mock_llm)
-        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
-
         from importlib import reload
+
+        mocks = self._make_google_mocks(monkeypatch)
 
         from raki.metrics.ragas import llm_setup
 
@@ -1690,27 +1725,15 @@ class TestGoogleProvider:
 
         llm_setup.create_ragas_llm(config)
 
-        mock_genai.Client.assert_called_once_with(
+        mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="fallback-project", location="us-central1"
         )
 
     def test_google_provider_forwards_temperature(self, monkeypatch):
-        """Temperature from MetricConfig is passed to llm_factory."""
-        import sys
-
-        mock_client = MagicMock()
-        mock_genai = MagicMock()
-        mock_genai.Client.return_value = mock_client
-        mock_google_module = MagicMock()
-        mock_google_module.genai = mock_genai
-        monkeypatch.setitem(sys.modules, "google", mock_google_module)
-        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-
-        mock_llm = MagicMock()
-        mock_factory = MagicMock(return_value=mock_llm)
-        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
-
+        """Temperature from MetricConfig is forwarded to InstructorLLM."""
         from importlib import reload
+
+        mocks = self._make_google_mocks(monkeypatch)
 
         from raki.metrics.ragas import llm_setup
 
@@ -1721,26 +1744,14 @@ class TestGoogleProvider:
 
         llm_setup.create_ragas_llm(config)
 
-        call_kwargs = mock_factory.call_args
-        assert call_kwargs[1]["temperature"] == 0.5
+        call_kwargs = mocks["InstructorLLM"].call_args
+        assert call_kwargs.kwargs["temperature"] == 0.5
 
     def test_google_provider_default_location(self, monkeypatch):
         """When VERTEXAI_LOCATION is not set, 'us-central1' is used as default."""
-        import sys
-
-        mock_client = MagicMock()
-        mock_genai = MagicMock()
-        mock_genai.Client.return_value = mock_client
-        mock_google_module = MagicMock()
-        mock_google_module.genai = mock_genai
-        monkeypatch.setitem(sys.modules, "google", mock_google_module)
-        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-
-        mock_llm = MagicMock()
-        mock_factory = MagicMock(return_value=mock_llm)
-        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
-
         from importlib import reload
+
+        mocks = self._make_google_mocks(monkeypatch)
 
         from raki.metrics.ragas import llm_setup
 
@@ -1752,7 +1763,7 @@ class TestGoogleProvider:
 
         llm_setup.create_ragas_llm(config)
 
-        mock_genai.Client.assert_called_once_with(
+        mocks["genai"].Client.assert_called_once_with(
             vertexai=True, project="test-project", location="us-central1"
         )
 
@@ -2385,69 +2396,66 @@ class TestSilentZeroHandlingRelevancy:
 class TestGoogleProviderTopPRemoval:
     """Google provider must have top_p removed from model_args (mirrors Anthropic fix)."""
 
-    def test_google_provider_pops_top_p_from_model_args(self, monkeypatch):
-        """top_p must be removed from Google LLM model_args to prevent API rejection."""
+    def _make_google_mocks(self, monkeypatch, model_args: dict) -> dict:
+        """Common mock setup for top_p tests; model_args pre-seeds the LLM mock."""
         import sys
+        from importlib import reload
 
-        mock_client = MagicMock()
+        mock_genai_client = MagicMock()
         mock_genai = MagicMock()
-        mock_genai.Client.return_value = mock_client
+        mock_genai.Client.return_value = mock_genai_client
         mock_google_module = MagicMock()
         mock_google_module.genai = mock_genai
         monkeypatch.setitem(sys.modules, "google", mock_google_module)
         monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
 
-        # LLM returned by factory has top_p in model_args
-        mock_llm = MagicMock()
-        mock_llm.model_args = {"temperature": 0.0, "top_p": 0.9, "max_tokens": 4096}
-        mock_factory = MagicMock(return_value=mock_llm)
-        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
+        mock_async_instructor = MagicMock()
+        mock_instructor_module = MagicMock()
+        mock_instructor_module.from_genai = MagicMock(return_value=mock_async_instructor)
+        monkeypatch.setitem(sys.modules, "instructor", mock_instructor_module)
 
-        from importlib import reload
+        mock_llm = MagicMock()
+        mock_llm.model_args = dict(model_args)  # mutable copy
+        mock_instructor_llm_class = MagicMock(return_value=mock_llm)
+        mock_ragas_llms = MagicMock()
+        mock_ragas_llms.InstructorLLM = mock_instructor_llm_class
+        monkeypatch.setitem(sys.modules, "ragas.llms", mock_ragas_llms)
 
         from raki.metrics.ragas import llm_setup
 
         reload(llm_setup)
 
+        return {"llm": mock_llm, "module": llm_setup}
+
+    def test_google_provider_pops_top_p_from_model_args(self, monkeypatch):
+        """top_p must be removed from Google LLM model_args to prevent API rejection."""
+        mocks = self._make_google_mocks(
+            monkeypatch,
+            model_args={"temperature": 0.0, "top_p": 0.9, "max_tokens": 4096},
+        )
+
         config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
         monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
         monkeypatch.setenv("VERTEXAI_LOCATION", "us-central1")
 
-        result = llm_setup.create_ragas_llm(config)
+        result = mocks["module"].create_ragas_llm(config)
 
         # top_p must have been removed
         assert "top_p" not in result.model_args
 
     def test_google_provider_top_p_removal_is_safe_when_absent(self, monkeypatch):
         """Removing top_p when not present must not raise KeyError."""
-        import sys
-
-        mock_client = MagicMock()
-        mock_genai = MagicMock()
-        mock_genai.Client.return_value = mock_client
-        mock_google_module = MagicMock()
-        mock_google_module.genai = mock_genai
-        monkeypatch.setitem(sys.modules, "google", mock_google_module)
-        monkeypatch.setitem(sys.modules, "google.genai", mock_genai)
-
-        # LLM returned by factory has no top_p
-        mock_llm = MagicMock()
-        mock_llm.model_args = {"temperature": 0.0, "max_tokens": 4096}
-        mock_factory = MagicMock(return_value=mock_llm)
-        monkeypatch.setitem(sys.modules, "ragas.llms", MagicMock(llm_factory=mock_factory))
-
-        from importlib import reload
-
-        from raki.metrics.ragas import llm_setup
-
-        reload(llm_setup)
+        mocks = self._make_google_mocks(
+            monkeypatch,
+            model_args={"temperature": 0.0, "max_tokens": 4096},
+        )
 
         config = MetricConfig(llm_provider="google", llm_model="gemini-2.5-pro")
         monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "test-project")
 
         # Must not raise
-        result = llm_setup.create_ragas_llm(config)
-        assert result is mock_llm
+        result = mocks["module"].create_ragas_llm(config)
+        assert result is mocks["llm"]
 
 
 # ---------------------------------------------------------------------------

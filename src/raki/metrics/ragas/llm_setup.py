@@ -101,7 +101,9 @@ def create_ragas_llm(config: MetricConfig):
     elif config.llm_provider == "google":
         import os
 
+        import instructor  # ty: ignore[unresolved-import]
         from google import genai  # ty: ignore[unresolved-import]
+        from ragas.llms import InstructorLLM  # ty: ignore[unresolved-import]
 
         project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("VERTEXAI_PROJECT")
         if not project:
@@ -111,12 +113,15 @@ def create_ragas_llm(config: MetricConfig):
         location = os.environ.get("VERTEXAI_LOCATION", "us-central1")
         client = genai.Client(vertexai=True, project=project, location=location)
 
-        from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
-
-        llm = llm_factory(
-            config.llm_model,
+        # Use use_async=True so instructor returns AsyncInstructor, which Ragas's
+        # _check_client_async() recognises as async and sets is_async=True.  Without
+        # this flag instructor.from_genai() returns a sync Instructor, causing
+        # agenerate() to raise TypeError (see #233).
+        async_instructor = instructor.from_genai(client, use_async=True)
+        llm = InstructorLLM(
+            client=async_instructor,
+            model=config.llm_model,
             provider="google",
-            client=client,
             temperature=config.temperature,
             max_tokens=4096,
         )
