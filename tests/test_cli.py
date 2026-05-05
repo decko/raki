@@ -3495,3 +3495,147 @@ class TestBuildReportConfig:
         assert json_files
         data = json.loads(json_files[0].read_text())
         assert data["config"]["project_name"] == "test-project"
+
+    def test_injects_judge_source_default(self) -> None:
+        """judge_source defaults to 'default' when not explicitly provided."""
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, None)
+        assert report.config["judge_source"] == "default"
+
+    def test_injects_judge_source_cli(self) -> None:
+        """judge_source='cli' is correctly injected into report.config."""
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, None, judge_source="cli")
+        assert report.config["judge_source"] == "cli"
+
+    def test_injects_judge_source_manifest(self) -> None:
+        """judge_source='manifest' is correctly injected into report.config."""
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, None, judge_source="manifest")
+        assert report.config["judge_source"] == "manifest"
+
+    def test_injects_judge_source_env(self) -> None:
+        """judge_source='env' is correctly injected into report.config."""
+        from raki.cli import _build_report_config
+
+        report = self._make_minimal_report()
+        manifest = self._make_manifest()
+        dataset = self._make_dataset([])
+        _build_report_config(report, manifest, dataset, None, judge_source="env")
+        assert report.config["judge_source"] == "env"
+
+
+class TestJudgePriorityChain:
+    """Tests for the 4-tier judge provider/model resolution in 'raki run'.
+
+    Priority (highest to lowest):
+      1. CLI flag (--judge-provider / --judge-model)
+      2. Manifest judge: block
+      3. Env var (RAKI_JUDGE_PROVIDER / RAKI_JUDGE_MODEL)
+      4. Built-in defaults (vertex-anthropic / claude-sonnet-4-6)
+
+    Each test verifies the correct judge_source value in report.config.
+    """
+
+    def _run_json(
+        self, runner: CliRunner, manifest_path: Path, extra_args: list[str] | None = None
+    ) -> dict:
+        """Invoke 'raki run --json -q --no-history' and return parsed report config."""
+        args = ["run", "-m", str(manifest_path), "--json", "-q", "--no-history"]
+        if extra_args:
+            args.extend(extra_args)
+        result = runner.invoke(main, args)
+        assert result.exit_code == 0, (
+            f"Expected exit code 0, got {result.exit_code}:\n{result.output}"
+        )
+        data = json.loads(result.output)
+        return data["config"]
+
+    def test_default_uses_builtin_values(self, empty_manifest: Path) -> None:
+        """No CLI flags, no manifest judge block, no env vars -> judge_source='default'."""
+        runner = CliRunner()
+        config = self._run_json(runner, empty_manifest)
+        assert config["judge_source"] == "default"
+
+    def test_env_var_overrides_default(
+        self, empty_manifest: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RAKI_JUDGE_PROVIDER env var overrides built-in default -> judge_source='env'."""
+        monkeypatch.setenv("RAKI_JUDGE_PROVIDER", "anthropic")
+        runner = CliRunner()
+        config = self._run_json(runner, empty_manifest)
+        assert config["judge_source"] == "env"
+
+    def test_env_var_model_overrides_default(
+        self, empty_manifest: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RAKI_JUDGE_MODEL env var overrides built-in default -> judge_source='env'."""
+        monkeypatch.setenv("RAKI_JUDGE_MODEL", "custom-model")
+        runner = CliRunner()
+        config = self._run_json(runner, empty_manifest)
+        assert config["judge_source"] == "env"
+
+    def test_manifest_overrides_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Manifest judge: block takes priority over env vars -> judge_source='manifest'."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(
+            f"sessions:\n  path: {sessions}\njudge:\n  provider: litellm\n  model: manifest-model\n"
+        )
+        monkeypatch.setenv("RAKI_JUDGE_PROVIDER", "anthropic")
+        runner = CliRunner()
+        config = self._run_json(runner, manifest_file)
+        assert config["judge_source"] == "manifest"
+
+    def test_cli_flag_overrides_manifest(self, tmp_path: Path) -> None:
+        """CLI --judge-provider takes priority over manifest judge: block -> judge_source='cli'."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(
+            f"sessions:\n  path: {sessions}\n"
+            "judge:\n  provider: anthropic\n  model: manifest-model\n"
+        )
+        runner = CliRunner()
+        config = self._run_json(runner, manifest_file, ["--judge-provider", "litellm"])
+        assert config["judge_source"] == "cli"
+
+    def test_cli_flag_overrides_env_var(
+        self, empty_manifest: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CLI --judge-provider takes priority over RAKI_JUDGE_PROVIDER env var -> judge_source='cli'."""
+        monkeypatch.setenv("RAKI_JUDGE_PROVIDER", "anthropic")
+        runner = CliRunner()
+        config = self._run_json(runner, empty_manifest, ["--judge-provider", "litellm"])
+        assert config["judge_source"] == "cli"
+
+    def test_partial_manifest_judge_uses_defaults_for_missing(self, tmp_path: Path) -> None:
+        """Manifest with only provider (no model field) -> judge_source='manifest'."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\njudge:\n  provider: anthropic\n")
+        runner = CliRunner()
+        config = self._run_json(runner, manifest_file)
+        assert config["judge_source"] == "manifest"
+
+    def test_partial_cli_flag_uses_defaults_for_missing(self, empty_manifest: Path) -> None:
+        """Passing only --judge-model (not --judge-provider) -> judge_source='cli'."""
+        runner = CliRunner()
+        config = self._run_json(runner, empty_manifest, ["--judge-model", "custom-model"])
+        assert config["judge_source"] == "cli"
