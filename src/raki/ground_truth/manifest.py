@@ -57,6 +57,18 @@ class SyntheticConfig(BaseModel):
     seed: int = 42
 
 
+class JudgeConfig(BaseModel):
+    """Configuration for the LLM judge used in analytical metrics.
+
+    Uses plain ``str`` (not ``LLMProvider``) to avoid importing from the
+    metrics layer.  Validation against the allowed provider list happens at
+    ``MetricConfig`` construction time in the CLI.
+    """
+
+    provider: str | None = None
+    model: str | None = None
+
+
 class EvalManifest(BaseModel):
     """Top-level evaluation manifest model.
 
@@ -71,6 +83,7 @@ class EvalManifest(BaseModel):
     docs: DocsConfig | None = None
     synthetic: SyntheticConfig = Field(default_factory=SyntheticConfig)
     thresholds: list[str] = Field(default_factory=list)
+    judge: JudgeConfig | None = None
 
 
 def _resolve_and_guard(
