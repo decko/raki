@@ -33,10 +33,11 @@ def _build_report_config(
     manifest: "EvalManifest",
     dataset: "EvalDataset",
     effective_docs_path: Path | None,
+    judge_source: str = "default",
 ) -> None:
     """Inject project identity and evaluation context into ``report.config``.
 
-    Merges three new keys into the existing config dict produced by the
+    Merges new keys into the existing config dict produced by the
     MetricsEngine so downstream consumers (HTML renderer, JSON) can surface
     project identity without any breaking schema changes.
 
@@ -45,8 +46,11 @@ def _build_report_config(
         manifest: The loaded EvalManifest (source of project name).
         dataset: The EvalDataset used for evaluation (source of adapter formats).
         effective_docs_path: Resolved docs path used during evaluation, or None.
+        judge_source: Where the judge provider/model config came from.
+            One of "cli", "manifest", "env", or "default".
     """
     report.config["project_name"] = manifest.name
+    report.config["judge_source"] = judge_source
 
     if effective_docs_path is not None:
         report.config["docs_path"] = str(effective_docs_path)
@@ -140,6 +144,7 @@ def main():
 
 
 @main.command()
+@click.pass_context
 @click.option("-m", "--manifest", "manifest_path", default=None, help="Path to manifest file")
 @click.option("-o", "--output", "output_dir", default="./results", help="Output directory")
 @click.option("--judge", is_flag=True, default=False, help="Enable LLM-judged analytical metrics")
@@ -177,14 +182,14 @@ def main():
 @click.option(
     "--judge-model",
     "judge_model",
-    default="claude-sonnet-4-6",
+    default=None,
     help="LLM model for judge metrics (default: claude-sonnet-4-6)",
 )
 @click.option(
     "--judge-provider",
     "judge_provider",
     type=click.Choice(["vertex-anthropic", "anthropic", "google", "litellm"]),
-    default="vertex-anthropic",
+    default=None,
     help="LLM provider for judge metrics (default: vertex-anthropic)",
 )
 @click.option(
@@ -222,6 +227,7 @@ def main():
     help="Exit non-zero when metric health errors are detected",
 )
 def run(
+    ctx: click.Context,
     manifest_path: str | None,
     output_dir: str,
     judge: bool,
@@ -232,8 +238,8 @@ def run(
     adapter_format: str | None,
     metric_names: str | None,
     parallel_count: int,
-    judge_model: str,
-    judge_provider: str,
+    judge_model: str | None,
+    judge_provider: str | None,
     docs_path: str | None,
     include_sessions: bool,
     json_stdout: bool,
@@ -243,10 +249,21 @@ def run(
     strict_warnings: bool,
 ) -> None:
     """Run evaluation against sessions."""
+    import os
+
     if no_history and history_path_arg is not None:
         raise click.UsageError("--no-history and --history-path cannot be used together.")
 
     skip_judge = not judge
+
+    # Detect whether --judge-provider / --judge-model were explicitly set on
+    # the command line (vs. falling through to the default).
+    provider_from_cli = (
+        ctx.get_parameter_source("judge_provider") == click.core.ParameterSource.COMMANDLINE
+    )
+    model_from_cli = (
+        ctx.get_parameter_source("judge_model") == click.core.ParameterSource.COMMANDLINE
+    )
 
     out = _stderr_console() if json_stdout else console
 
@@ -290,6 +307,40 @@ def run(
     except Exception as exc:
         out.print(f"[red]Error loading manifest: {redact_sensitive(str(exc))}[/red]")
         raise SystemExit(2) from exc
+
+    # 4-tier judge provider/model resolution:
+    #   1. CLI flag (--judge-provider / --judge-model)  — highest priority
+    #   2. Manifest (judge.provider / judge.model)
+    #   3. Env var (RAKI_JUDGE_PROVIDER / RAKI_JUDGE_MODEL)
+    #   4. Built-in default                             — lowest priority
+    _DEFAULT_JUDGE_PROVIDER = "vertex-anthropic"
+    _DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
+
+    effective_judge_provider: str
+    effective_judge_model: str
+    judge_source: str
+
+    if provider_from_cli or model_from_cli:
+        # At least one flag was explicitly set on the CLI
+        effective_judge_provider = (
+            judge_provider if judge_provider is not None else _DEFAULT_JUDGE_PROVIDER
+        )
+        effective_judge_model = judge_model if judge_model is not None else _DEFAULT_JUDGE_MODEL
+        judge_source = "cli"
+    elif manifest.judge is not None and (
+        manifest.judge.provider is not None or manifest.judge.model is not None
+    ):
+        effective_judge_provider = manifest.judge.provider or _DEFAULT_JUDGE_PROVIDER
+        effective_judge_model = manifest.judge.model or _DEFAULT_JUDGE_MODEL
+        judge_source = "manifest"
+    elif os.environ.get("RAKI_JUDGE_PROVIDER") or os.environ.get("RAKI_JUDGE_MODEL"):
+        effective_judge_provider = os.environ.get("RAKI_JUDGE_PROVIDER") or _DEFAULT_JUDGE_PROVIDER
+        effective_judge_model = os.environ.get("RAKI_JUDGE_MODEL") or _DEFAULT_JUDGE_MODEL
+        judge_source = "env"
+    else:
+        effective_judge_provider = _DEFAULT_JUDGE_PROVIDER
+        effective_judge_model = _DEFAULT_JUDGE_MODEL
+        judge_source = "default"
 
     from raki.adapters import DatasetLoader
 
@@ -390,8 +441,8 @@ def run(
     from raki.metrics.protocol import LLMProvider, Metric, MetricConfig
 
     config = MetricConfig(
-        llm_provider=cast(LLMProvider, judge_provider),
-        llm_model=judge_model,
+        llm_provider=cast(LLMProvider, effective_judge_provider),
+        llm_model=effective_judge_model,
         batch_size=parallel_count,
         project_root=manifest_file.parent.resolve(),
         doc_chunks=doc_chunks,
@@ -433,7 +484,7 @@ def run(
     engine = MetricsEngine(all_metrics, config=config)
     report = engine.run(dataset, skip_judge=skip_judge)
 
-    _build_report_config(report, manifest, dataset, effective_docs_path)
+    _build_report_config(report, manifest, dataset, effective_docs_path, judge_source=judge_source)
 
     if not quiet:
         from raki.report.cli_summary import print_summary
