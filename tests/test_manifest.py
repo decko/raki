@@ -420,6 +420,32 @@ class TestJudgeConfig:
         manifest = load_manifest(manifest_file)
         assert manifest.judge is None
 
+    def test_manifest_judge_empty_block_creates_judge_config(self, tmp_path: Path) -> None:
+        """YAML with ``judge: {}`` should create a JudgeConfig with None fields."""
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\njudge: {{}}\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.judge is not None
+        assert manifest.judge.provider is None
+        assert manifest.judge.model is None
+
+    def test_manifest_judge_partial_provider_only(self, tmp_path: Path) -> None:
+        """YAML with only judge.provider should leave model as None."""
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\njudge:\n  provider: anthropic\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.judge is not None
+        assert manifest.judge.provider == "anthropic"
+        assert manifest.judge.model is None
+
 
 class TestDiscoverManifest:
     """Tests for discover_manifest() function."""

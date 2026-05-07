@@ -3639,3 +3639,15 @@ class TestJudgePriorityChain:
         runner = CliRunner()
         config = self._run_json(runner, empty_manifest, ["--judge-model", "custom-model"])
         assert config["judge_source"] == "cli"
+
+    def test_invalid_manifest_judge_provider_gives_usage_error(self, tmp_path: Path) -> None:
+        """Invalid judge.provider in manifest should produce a UsageError, not a raw traceback."""
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\njudge:\n  provider: openai\n")
+        runner = CliRunner()
+        result = runner.invoke(main, ["run", "-m", str(manifest_file), "-q", "--no-history"])
+        assert result.exit_code != 0
+        assert "Invalid judge.provider in manifest" in result.output
+        assert "openai" in result.output

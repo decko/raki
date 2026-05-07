@@ -11,6 +11,7 @@ import click
 from rich.console import Console
 
 from raki.adapters.redact import redact_sensitive
+from raki.metrics.protocol import DEFAULT_JUDGE_MODEL, DEFAULT_JUDGE_PROVIDER
 from raki.report.rerender import is_session_data_stripped, metric_stubs_from_metadata
 
 if TYPE_CHECKING:
@@ -183,14 +184,14 @@ def main():
     "--judge-model",
     "judge_model",
     default=None,
-    help="LLM model for judge metrics (default: claude-sonnet-4-6)",
+    help=f"LLM model for judge metrics (default: {DEFAULT_JUDGE_MODEL})",
 )
 @click.option(
     "--judge-provider",
     "judge_provider",
     type=click.Choice(["vertex-anthropic", "anthropic", "google", "litellm"]),
     default=None,
-    help="LLM provider for judge metrics (default: vertex-anthropic)",
+    help=f"LLM provider for judge metrics (default: {DEFAULT_JUDGE_PROVIDER}),",
 )
 @click.option(
     "--include-sessions",
@@ -308,38 +309,48 @@ def run(
         out.print(f"[red]Error loading manifest: {redact_sensitive(str(exc))}[/red]")
         raise SystemExit(2) from exc
 
+    # Validate manifest judge.provider against allowed providers early,
+    # before it reaches MetricConfig where it would raise a raw Pydantic error.
+    if manifest.judge is not None and manifest.judge.provider is not None:
+        from typing import get_args
+
+        from raki.metrics.protocol import LLMProvider
+
+        allowed_providers = get_args(LLMProvider)
+        if manifest.judge.provider not in allowed_providers:
+            raise click.UsageError(
+                f"Invalid judge.provider in manifest: '{manifest.judge.provider}'. "
+                f"Valid providers: {', '.join(allowed_providers)}"
+            )
+
     # 4-tier judge provider/model resolution:
     #   1. CLI flag (--judge-provider / --judge-model)  — highest priority
     #   2. Manifest (judge.provider / judge.model)
     #   3. Env var (RAKI_JUDGE_PROVIDER / RAKI_JUDGE_MODEL)
     #   4. Built-in default                             — lowest priority
-    _DEFAULT_JUDGE_PROVIDER = "vertex-anthropic"
-    _DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
-
     effective_judge_provider: str
     effective_judge_model: str
     judge_source: str
 
     if provider_from_cli or model_from_cli:
-        # At least one flag was explicitly set on the CLI
         effective_judge_provider = (
-            judge_provider if judge_provider is not None else _DEFAULT_JUDGE_PROVIDER
+            judge_provider if judge_provider is not None else DEFAULT_JUDGE_PROVIDER
         )
-        effective_judge_model = judge_model if judge_model is not None else _DEFAULT_JUDGE_MODEL
+        effective_judge_model = judge_model if judge_model is not None else DEFAULT_JUDGE_MODEL
         judge_source = "cli"
     elif manifest.judge is not None and (
         manifest.judge.provider is not None or manifest.judge.model is not None
     ):
-        effective_judge_provider = manifest.judge.provider or _DEFAULT_JUDGE_PROVIDER
-        effective_judge_model = manifest.judge.model or _DEFAULT_JUDGE_MODEL
+        effective_judge_provider = manifest.judge.provider or DEFAULT_JUDGE_PROVIDER
+        effective_judge_model = manifest.judge.model or DEFAULT_JUDGE_MODEL
         judge_source = "manifest"
     elif os.environ.get("RAKI_JUDGE_PROVIDER") or os.environ.get("RAKI_JUDGE_MODEL"):
-        effective_judge_provider = os.environ.get("RAKI_JUDGE_PROVIDER") or _DEFAULT_JUDGE_PROVIDER
-        effective_judge_model = os.environ.get("RAKI_JUDGE_MODEL") or _DEFAULT_JUDGE_MODEL
+        effective_judge_provider = os.environ.get("RAKI_JUDGE_PROVIDER") or DEFAULT_JUDGE_PROVIDER
+        effective_judge_model = os.environ.get("RAKI_JUDGE_MODEL") or DEFAULT_JUDGE_MODEL
         judge_source = "env"
     else:
-        effective_judge_provider = _DEFAULT_JUDGE_PROVIDER
-        effective_judge_model = _DEFAULT_JUDGE_MODEL
+        effective_judge_provider = DEFAULT_JUDGE_PROVIDER
+        effective_judge_model = DEFAULT_JUDGE_MODEL
         judge_source = "default"
 
     from raki.adapters import DatasetLoader

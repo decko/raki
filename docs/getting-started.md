@@ -136,6 +136,32 @@ uv pip install raki[litellm]
 
 See [Analytical Metrics Reference](metrics/analytical.md) for details.
 
+### Persisting judge config in your manifest
+
+Instead of passing `--judge-provider` and `--judge-model` on every run, you can
+save them in your manifest:
+
+```yaml
+judge:
+  provider: vertex-anthropic
+  model: claude-sonnet-4-6
+```
+
+The `--judge` flag is still required to enable analytical metrics — the manifest
+just persists *which* provider and model to use.
+
+### Judge config resolution order
+
+RAKI resolves judge provider and model using a 4-tier priority chain:
+
+1. **CLI flags** (`--judge-provider`, `--judge-model`) — highest priority
+2. **Manifest** (`judge.provider`, `judge.model`)
+3. **Environment variables** (`RAKI_JUDGE_PROVIDER`, `RAKI_JUDGE_MODEL`)
+4. **Built-in defaults** (`vertex-anthropic`, `claude-sonnet-4-6`)
+
+This means you can set defaults in your manifest, override per-environment via
+env vars, and still override everything on the command line.
+
 ## Validate before running
 
 Check your manifest and session data without running metrics:

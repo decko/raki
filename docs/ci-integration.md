@@ -294,6 +294,39 @@ jobs:
 See [docs/soda-pipeline-gate.md](soda-pipeline-gate.md) for the full per-milestone workflow,
 baseline threshold table, and interpretation guide.
 
+## Judge configuration
+
+### Manifest-level judge config
+
+Persist your judge provider and model in the manifest so CI jobs don't need
+to repeat CLI flags:
+
+```yaml
+judge:
+  provider: vertex-anthropic
+  model: claude-sonnet-4-6
+```
+
+The `--judge` flag is still required to enable analytical metrics — the manifest
+only persists *which* provider/model to use.
+
+### Environment variables
+
+You can also configure the judge via environment variables, useful for CI
+where secrets and config vary per environment:
+
+- `RAKI_JUDGE_PROVIDER` — sets the judge provider (e.g. `anthropic`, `vertex-anthropic`)
+- `RAKI_JUDGE_MODEL` — sets the judge model (e.g. `claude-sonnet-4-6`)
+
+### Resolution order
+
+RAKI resolves judge provider and model using a 4-tier priority chain:
+
+1. **CLI flags** (`--judge-provider`, `--judge-model`) — highest priority
+2. **Manifest** (`judge.provider`, `judge.model`)
+3. **Environment variables** (`RAKI_JUDGE_PROVIDER`, `RAKI_JUDGE_MODEL`)
+4. **Built-in defaults** (`vertex-anthropic`, `claude-sonnet-4-6`)
+
 ## Tips
 
 - **Start with operational gates only.** They run fast, need no API keys, and catch the most common issues. Add analytical gates after you have stable baselines.
