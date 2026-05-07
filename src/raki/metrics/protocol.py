@@ -11,6 +11,9 @@ from raki.model.report import MetricResult
 
 LLMProvider = Literal["vertex-anthropic", "anthropic", "google", "litellm"]
 
+DEFAULT_JUDGE_PROVIDER: LLMProvider = "vertex-anthropic"
+DEFAULT_JUDGE_MODEL = "claude-sonnet-4-6"
+
 
 @dataclass
 class TokenAccumulator:
@@ -24,8 +27,8 @@ class TokenAccumulator:
 class MetricConfig(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
-    llm_provider: LLMProvider = "vertex-anthropic"
-    llm_model: str = "claude-sonnet-4-6"
+    llm_provider: LLMProvider = DEFAULT_JUDGE_PROVIDER
+    llm_model: str = DEFAULT_JUDGE_MODEL
     temperature: float = 0.0
     max_tokens: int | None = None
     batch_size: int = 4

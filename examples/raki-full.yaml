@@ -17,6 +17,10 @@ sources:                   # Reference documents used during retrieval
       - api
       - auth
 
+judge:
+  provider: vertex-anthropic  # LLM provider: vertex-anthropic, anthropic, google, litellm
+  model: claude-sonnet-4-6    # Model name for judge metrics
+
 synthetic:
   enabled: false           # Whether to generate synthetic test cases via Ragas
   output: synthetic-out/   # Directory for generated synthetic test data

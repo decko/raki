@@ -360,6 +360,93 @@ class TestDocsConfig:
             load_manifest(manifest_file)
 
 
+class TestJudgeConfig:
+    """Tests for JudgeConfig model and manifest-level judge configuration."""
+
+    def test_judge_config_defaults_to_none(self) -> None:
+        """JudgeConfig fields default to None when not specified."""
+        from raki.ground_truth.manifest import JudgeConfig
+
+        config = JudgeConfig()
+        assert config.provider is None
+        assert config.model is None
+
+    def test_judge_config_construction(self) -> None:
+        """JudgeConfig can be constructed with provider and model."""
+        from raki.ground_truth.manifest import JudgeConfig
+
+        config = JudgeConfig(provider="anthropic", model="claude-opus-4-5")
+        assert config.provider == "anthropic"
+        assert config.model == "claude-opus-4-5"
+
+    def test_judge_config_has_no_docs_path_field(self) -> None:
+        """JudgeConfig must not have a docs_path field."""
+        from raki.ground_truth.manifest import JudgeConfig
+
+        config = JudgeConfig(provider="anthropic", model="claude-opus-4-5")
+        assert not hasattr(config, "docs_path")
+
+    def test_manifest_judge_defaults_to_none(self) -> None:
+        """EvalManifest.judge should default to None (backward compat)."""
+        from raki.ground_truth.manifest import EvalManifest, SessionsConfig
+
+        manifest = EvalManifest(sessions=SessionsConfig(path=Path("/tmp/sessions")))
+        assert manifest.judge is None
+
+    def test_manifest_judge_loaded_from_yaml(self, tmp_path: Path) -> None:
+        """YAML with judge block should deserialize into JudgeConfig."""
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(
+            f"sessions:\n  path: {sessions}\n"
+            "judge:\n  provider: anthropic\n  model: claude-opus-4-5\n"
+        )
+        manifest = load_manifest(manifest_file)
+        assert manifest.judge is not None
+        assert manifest.judge.provider == "anthropic"
+        assert manifest.judge.model == "claude-opus-4-5"
+
+    def test_manifest_judge_absent_from_yaml_is_none(self, tmp_path: Path) -> None:
+        """Manifests without a judge block should have judge=None (backward compat)."""
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.judge is None
+
+    def test_manifest_judge_empty_block_creates_judge_config(self, tmp_path: Path) -> None:
+        """YAML with ``judge: {}`` should create a JudgeConfig with None fields."""
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\njudge: {{}}\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.judge is not None
+        assert manifest.judge.provider is None
+        assert manifest.judge.model is None
+
+    def test_manifest_judge_partial_provider_only(self, tmp_path: Path) -> None:
+        """YAML with only judge.provider should leave model as None."""
+        from raki.ground_truth.manifest import load_manifest
+
+        sessions = tmp_path / "sessions"
+        sessions.mkdir()
+        manifest_file = tmp_path / "raki.yaml"
+        manifest_file.write_text(f"sessions:\n  path: {sessions}\njudge:\n  provider: anthropic\n")
+        manifest = load_manifest(manifest_file)
+        assert manifest.judge is not None
+        assert manifest.judge.provider == "anthropic"
+        assert manifest.judge.model is None
+
+
 class TestDiscoverManifest:
     """Tests for discover_manifest() function."""
 
