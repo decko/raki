@@ -2480,7 +2480,8 @@ class TestLlmSetupIntegration:
         pytest.importorskip("ragas.embeddings.google_provider")
         from raki.metrics.ragas.llm_setup import create_ragas_embeddings
 
-        embeddings = create_ragas_embeddings()
+        config = MetricConfig(temperature=0.0)
+        embeddings = create_ragas_embeddings(config)
         assert embeddings is not None
 
 
