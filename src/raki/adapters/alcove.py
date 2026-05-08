@@ -1,4 +1,5 @@
 import json
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -218,6 +219,124 @@ def _extract_session_id(raw: dict) -> str:
     raise KeyError("No session_id or id found in transcript file")
 
 
+@dataclass
+class TranscriptData:
+    """Parsed data from a single alcove transcript JSON file.
+
+    Produced by :func:`parse_transcript` and consumed by
+    :class:`AlcoveAdapter` (and by :class:`AlcovePipelineAdapter` for
+    per-step cost/token aggregation).
+    """
+
+    session_id: str
+    is_bridge: bool
+    model_id: str | None
+    tool_calls: list[ToolCall]
+    output: str  # joined and redacted text output
+    total_cost_usd: float | None
+    duration_ms: int | None
+    started_at: datetime | None
+    tokens_in: int
+    tokens_out: int
+    session_status: str
+    task_name: str | None
+    phases_dict: dict
+    raw_findings: list
+    transcript: list[dict]  # the raw transcript entries (for tool-sequence analysis)
+
+
+def parse_transcript(raw: dict) -> TranscriptData:
+    """Parse a raw alcove/bridge transcript dict into a :class:`TranscriptData`.
+
+    This is a pure function — it does not read from disk and has no side
+    effects.  :class:`AlcoveAdapter` calls it after loading the JSON so that
+    the expensive parsing logic is testable in isolation.
+
+    Args:
+        raw: The top-level dict parsed from a ``*.json`` transcript file.
+
+    Returns:
+        A populated :class:`TranscriptData` instance.
+    """
+    transcript = raw["transcript"]
+    is_bridge = "task_id" in raw
+
+    session_id = _extract_session_id(raw)
+
+    model_id: str | None = None
+    tool_calls: list[ToolCall] = []
+    output_parts: list[str] = []
+    total_cost_usd: float | None = None
+    duration_ms: int | None = None
+    started_at: datetime | None = None
+    tokens_in = 0
+    tokens_out = 0
+    session_status = raw.get("status", "completed") if is_bridge else "completed"
+    task_name: str | None = raw.get("task_name") if is_bridge else None
+
+    if is_bridge and raw.get("started_at"):
+        started_at = datetime.fromisoformat(raw["started_at"])
+
+    for entry in transcript:
+        entry_type = entry.get("type")
+
+        if entry_type == "system":
+            model_id = entry.get("model")
+
+        elif entry_type == "assistant":
+            message = entry.get("message", {})
+            usage = message.get("usage", {})
+            tokens_in += usage.get("input_tokens", 0)
+            tokens_out += usage.get("output_tokens", 0)
+            for content_block in message.get("content", []):
+                if content_block.get("type") == "tool_use":
+                    raw_args = content_block.get("input")
+                    tool_calls.append(
+                        ToolCall(
+                            name=content_block["name"],
+                            arguments=redact_dict(raw_args)
+                            if isinstance(raw_args, dict)
+                            else raw_args,
+                        )
+                    )
+                elif content_block.get("type") == "text":
+                    output_parts.append(content_block["text"])
+
+        elif entry_type == "user":
+            timestamp_str = entry.get("timestamp")
+            if timestamp_str and started_at is None:
+                started_at = datetime.fromisoformat(timestamp_str)
+
+        elif entry_type == "result":
+            total_cost_usd = entry.get("total_cost_usd")
+            duration_ms = entry.get("duration_ms")
+            model_usage = entry.get("modelUsage", {})
+            if not model_id and model_usage:
+                model_id = next(iter(model_usage), None)
+
+    output = redact_sensitive("\n".join(output_parts))
+    phases_dict: dict = raw.get("phases") or {}
+    raw_findings: list = raw.get("findings") or []
+
+    return TranscriptData(
+        session_id=session_id,
+        is_bridge=is_bridge,
+        model_id=model_id,
+        tool_calls=tool_calls,
+        output=output,
+        total_cost_usd=total_cost_usd,
+        duration_ms=duration_ms,
+        started_at=started_at,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        session_status=session_status,
+        task_name=task_name,
+        phases_dict=phases_dict,
+        raw_findings=raw_findings,
+        transcript=transcript,
+    )
+
+
 class AlcoveAdapter:
     name: str = "alcove"
     description: str = "Single-file JSON transcript from Claude Code or Alcove bridge"
@@ -252,80 +371,23 @@ class AlcoveAdapter:
                 f"File exceeds {MAX_ALCOVE_FILE_SIZE // (1024 * 1024)}MB limit: {source}"
             )
         raw = json.loads(resolved.read_text(encoding="utf-8"))
-        transcript = raw["transcript"]
-        is_bridge = "task_id" in raw
+        transcript_data = parse_transcript(raw)
 
-        session_id = _extract_session_id(raw)
-
-        model_id: str | None = None
-        tool_calls: list[ToolCall] = []
-        output_parts: list[str] = []
-        total_cost_usd: float | None = None
-        duration_ms: int | None = None
-        started_at: datetime | None = None
-        tokens_in = 0
-        tokens_out = 0
-        session_status = raw.get("status", "completed") if is_bridge else "completed"
-        task_name: str | None = raw.get("task_name") if is_bridge else None
-
-        if is_bridge and raw.get("started_at"):
-            started_at = datetime.fromisoformat(raw["started_at"])
-
-        for entry in transcript:
-            entry_type = entry.get("type")
-
-            if entry_type == "system":
-                model_id = entry.get("model")
-
-            elif entry_type == "assistant":
-                message = entry.get("message", {})
-                usage = message.get("usage", {})
-                tokens_in += usage.get("input_tokens", 0)
-                tokens_out += usage.get("output_tokens", 0)
-                for content_block in message.get("content", []):
-                    if content_block.get("type") == "tool_use":
-                        raw_args = content_block.get("input")
-                        tool_calls.append(
-                            ToolCall(
-                                name=content_block["name"],
-                                arguments=redact_dict(raw_args)
-                                if isinstance(raw_args, dict)
-                                else raw_args,
-                            )
-                        )
-                    elif content_block.get("type") == "text":
-                        output_parts.append(content_block["text"])
-
-            elif entry_type == "user":
-                timestamp_str = entry.get("timestamp")
-                if timestamp_str and started_at is None:
-                    started_at = datetime.fromisoformat(timestamp_str)
-
-            elif entry_type == "result":
-                total_cost_usd = entry.get("total_cost_usd")
-                duration_ms = entry.get("duration_ms")
-                model_usage = entry.get("modelUsage", {})
-                if not model_id and model_usage:
-                    model_id = next(iter(model_usage), None)
-
-        phases_dict: dict = raw.get("phases") or {}
-        findings = self._parse_findings(raw.get("findings") or [])
-
-        output = redact_sensitive("\n".join(output_parts))
+        findings = self._parse_findings(transcript_data.raw_findings)
         phases = self._build_phases(
-            phases_dict=phases_dict,
-            output=output,
-            tool_calls=tool_calls,
-            tokens_in=tokens_in or None,
-            tokens_out=tokens_out or None,
-            total_cost_usd=total_cost_usd,
-            duration_ms=duration_ms,
-            session_status=session_status,
+            phases_dict=transcript_data.phases_dict,
+            output=transcript_data.output,
+            tool_calls=transcript_data.tool_calls,
+            tokens_in=transcript_data.tokens_in or None,
+            tokens_out=transcript_data.tokens_out or None,
+            total_cost_usd=transcript_data.total_cost_usd,
+            duration_ms=transcript_data.duration_ms,
+            session_status=transcript_data.session_status,
         )
 
         # Detect rework cycles and phases from transcript tool calls.
         # Explicit values in the JSON take priority; transcript analysis is the fallback.
-        tool_sequence = _extract_tool_sequence(transcript)
+        tool_sequence = _extract_tool_sequence(transcript_data.transcript)
 
         # Synthesize findings from test/lint failures when no explicit findings provided.
         # Synthesized findings are marked with finding_source="synthesized" so that
@@ -339,23 +401,25 @@ class AlcoveAdapter:
         else:
             rework_cycles = _detect_rework_cycles(tool_sequence)
 
-        if phases_dict:
-            total_phases = len(phases_dict)
+        if transcript_data.phases_dict:
+            total_phases = len(transcript_data.phases_dict)
         else:
             total_phases = _detect_phase_count(tool_sequence)
 
-        ticket = task_name or session_id
-        orchestrator = "bridge" if is_bridge else "alcove"
+        ticket = transcript_data.task_name or transcript_data.session_id
+        orchestrator = "bridge" if transcript_data.is_bridge else "alcove"
         provider: str | None = raw.get("provider")
-        pipeline_phases: list[str] | None = list(phases_dict.keys()) if phases_dict else None
+        pipeline_phases: list[str] | None = (
+            list(transcript_data.phases_dict.keys()) if transcript_data.phases_dict else None
+        )
         meta = SessionMeta(
-            session_id=session_id,
-            ticket=ticket if ticket != session_id else None,
-            started_at=started_at or datetime.now(timezone.utc),
-            total_cost_usd=total_cost_usd,
+            session_id=transcript_data.session_id,
+            ticket=ticket if ticket != transcript_data.session_id else None,
+            started_at=transcript_data.started_at or datetime.now(timezone.utc),
+            total_cost_usd=transcript_data.total_cost_usd,
             total_phases=total_phases,
             rework_cycles=rework_cycles,
-            model_id=model_id,
+            model_id=transcript_data.model_id,
             orchestrator=orchestrator,
             provider=provider,
             pipeline_phases=pipeline_phases,
@@ -371,7 +435,7 @@ class AlcoveAdapter:
         # Synthesize context from tool outputs if no phase has explicit knowledge_context
         has_explicit_context = any(phase.knowledge_context is not None for phase in sample.phases)
         if not has_explicit_context:
-            synthesized = self._synthesize_context(transcript)
+            synthesized = self._synthesize_context(transcript_data.transcript)
             if synthesized:
                 sample.phases[0].knowledge_context = synthesized
                 sample.context_source = "synthesized"
