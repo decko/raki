@@ -1,4 +1,5 @@
 from raki.adapters.alcove import AlcoveAdapter
+from raki.adapters.alcove_pipeline import AlcovePipelineAdapter
 from raki.adapters.loader import DatasetLoader, LoadError
 from raki.adapters.protocol import SessionAdapter
 from raki.adapters.redact import redact_sensitive
@@ -11,9 +12,16 @@ def default_registry() -> AdapterRegistry:
 
     Returns a fresh ``AdapterRegistry`` each call so that callers can
     customise their copy without affecting others.
+
+    Registration order matters for format detection: more-specific adapters
+    must be registered *before* generic ones so that ``detect()`` is tried in
+    the right sequence.  ``AlcovePipelineAdapter`` (directory-based) is
+    registered before ``AlcoveAdapter`` (single-file JSON) to prevent the
+    generic adapter from consuming pipeline export directories.
     """
     registry = AdapterRegistry()
     registry.register(SessionSchemaAdapter())
+    registry.register(AlcovePipelineAdapter())
     registry.register(AlcoveAdapter())
     return registry
 
@@ -21,6 +29,7 @@ def default_registry() -> AdapterRegistry:
 __all__ = [
     "AdapterRegistry",
     "AlcoveAdapter",
+    "AlcovePipelineAdapter",
     "DatasetLoader",
     "LoadError",
     "SessionAdapter",
