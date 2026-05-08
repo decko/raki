@@ -1372,8 +1372,8 @@ class TestCreateRagasEmbeddings:
             "create_fn": raki.metrics.ragas.llm_setup.create_ragas_embeddings,
         }
 
-    def test_embeddings_use_vertex_true(self, monkeypatch: pytest.MonkeyPatch):
-        """GoogleEmbeddings must be constructed with use_vertex=True, client, and model."""
+    def test_embeddings_constructed_without_use_vertex(self, monkeypatch: pytest.MonkeyPatch):
+        """GoogleEmbeddings must be constructed without use_vertex (genai.Client handles routing)."""
         monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "vertex-project")
         monkeypatch.setenv("VERTEXAI_LOCATION", "us-east1")
 
@@ -1384,7 +1384,6 @@ class TestCreateRagasEmbeddings:
         mocks["embeddings_class"].assert_called_once_with(
             client=mocks["genai_client"],
             model="text-embedding-005",
-            use_vertex=True,
         )
         assert result is mocks["embeddings_instance"]
 
@@ -1404,7 +1403,7 @@ class TestCreateRagasEmbeddings:
 
         call_kwargs = mocks["embeddings_class"].call_args.kwargs
         assert call_kwargs["client"] is mocks["genai_client"]
-        assert call_kwargs["use_vertex"] is True
+        assert "use_vertex" not in call_kwargs
 
     def test_passes_vertex_project_to_genai_client(self, monkeypatch: pytest.MonkeyPatch):
         """Verify genai.Client is created with vertexai=True and project from env."""
