@@ -296,15 +296,17 @@ class AlcovePipelineAdapter:
                     model_id = td.model_id
                 all_tool_calls.extend(step_tool_calls)
 
-                # Collect context chunks from triage and plan steps.
-                if step_id in ("triage", "plan"):
-                    chunk = self._context_chunk_from_outputs(step_id, step_outputs)
-                    if chunk:
-                        context_chunks.append(chunk)
-
                 # Preserve implement output for context fallback.
                 if step_id == "implement" and output_text:
                     implement_output = output_text
+
+            # Collect context chunks from triage and plan step outputs.
+            # This is done regardless of whether a transcript exists so that
+            # structured outputs from step.json files are also captured.
+            if step_id in ("triage", "plan") and step_outputs:
+                chunk = self._context_chunk_from_outputs(step_id, step_outputs)
+                if chunk:
+                    context_chunks.append(chunk)
 
             # Parse review findings from outputs.issues.
             issues_text = step_outputs.get("issues", "") if step_outputs else ""
