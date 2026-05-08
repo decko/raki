@@ -210,11 +210,17 @@ def create_ragas_embeddings(config: MetricConfig):
 
     client = genai.Client(vertexai=True, project=project, location=location)
 
-    return GoogleEmbeddings(
+    embeddings = GoogleEmbeddings(
         client=client,
         model="text-embedding-005",
-        use_vertex=True,
     )
+    # Ragas's _resolve_client() detects our genai.Client as new SDK and sets
+    # _use_new_sdk=True, routing embed calls through client.models.embed_content()
+    # instead of the deprecated vertexai._model_garden path.  We intentionally
+    # omit use_vertex=True because that flag forces the old TextEmbeddingModel
+    # path regardless of _use_new_sdk — the genai.Client(vertexai=True) already
+    # handles Vertex AI routing internally.
+    return embeddings
 
 
 def _validate_judge_log_path(log_path: Path, project_root: Path | None = None) -> Path:
