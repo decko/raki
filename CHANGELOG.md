@@ -1,3 +1,48 @@
+## [0.12.0] — 2026-05-08
+
+### Features
+
+- Add manifest-level ``judge:`` configuration block with ``provider`` and ``model`` fields. CLI flags override manifest values; env vars ``RAKI_JUDGE_PROVIDER`` and ``RAKI_JUDGE_MODEL`` serve as intermediate fallbacks. (#230)
+- Add project identity to HTML report header: manifest ``name`` field, adapter format tracking, docs path display, and judge annotation. (#236)
+- Add ``AlcovePipelineAdapter`` for Alcove pipeline-run exports.
+
+  Detects and loads directories produced by an Alcove pipeline export
+  (``run.json`` + ``steps/`` sub-directory).  Each pipeline step becomes a
+  :class:`PhaseResult`; review findings are parsed from the semicolon-delimited
+  ``outputs.issues`` field; rework cycles are counted from corrective step
+  activation; cost is aggregated across all step transcripts.
+
+  Registered before ``AlcoveAdapter`` in the default registry so that pipeline
+  export directories are correctly identified before the single-file adapter is
+  tried. (#243)
+
+### Bug Fixes
+
+- ``answer_relevancy`` no longer fails when only ``VERTEXAI_PROJECT`` is set.
+  ``create_ragas_embeddings`` now normalises ``GOOGLE_CLOUD_PROJECT`` from
+  ``VERTEXAI_PROJECT`` so that ``GoogleEmbeddings`` can find the project during
+  embedding calls (it reads ``GOOGLE_CLOUD_PROJECT`` internally, not
+  ``VERTEXAI_PROJECT``). (#231)
+- The Google judge provider no longer fails with
+  ``TypeError: Cannot use agenerate() with a synchronous client`` when
+  Ragas's scoring loop calls ``agenerate()``.
+
+  ``create_ragas_llm()`` now calls ``instructor.from_genai(client, use_async=True)``
+  and constructs ``InstructorLLM`` directly instead of routing through
+  ``llm_factory()``.  This ensures Ragas sees an ``AsyncInstructor`` client and
+  sets ``is_async=True``, so ``agenerate()`` works correctly. (#233)
+- Fix stale integration test calling create_ragas_embeddings() without the required config argument. (#242)
+- Fix answer_relevancy failing with 404 error by dropping use_vertex=True from GoogleEmbeddings — the genai.Client(vertexai=True) handles Vertex AI routing internally, and the flag forced the deprecated vertexai._model_garden path. (#245)
+
+### Internal Changes
+
+- Remove ``langchain-google-vertexai`` from the ``ragas`` optional-dependencies.
+  The LLM setup code uses the ``google.genai`` SDK directly (``InstructorLLM`` +
+  ``GoogleEmbeddings``) and has no LangChain Vertex AI integration. Dropping this
+  dependency removes 28 transitive packages from the lock file (including
+  ``google-cloud-aiplatform``, ``grpcio``, ``pyarrow``, and ``protobuf``). (#234)
+
+
 ## [0.11.0] — 2026-04-29
 
 ### Features

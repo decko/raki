@@ -17,7 +17,7 @@ phases:
       - Bash(git:*)
       - Bash(ls:*)
       - Bash(uv:run raki metrics*)
-    timeout: 3m
+    timeout: 5m
     retry:
       transient: 2
       parse: 1
@@ -68,7 +68,7 @@ phases:
       - Glob
       - Grep
       - Bash
-    timeout: 10m
+    timeout: 15m
     retry:
       transient: 2
       parse: 1
