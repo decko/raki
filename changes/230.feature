@@ -1,1 +1,0 @@
-Add manifest-level ``judge:`` configuration block with ``provider`` and ``model`` fields. CLI flags override manifest values; env vars ``RAKI_JUDGE_PROVIDER`` and ``RAKI_JUDGE_MODEL`` serve as intermediate fallbacks.
