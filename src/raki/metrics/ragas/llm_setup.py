@@ -172,11 +172,10 @@ def create_ragas_embeddings(config: MetricConfig):
     Dispatches on ``config.llm_provider``:
 
     - ``vertex-anthropic``, ``anthropic``, ``google`` -- uses ``GoogleEmbeddings``
-      constructed directly with ``use_vertex=True`` and a pre-configured
-      ``genai.Client`` for Vertex AI.  This bypasses ``embedding_factory()``
-      which does not forward ``use_vertex`` to the constructor, causing
-      ``_resolve_client()`` to take the Gemini path and discard the
-      pre-configured client (see #106).
+      with a ``genai.Client(vertexai=True)`` for Vertex AI.  The Ragas
+      ``use_vertex`` flag is *not* set -- that flag selects the old
+      ``google-cloud-aiplatform`` SDK path.  Our ``genai.Client`` handles
+      Vertex routing internally and Ragas detects it as the new SDK.
 
     - ``litellm`` -- uses Ragas's built-in ``LiteLLMEmbeddings`` with model
       ``text-embedding-3-small`` (OpenAI-compatible, routed via LiteLLM).
@@ -214,12 +213,11 @@ def create_ragas_embeddings(config: MetricConfig):
         client=client,
         model="text-embedding-005",
     )
-    # Ragas's _resolve_client() detects our genai.Client as new SDK and sets
-    # _use_new_sdk=True, routing embed calls through client.models.embed_content()
-    # instead of the deprecated vertexai._model_garden path.  We intentionally
-    # omit use_vertex=True because that flag forces the old TextEmbeddingModel
-    # path regardless of _use_new_sdk — the genai.Client(vertexai=True) already
-    # handles Vertex AI routing internally.
+    # use_vertex=True is intentionally omitted.  In Ragas, use_vertex selects
+    # the old google-cloud-aiplatform SDK path (TextEmbeddingModel); without it,
+    # Ragas detects our genai.Client as the new SDK and routes through
+    # client.models.embed_content().  Vertex AI routing is handled by
+    # genai.Client(vertexai=True) above — the Ragas flag is not needed.
     return embeddings
 
 
