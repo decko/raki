@@ -24,6 +24,7 @@ ragas = [
     "instructor>=1.0",
     "google-auth>=2.0",
     "google-genai>=1.0",
+    "google-cloud-aiplatform>=1.50",
 ]
 litellm = [
     "litellm>=1.0",
