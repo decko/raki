@@ -72,7 +72,7 @@ class AnswerRelevancyMetric:
                 name=self.name, score=None, details={"skipped": "no retrieval context"}
             )
 
-        from ragas.metrics.collections import (  # ty: ignore[unresolved-import]
+        from ragas.metrics.collections import (
             AnswerRelevancy as RagasAnswerRelevancy,
         )
 
