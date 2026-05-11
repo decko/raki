@@ -54,7 +54,7 @@ class ContextPrecisionMetric:
         if not rows_with_ref:
             return MetricResult(name=self.name, score=None, details={"skipped": "no ground truth"})
 
-        from ragas.metrics.collections import (
+        from ragas.metrics.collections import (  # ty: ignore[unresolved-import]
             ContextPrecisionWithReference,
         )
 

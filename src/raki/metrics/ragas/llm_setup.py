@@ -91,19 +91,19 @@ def create_ragas_llm(config: MetricConfig):
         ValueError: If ``config.llm_provider`` is not a supported provider.
     """
     if config.llm_provider == "vertex-anthropic":
-        from anthropic import AsyncAnthropicVertex
+        from anthropic import AsyncAnthropicVertex  # ty: ignore[unresolved-import]
 
         client = AsyncAnthropicVertex()
     elif config.llm_provider == "anthropic":
-        from anthropic import AsyncAnthropic
+        from anthropic import AsyncAnthropic  # ty: ignore[unresolved-import]
 
         client = AsyncAnthropic()
     elif config.llm_provider == "google":
         import os
 
-        import instructor
-        from google import genai
-        from ragas.llms import InstructorLLM
+        import instructor  # ty: ignore[unresolved-import]
+        from google import genai  # ty: ignore[unresolved-import]
+        from ragas.llms import InstructorLLM  # ty: ignore[unresolved-import]
 
         project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("VERTEXAI_PROJECT")
         if not project:
@@ -128,12 +128,12 @@ def create_ragas_llm(config: MetricConfig):
         llm.model_args.pop("top_p", None)
         return llm
     elif config.llm_provider == "litellm":
-        import litellm
+        import litellm  # ty: ignore[unresolved-import]
 
         if config.token_accumulator is not None:
             patch_litellm_for_token_tracking(litellm, config.token_accumulator)
 
-        from ragas.llms import llm_factory
+        from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
 
         llm = llm_factory(
             config.llm_model,
@@ -153,7 +153,7 @@ def create_ragas_llm(config: MetricConfig):
     if config.token_accumulator is not None:
         patch_client_for_token_tracking(client, config.token_accumulator)
 
-    from ragas.llms import llm_factory
+    from ragas.llms import llm_factory  # ty: ignore[unresolved-import]
 
     llm = llm_factory(
         config.llm_model,
@@ -186,14 +186,14 @@ def create_ragas_embeddings(config: MetricConfig):
     Defers imports so this module can be imported without dependencies installed.
     """
     if config.llm_provider == "litellm":
-        from ragas.embeddings import LiteLLMEmbeddings
+        from ragas.embeddings import LiteLLMEmbeddings  # ty: ignore[unresolved-import]
 
         return LiteLLMEmbeddings(model="text-embedding-3-small")
 
     import os
 
-    from google import genai
-    from ragas.embeddings.google_provider import GoogleEmbeddings
+    from google import genai  # ty: ignore[unresolved-import]
+    from ragas.embeddings.google_provider import GoogleEmbeddings  # ty: ignore[unresolved-import]
 
     project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("VERTEXAI_PROJECT")
     if not project:

@@ -72,7 +72,7 @@ class FaithfulnessMetric:
                 name=self.name, score=None, details={"skipped": "no retrieval context"}
             )
 
-        from ragas.metrics.collections import (
+        from ragas.metrics.collections import (  # ty: ignore[unresolved-import]
             Faithfulness as RagasFaithfulness,
         )
 
