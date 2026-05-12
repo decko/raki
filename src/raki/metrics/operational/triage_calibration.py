@@ -5,8 +5,8 @@ session cost. A session is "calibrated" when the predicted complexity level is
 consistent with the actual total_cost_usd.
 
 Thresholds:
-- small  → actual cost must be <= SMALL_MAX (default 8.0 USD)
-- medium → actual cost must be <= MEDIUM_MAX (default 16.0 USD)
+- small  → actual cost must be <= SMALL_MAX (8.0 USD)
+- medium → actual cost must be <= MEDIUM_MAX (16.0 USD)
 - large  → any cost is acceptable (no upper bound)
 
 Score = mean(calibrated sessions) over sessions with both a triage complexity
@@ -19,7 +19,7 @@ from raki.metrics.protocol import MetricConfig
 from raki.model import EvalDataset
 from raki.model.report import MetricResult
 
-# Default cost thresholds (USD) -- override via MetricConfig.params if needed.
+# Cost thresholds (USD) for complexity calibration.
 SMALL_MAX: float = 8.0
 MEDIUM_MAX: float = 16.0
 
@@ -53,9 +53,9 @@ class TriageCalibrationMetric:
         "Target: >= 80% calibrated."
     )
 
-    def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:
-        small_max = float(config.params.get("small_max", SMALL_MAX))
-        medium_max = float(config.params.get("medium_max", MEDIUM_MAX))
+    def compute(self, dataset: EvalDataset, config: MetricConfig) -> MetricResult:  # noqa: ARG002
+        small_max = SMALL_MAX
+        medium_max = MEDIUM_MAX
 
         calibrated = 0
         total = 0
