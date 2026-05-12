@@ -60,6 +60,11 @@ class TriageCalibrationMetric:
         calibrated = 0
         total = 0
         sample_scores: dict[str, float] = {}
+        per_complexity: dict[str, dict[str, int]] = {
+            "small": {"total": 0, "calibrated": 0},
+            "medium": {"total": 0, "calibrated": 0},
+            "large": {"total": 0, "calibrated": 0},
+        }
 
         for sample in dataset.samples:
             # Find the triage phase (take the first one found).
@@ -85,19 +90,20 @@ class TriageCalibrationMetric:
                 continue
 
             total += 1
+            per_complexity[complexity]["total"] += 1
 
             if complexity == "small":
                 is_calibrated = cost <= small_max
             elif complexity == "medium":
                 is_calibrated = cost <= medium_max
             else:
-                # large: no upper bound
                 is_calibrated = True
 
             session_score = 1.0 if is_calibrated else 0.0
             sample_scores[sample.session.session_id] = session_score
             if is_calibrated:
                 calibrated += 1
+                per_complexity[complexity]["calibrated"] += 1
 
         if total == 0:
             return MetricResult(
@@ -108,6 +114,7 @@ class TriageCalibrationMetric:
                     "sessions_with_triage_and_cost": 0,
                     "small_max": small_max,
                     "medium_max": medium_max,
+                    "per_complexity": per_complexity,
                 },
             )
 
@@ -120,6 +127,7 @@ class TriageCalibrationMetric:
                 "sessions_with_triage_and_cost": total,
                 "small_max": small_max,
                 "medium_max": medium_max,
+                "per_complexity": per_complexity,
             },
             sample_scores=sample_scores,
         )

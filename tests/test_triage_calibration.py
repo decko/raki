@@ -203,6 +203,34 @@ class TestTriageCalibrationDetails:
         assert result.details["small_max"] == SMALL_MAX
         assert result.details["medium_max"] == MEDIUM_MAX
 
+    def test_per_complexity_breakdown(self):
+        """Details dict includes per-complexity total and calibrated counts."""
+        s_cal = _make_triage_sample("s1", complexity="small", cost=5.0)
+        s_mis = _make_triage_sample("s2", complexity="small", cost=12.0)
+        m_cal = _make_triage_sample("m1", complexity="medium", cost=10.0)
+        l_cal = _make_triage_sample("l1", complexity="large", cost=25.0)
+
+        dataset = EvalDataset(samples=[s_cal, s_mis, m_cal, l_cal])
+        result = TriageCalibrationMetric().compute(dataset, MetricConfig())
+
+        breakdown = result.details["per_complexity"]
+        assert breakdown["small"]["total"] == 2
+        assert breakdown["small"]["calibrated"] == 1
+        assert breakdown["medium"]["total"] == 1
+        assert breakdown["medium"]["calibrated"] == 1
+        assert breakdown["large"]["total"] == 1
+        assert breakdown["large"]["calibrated"] == 1
+
+    def test_per_complexity_breakdown_na(self):
+        """N/A result includes per-complexity breakdown with all zeros."""
+        dataset = EvalDataset(samples=[])
+        result = TriageCalibrationMetric().compute(dataset, MetricConfig())
+
+        breakdown = result.details["per_complexity"]
+        for level in ("small", "medium", "large"):
+            assert breakdown[level]["total"] == 0
+            assert breakdown[level]["calibrated"] == 0
+
 
 class TestTriageCalibrationProperties:
     """Protocol attribute verification."""
