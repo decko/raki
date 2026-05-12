@@ -138,3 +138,29 @@ Returns 1.0 when there are zero findings.
 | Green | < 2,000 | Lean and efficient |
 | Yellow | 2,000--8,000 | Moderate token usage |
 | Red | > 8,000 | Excessive tokens per phase |
+
+---
+
+## triage_calibration -- Triage calibration
+
+**What it measures:** Fraction of sessions where the agent's triage complexity prediction is consistent with the actual session cost.
+
+**What it tells you:** Whether the agent's upfront complexity estimate (`small`, `medium`, or `large`) accurately predicts how expensive the session will be. A well-calibrated agent labels cheap tasks as `small` and expensive tasks as `large`, enabling accurate planning and resource allocation.
+
+**What action it drives:** Low calibration in one direction (e.g., many `small` sessions that cost more than $8) suggests the agent is underestimating effort during triage. High calibration means you can trust the triage output for scheduling and cost forecasting.
+
+**How it's computed:** For each session with a triage phase containing `output_structured.complexity` and a `total_cost_usd`:
+
+- `small` → calibrated if `cost <= $8.00`
+- `medium` → calibrated if `cost <= $16.00`
+- `large` → always calibrated (no upper bound)
+
+Score = `calibrated_sessions / sessions_with_triage_and_cost`. Returns N/A when no qualifying sessions exist.
+
+**N/A conditions:** Returns `score=None` (displayed as N/A) when no sessions have both a triage complexity prediction and a cost. This is expected for sessions using adapters that do not emit a triage phase.
+
+| Zone | Range | Meaning |
+|------|-------|---------|
+| Green | >= 0.80 | Triage predictions are reliable |
+| Yellow | 0.60--0.79 | Moderate miscalibration |
+| Red | < 0.60 | Predictions are frequently wrong |
