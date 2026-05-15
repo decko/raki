@@ -198,11 +198,13 @@ uv run raki report results/raki-report-20260410T120000.json
 uv run raki report results/raki-report-20260410T120000.json --html report.html
 ```
 
-Compare two runs:
+To compare two runs and see metric deltas, direction indicators, and per-session verdict transitions, use the `--diff` subcommand:
 
 ```bash
-uv run raki report --diff results/baseline.json results/compare.json
+uv run raki report --diff results/before.json results/after.json
 ```
+
+For the full before/after comparison workflow — including how to scope manifests, what the diff output shows, and how to gate CI on regressions — see [Comparing Runs](comparing-runs.md).
 
 ## CI integration
 
