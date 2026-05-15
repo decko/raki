@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from raki.model.dataset import EvalSample
+from raki.model.phases import PhaseResult
 from raki.model.report import EvalReport, SampleResult
 from raki.report.cli_summary import (
     EXPERIMENTAL_METRICS,
@@ -180,6 +181,39 @@ METRIC_METADATA: dict[str, dict[str, str | bool]] = {
 
 # GitHub base URL for metric documentation links
 DOCS_BASE_URL = "https://github.com/decko/raki/blob/main/docs/interpreting-results.md"
+
+# Canonical pipeline phase order — used to sort phases in the HTML phase timeline.
+# Phases not listed here are placed after all known phases, in their original order.
+PHASE_ORDER: list[str] = [
+    "triage",
+    "plan",
+    "implement",
+    "verify",
+    "review",
+    "submit",
+    "monitor",
+]
+
+
+def sort_phases(
+    phases: list[PhaseResult],
+    pipeline_phases: list[str] | None = None,
+) -> list[PhaseResult]:
+    """Sort phases by canonical pipeline order, then by generation.
+
+    Uses ``pipeline_phases`` from ``SessionMeta`` when available (the actual
+    ordered list recorded by the orchestrator); otherwise falls back to
+    ``PHASE_ORDER``.  Unknown phase names sort to the end.  Within the same
+    phase name the secondary key is ``generation``, which places rework
+    repetitions in ascending order.
+    """
+    order_list = pipeline_phases if pipeline_phases else PHASE_ORDER
+    order_index: dict[str, int] = {name: idx for idx, name in enumerate(order_list)}
+    fallback = len(order_list)
+    return sorted(
+        phases,
+        key=lambda phase: (order_index.get(phase.name, fallback), phase.generation),
+    )
 
 
 def _get_metric_meta(name: str) -> dict[str, str | bool]:
@@ -669,6 +703,7 @@ def write_html_report(
         needs_attention_rows=needs_attention_rows,
         needs_attention_count=needs_attention_count,
         format_duration=_format_duration,
+        sort_phases=sort_phases,
         no_data_metrics=no_data_metrics,
         agent_models=agent_models,
         judge_cost=judge_cost,

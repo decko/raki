@@ -594,8 +594,9 @@
   }
 
   .phase-status-completed { background: var(--green); }
-  .phase-status-failed { background: var(--red); }
-  .phase-status-skipped { background: var(--text-muted); }
+  .phase-status-rework    { background: var(--yellow); }
+  .phase-status-failed    { background: var(--red); }
+  .phase-status-skipped   { background: var(--text-muted); }
 
   .phase-duration {
     color: var(--text-muted);
@@ -1032,9 +1033,10 @@
       {% if sample.phases %}
       <h3>Phases</h3>
       <div class="phase-list">
-        {% for phase in sample.phases %}
+        {% for phase in sort_phases(sample.phases, sample.session.pipeline_phases) %}
+        {% set dot_class = 'rework' if phase.status == 'completed' and phase.generation > 1 else phase.status %}
         <div class="phase-item">
-          <span class="phase-status phase-status-{{ phase.status }}"></span>
+          <span class="phase-status phase-status-{{ dot_class }}"></span>
           <span>{{ phase.name }} (gen {{ phase.generation }})</span>
           <span style="color: var(--text-muted);">&mdash; {{ phase.status }}</span>
           {% if phase.duration_ms is not none %}

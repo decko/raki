@@ -1,0 +1,5 @@
+Fix phase timeline ordering in the HTML report — phases are now sorted by their
+canonical pipeline position (triage → plan → implement → verify → review → submit
+→ monitor) using the new ``sort_phases()`` helper.  Rework phases (generation > 1)
+are highlighted with an amber dot instead of green, making it visually obvious
+which pipeline steps were repeated.
