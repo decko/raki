@@ -116,6 +116,16 @@ METRIC_METADATA: dict[str, dict[str, str | bool]] = {
         "threshold": "",
         "docs_anchor": "token-efficiency",
     },
+    "triage_calibration": {
+        "display_name": "Triage calibration",
+        "higher_is_better": True,
+        "display_format": "percent",
+        "description": "Fraction of sessions where predicted complexity matches actual cost",
+        "subtitle": "How well the agent's triage complexity estimate predicts actual session cost",
+        "direction": "higher is better",
+        "threshold": "Target: >= 80%",
+        "docs_anchor": "triage-calibration",
+    },
     "faithfulness": {
         "display_name": "Faithfulness",
         "higher_is_better": True,

@@ -22,6 +22,7 @@ OPERATIONAL_METRICS = {
     "self_correction_rate",
     "phase_execution_time",
     "token_efficiency",
+    "triage_calibration",
 }
 
 KNOWLEDGE_METRICS = {
