@@ -252,6 +252,10 @@ Use the `/orchestrate` skill in Claude Code to coordinate milestone-level develo
 27. **`soda-system-prompt-*.md` stray files** -- SODA sometimes leaves temporary prompt files in the repo root. These are in `.gitignore` and should never be committed.
 28. **`--docs-path` must match the project being worked on** -- when evaluating SODA sessions that implement raki code, point `--docs-path` to raki's docs, not SODA's. When evaluating Alcove sessions working on pulp-service, point to pulp-service docs. Wrong docs → knowledge_gap_rate=1.00 because findings reference source files the docs don't cover.
 29. **`vertex-anthropic` is the reliable judge provider** -- `anthropic` needs `ANTHROPIC_API_KEY` (not set by default). `google` async fix landed in v0.12.0 (#233). `answer_relevancy` requires either `GOOGLE_CLOUD_PROJECT` or `VERTEXAI_PROJECT`; `create_ragas_embeddings` normalises `GOOGLE_CLOUD_PROJECT` from `VERTEXAI_PROJECT` so `GoogleEmbeddings` can find the project internally (#231). Default to `--judge-provider vertex-anthropic --judge-model claude-sonnet-4-6`.
+30. **`GoogleEmbeddings(use_vertex=True)` is the OLD SDK path** -- do NOT pass `use_vertex=True` when using `genai.Client(vertexai=True)`. The `use_vertex` flag selects the deprecated `vertexai.language_models.TextEmbeddingModel` path. Without it, Ragas detects the `genai.Client` as the new SDK and routes through `client.models.embed_content()`. This is correct Ragas usage, not a bug or workaround.
+31. **CI typecheck has only `--extra dev`** -- the `ty: ignore[unresolved-import]` comments in `metrics/ragas/` are load-bearing. CI does not install ragas, anthropic, instructor, or google-genai. Do not remove these comments unless the CI workflow is changed to `--all-extras`.
+32. **Alcove pipeline adapter limitations** -- without Alcove retry policy, `first_pass_success_rate`, `rework_cycles`, `self_correction_rate`, and knowledge metrics are always trivial (1.0, 0.0, N/A). Only severity, cost, phase time, and token efficiency produce useful signal. The adapter already handles corrective steps — metrics will activate when Alcove adds retry.
+33. **`output_structured` is never rendered in HTML** -- both adapters populate it with triage approach, plan tasks, verify results, review findings, and PR URLs. The template ignores it entirely. Field normalization (e.g. Alcove `candidate_files` → `files`) should happen at the adapter layer, not in templates.
 
 ## Things agents often get wrong here
 
@@ -278,3 +282,7 @@ Use the `/orchestrate` skill in Claude Code to coordinate milestone-level develo
 - Not testing against real soda data (`~/dev/soda/.soda/`) before claiming a feature works. Unit tests verify code, not features.
 - Using `temperature` or `batch_size` as report config keys instead of `llm_temperature` / `llm_max_tokens`.
 - Treating absent metric keys in `HistoryEntry.metrics` as 0.0 instead of "no data" (gaps, not zeros).
+- Passing `use_vertex=True` to `GoogleEmbeddings` — this selects the deprecated SDK path. Use `genai.Client(vertexai=True)` without the flag.
+- Removing `ty: ignore[unresolved-import]` comments from `metrics/ragas/` — they're needed because CI typecheck only installs `--extra dev`.
+- Assuming a Ragas behavior is a bug without reading the upstream source code (check `_resolve_client()`, `embed_text()` dispatch logic).
+- Smoke-testing only with SODA data — always test with Alcove pipeline exports too (`/tmp/alcove-exports/` or similar).
