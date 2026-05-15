@@ -703,6 +703,7 @@ def write_html_report(
         needs_attention_rows=needs_attention_rows,
         needs_attention_count=needs_attention_count,
         format_duration=_format_duration,
+        sort_phases=sort_phases,
         no_data_metrics=no_data_metrics,
         agent_models=agent_models,
         judge_cost=judge_cost,
