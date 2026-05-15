@@ -2862,9 +2862,9 @@ class TestDrillDownToolCallCount:
         output = tmp_path / "report.html"
         write_html_report(report, output)
         content = output.read_text()
-        # Should show "5 tool calls" or "5 calls" or similar
-        assert "5" in content
-        assert "tool" in content.lower() or "call" in content.lower()
+        # Should show "5 tool calls" — match the exact rendered phrase for precision
+        assert "5 tool calls" in content
+        assert 'class="tool-call-count"' in content
 
     def test_no_tool_count_when_empty(self, tmp_path: Path) -> None:
         """When phase has no tool_calls, no tool count badge should appear."""

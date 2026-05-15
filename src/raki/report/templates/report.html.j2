@@ -1180,17 +1180,17 @@
       </details>
 
       {# Metrics — collapsible sub-section (closed by default) #}
-      {% if sample_result.scores and session_id in (sample_result.scores | map(attribute='sample_scores') | list | selectattr(session_id, 'defined') | list) or sample_result.scores | selectattr('sample_scores.' ~ session_id, 'defined') | list %}
-      {% endif %}
       {% set has_session_scores = namespace(value=false) %}
+      {% set session_metric_count = namespace(value=0) %}
       {% for metric_result in sample_result.scores %}
         {% if session_id in metric_result.sample_scores %}
           {% set has_session_scores.value = true %}
+          {% set session_metric_count.value = session_metric_count.value + 1 %}
         {% endif %}
       {% endfor %}
       {% if has_session_scores.value %}
       <details class="drill-down-section">
-        <summary>Metrics</summary>
+        <summary>Metrics ({{ session_metric_count.value }})</summary>
         <div class="drill-down-section-body">
         <div class="score-chips">
           {% for metric_result in sample_result.scores %}
