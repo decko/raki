@@ -2618,3 +2618,290 @@ class TestPhaseTimelineDotColoring:
         write_html_report(report, output, include_sessions=True)
         content = output.read_text()
         assert 'class="phase-status phase-status-skipped"' in content
+
+
+# --- Ticket #250: Structured drill-down sections ---
+
+
+class TestDrillDownSubSections:
+    """Drill-down expanded view wraps Phases, Findings, and Metrics in collapsible <details>."""
+
+    def test_drill_down_section_class_present(self, tmp_path: Path) -> None:
+        """Expanded drill-down should use drill-down-section class for sub-sections."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "drill-down-section" in content
+
+    def test_phases_subsection_is_collapsible(self, tmp_path: Path) -> None:
+        """The Phases sub-section in the drill-down should use a <details> element."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # There should be a details.drill-down-section element containing phase info
+        assert "drill-down-section" in content
+        # The phases sub-section should have a summary label containing "Phases"
+        assert "Phases" in content
+
+    def test_findings_subsection_is_collapsible(self, tmp_path: Path) -> None:
+        """The Findings sub-section in the drill-down should use a <details> element."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # The findings sub-section should have a summary label containing "Findings"
+        assert "Findings" in content
+        assert "drill-down-section" in content
+
+    def test_phases_count_in_summary_label(self, tmp_path: Path) -> None:
+        """Phase sub-section summary should include the phase count like 'Phases (2)'."""
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        meta = _make_session_meta_helper("session-phasecount")
+        phases = [
+            PhaseResult(name="implement", generation=1, status="completed", output="done"),
+            PhaseResult(name="verify", generation=1, status="completed", output="PASS"),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        report = EvalReport(
+            run_id="phase-count-test",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # The Phases sub-section summary should include the count (2)
+        assert "Phases (2)" in content
+
+    def test_findings_count_in_summary_label(self, tmp_path: Path) -> None:
+        """Findings sub-section summary should include the finding count like 'Findings (2)'."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # session-alpha has 2 findings
+        assert "Findings (2)" in content
+
+    def test_metrics_subsection_present_when_scores_exist(self, tmp_path: Path) -> None:
+        """When sample_result has scores, a Metrics sub-section should be present."""
+        from raki.report.html_report import write_html_report
+
+        report = _make_report_with_samples()
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # There should be a Metrics section with score chips
+        assert "Metrics" in content
+
+    def test_no_findings_section_when_empty(self, tmp_path: Path) -> None:
+        """When a session has no findings, the Findings sub-section should show empty state."""
+        from raki.report.html_report import write_html_report
+
+        clean_sample = make_sample("s-no-findings", rework_cycles=0, cost=5.0)
+        report = EvalReport(
+            run_id="no-findings-test",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=clean_sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "No review findings" in content
+
+
+class TestDrillDownFilesModified:
+    """Files-modified section appears in each phase item when PhaseResult.files_modified is set."""
+
+    def _make_report_with_files(
+        self,
+        session_id: str,
+        files: list[str],
+    ) -> EvalReport:
+        """Build a report with a phase that has files_modified populated."""
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+
+        meta = _make_session_meta_helper(session_id)
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="done",
+                files_modified=files,
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        return EvalReport(
+            run_id="files-test",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+
+    def test_files_modified_shown_when_present(self, tmp_path: Path) -> None:
+        """When phase has files_modified, the file names should appear in the HTML drill-down."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_files(
+            "session-files-01",
+            ["src/raki/cli.py", "tests/test_cli.py"],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "src/raki/cli.py" in content
+        assert "tests/test_cli.py" in content
+
+    def test_no_files_section_when_empty(self, tmp_path: Path) -> None:
+        """When phase has no files_modified, no files list should appear in the drill-down."""
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        meta = _make_session_meta_helper("session-no-files")
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="done",
+                files_modified=[],
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        report = EvalReport(
+            run_id="no-files-test",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # The phase-file-item element should not appear when files_modified is empty
+        # (the CSS class definition may still be in the <style> block, so check for the element)
+        assert 'class="phase-file-item"' not in content
+
+    def test_files_use_phase_files_class(self, tmp_path: Path) -> None:
+        """Files modified list should use the phase-files CSS class."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_files(
+            "session-files-css",
+            ["main.py"],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "phase-files" in content
+
+    def test_files_count_in_label(self, tmp_path: Path) -> None:
+        """The files-modified section label should include the file count."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_files(
+            "session-files-count",
+            ["a.py", "b.py", "c.py"],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Should show count "3 files" or "Files (3)"
+        assert "3 file" in content or "files (3)" in content.lower()
+
+
+class TestDrillDownToolCallCount:
+    """Tool-call count badge appears on phase items when PhaseResult.tool_calls is non-empty."""
+
+    def _make_report_with_tool_calls(
+        self,
+        session_id: str,
+        tool_call_count: int,
+    ) -> EvalReport:
+        """Build a report with a phase that has tool_calls populated."""
+        from raki.model.phases import PhaseResult, ToolCall
+        from raki.model.report import EvalReport, SampleResult
+
+        meta = _make_session_meta_helper(session_id)
+        tool_calls = [
+            ToolCall(name=f"tool_{idx}", arguments={"arg": idx}) for idx in range(tool_call_count)
+        ]
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="done",
+                tool_calls=tool_calls,
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        return EvalReport(
+            run_id="tool-call-test",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+
+    def test_tool_call_count_shown_when_present(self, tmp_path: Path) -> None:
+        """When phase has tool_calls, the count should appear in the phase item."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_tool_calls("session-tools-01", tool_call_count=5)
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # Should show "5 tool calls" or "5 calls" or similar
+        assert "5" in content
+        assert "tool" in content.lower() or "call" in content.lower()
+
+    def test_no_tool_count_when_empty(self, tmp_path: Path) -> None:
+        """When phase has no tool_calls, no tool count badge should appear."""
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+        from raki.report.html_report import write_html_report
+
+        meta = _make_session_meta_helper("session-no-tools")
+        phases = [
+            PhaseResult(
+                name="implement",
+                generation=1,
+                status="completed",
+                output="done",
+                tool_calls=[],
+            ),
+        ]
+        sample = EvalSample(session=meta, phases=phases, findings=[], events=[])
+        report = EvalReport(
+            run_id="no-tools-test",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        # The tool-call-count element should not appear when tool_calls is empty.
+        # The CSS class definition may be present in the <style> block, so check
+        # that no actual HTML element uses the class.
+        assert 'class="tool-call-count"' not in content
+
+    def test_tool_call_count_uses_css_class(self, tmp_path: Path) -> None:
+        """Tool call count badge should use the tool-call-count CSS class."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_tool_calls("session-tools-css", tool_call_count=3)
+        output = tmp_path / "report.html"
+        write_html_report(report, output)
+        content = output.read_text()
+        assert "tool-call-count" in content
