@@ -2471,3 +2471,133 @@ class TestHtmlReportHeaderEnrichment:
         content = output.read_text()
         assert output.exists()
         assert "RAKI Evaluation Report" in content
+
+
+# --- Ticket #249: Phase timeline ordering and dot coloring ---
+
+
+class TestSortPhases:
+    """sort_phases orders phases by (PHASE_ORDER index, generation)."""
+
+    def _make_phase(
+        self,
+        name: str,
+        generation: int = 1,
+        status: str = "completed",
+    ):
+        from raki.model.phases import PhaseResult
+
+        return PhaseResult(
+            name=name,
+            generation=generation,
+            status=status,  # type: ignore[arg-type]
+            output="done",
+        )
+
+    def test_sorts_by_phase_order(self) -> None:
+        """Phases should be returned in PHASE_ORDER order regardless of input order."""
+        from raki.report.html_report import sort_phases
+
+        verify = self._make_phase("verify")
+        implement = self._make_phase("implement")
+        triage = self._make_phase("triage")
+        sorted_phases = sort_phases([verify, implement, triage])
+        assert [ph.name for ph in sorted_phases] == ["triage", "implement", "verify"]
+
+    def test_sorts_generation_within_same_phase(self) -> None:
+        """Multiple generations of same phase should be ordered by generation number."""
+        from raki.report.html_report import sort_phases
+
+        impl_gen2 = self._make_phase("implement", generation=2)
+        impl_gen1 = self._make_phase("implement", generation=1)
+        sorted_phases = sort_phases([impl_gen2, impl_gen1])
+        assert sorted_phases[0].generation == 1
+        assert sorted_phases[1].generation == 2
+
+    def test_unknown_phase_goes_to_end(self) -> None:
+        """Phases not in PHASE_ORDER should be sorted after all known phases."""
+        from raki.report.html_report import sort_phases
+
+        implement = self._make_phase("implement")
+        custom = self._make_phase("custom-phase")
+        sorted_phases = sort_phases([custom, implement])
+        assert sorted_phases[0].name == "implement"
+        assert sorted_phases[1].name == "custom-phase"
+
+    def test_pipeline_phases_overrides_phase_order(self) -> None:
+        """When pipeline_phases is provided it takes priority over PHASE_ORDER."""
+        from raki.report.html_report import sort_phases
+
+        implement = self._make_phase("implement")
+        verify = self._make_phase("verify")
+        # Custom order: verify before implement
+        sorted_phases = sort_phases([implement, verify], pipeline_phases=["verify", "implement"])
+        assert sorted_phases[0].name == "verify"
+        assert sorted_phases[1].name == "implement"
+
+    def test_empty_list_returns_empty(self) -> None:
+        """sort_phases on an empty list should return an empty list."""
+        from raki.report.html_report import sort_phases
+
+        assert sort_phases([]) == []
+
+
+class TestPhaseTimelineDotColoring:
+    """Phase status dots use correct colors: green gen-1, yellow rework (gen>1), red failed."""
+
+    def _make_report_with_phases(self, phases: list):
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+
+        meta = _make_session_meta_helper("session-dots")
+        phase_results = [
+            PhaseResult(
+                name=ph["name"],
+                generation=ph["generation"],
+                status=ph["status"],
+                output="done",
+            )
+            for ph in phases
+        ]
+        sample = EvalSample(session=meta, phases=phase_results, findings=[], events=[])
+        return EvalReport(
+            run_id="dot-color-test",
+            aggregate_scores={},
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+
+    def test_completed_gen1_phase_has_green_dot(self, tmp_path: Path) -> None:
+        """Completed generation-1 phases should use the green status dot."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_phases(
+            [{"name": "implement", "generation": 1, "status": "completed"}]
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        assert "phase-status-completed" in content
+
+    def test_rework_phase_gen2_has_rework_dot(self, tmp_path: Path) -> None:
+        """A completed phase with generation > 1 should have the rework status dot class."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_phases(
+            [{"name": "implement", "generation": 2, "status": "completed"}]
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        assert "phase-status-rework" in content
+
+    def test_failed_phase_has_failed_dot(self, tmp_path: Path) -> None:
+        """Failed phases should use the red failed status dot regardless of generation."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_phases(
+            [{"name": "verify", "generation": 1, "status": "failed"}]
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        assert "phase-status-failed" in content
