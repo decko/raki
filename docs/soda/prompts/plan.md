@@ -32,6 +32,14 @@ Summary: {{.Ticket.Summary}}
 
 ## Your Task
 
+### Step 0: Check for an existing plan
+
+Before planning anything, read the ticket description carefully. If the issue body already contains a **Plan** section (with tasks, verification strategy, and file paths), **adopt it as-is** — do not rewrite it. Output the existing plan in the structured format and move on.
+
+Only proceed to create a new plan if no plan is found in the ticket.
+
+### Step 1: Plan the implementation
+
 Read the candidate files identified in triage and the surrounding code. Then produce a TDD implementation plan.
 
 1. **Understand the current state** — read the files, understand patterns. RAKI uses:
