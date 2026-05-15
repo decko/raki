@@ -141,7 +141,7 @@ phases:
       - name: rag-specialist
         prompt: prompts/review-rag.md
         focus: "Ragas integration, metric design, N/A semantics, knowledge matching, context synthesis"
-        condition: '{{ or (contains .Triage.CodeArea "metrics") (contains .Triage.CodeArea "ragas") (contains .Triage.CodeArea "ground_truth") (contains .Triage.CodeArea "adapters") (contains .Triage.CodeArea "knowledge") }}'
+        condition: '{{ ne .Complexity "low" }}'
     rework:
       target: implement
 
