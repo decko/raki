@@ -1,10 +1,14 @@
 # RAKI Development Pipeline — SODA Phase Configuration
 #
-# Phases: triage → plan → implement → verify → review → submit → monitor
+# Phases: triage → plan → implement → patch (corrective) → verify → review → submit → follow-up → monitor
 #
-# The review phase acts as a multi-specialist code review gate.
+# The review phase acts as a parallel multi-specialist code review gate.
 # If review finds CRITICAL or IMPORTANT issues, it routes back to
 # implement for rework (handled by the pipeline engine).
+#
+# The patch phase is a corrective phase triggered by verify failures.
+# It uses a smaller model for targeted fixes before escalating to
+# full implement.
 
 phases:
   - name: triage
@@ -59,10 +63,36 @@ phases:
       semantic: 0
     depends_on:
       - plan
+    feedback_from:
+      - review
+      - verify
+
+  - name: patch
+    type: corrective
+    prompt: prompts/patch.md
+    model: claude-sonnet-4-6
+    schema: schemas/patch.json
+    tools:
+      - Read
+      - Write
+      - Edit
+      - Glob
+      - Grep
+      - Bash
+    timeout: 8m
+    retry:
+      transient: 2
+      parse: 1
+      semantic: 0
+    depends_on:
+      - implement
+    feedback_from:
+      - verify
 
   - name: verify
     prompt: prompts/verify.md
     schema: schemas/verify.json
+    model: claude-opus-4-6[1m]
     tools:
       - Read
       - Glob
@@ -73,14 +103,19 @@ phases:
       transient: 2
       parse: 1
       semantic: 1
+    corrective:
+      phase: patch
+      max_attempts: 2
+      on_exhausted: stop
+      escalate_to: implement
     depends_on:
       - plan
       - implement
 
   - name: review
-    prompt: prompts/review.md
-    schema: schemas/review.json
+    type: parallel-review
     model: claude-opus-4-6[1m]
+    schema: schemas/review.json
     tools:
       - Read
       - Glob
@@ -89,14 +124,26 @@ phases:
       - Bash(uv:run pytest*)
       - Bash(uv:run ruff*)
       - Bash(uv:run ty*)
-    timeout: 8m
+    timeout: 12m
     retry:
       transient: 2
       parse: 1
-      semantic: 0
+      semantic: 1
     depends_on:
+      - plan
       - implement
       - verify
+    min_reviewers: 1
+    reviewers:
+      - name: python-specialist
+        prompt: prompts/review-python.md
+        focus: "Python quality, Pydantic 2 correctness, type safety, test quality, security, documentation"
+      - name: rag-specialist
+        prompt: prompts/review-rag.md
+        focus: "Ragas integration, metric design, N/A semantics, knowledge matching, context synthesis"
+        condition: '{{ or (contains .Triage.CodeArea "metrics") (contains .Triage.CodeArea "ragas") (contains .Triage.CodeArea "ground_truth") (contains .Triage.CodeArea "adapters") (contains .Triage.CodeArea "knowledge") }}'
+    rework:
+      target: implement
 
   - name: submit
     prompt: prompts/submit.md
@@ -114,26 +161,41 @@ phases:
       - verify
       - review
 
-  - name: monitor
-    prompt: prompts/monitor.md
-    schema: schemas/monitor.json
-    type: polling
+  - name: follow-up
+    type: post-submit
+    prompt: prompts/follow-up.md
     tools:
-      - Read
-      - Write
-      - Edit
-      - Glob
-      - Grep
-      - Bash
-    polling:
-      initial_interval: 2m
-      max_interval: 5m
-      escalate_after: 30m
-      max_duration: 4h
-      max_response_rounds: 3
+      - Bash(gh:*)
+    timeout: 3m
     retry:
       transient: 2
       parse: 1
       semantic: 0
     depends_on:
+      - review
       - submit
+
+  # monitor phase disabled — we handle PR review manually
+  # - name: monitor
+  #   prompt: prompts/monitor.md
+  #   schema: schemas/monitor.json
+  #   type: polling
+  #   tools:
+  #     - Read
+  #     - Write
+  #     - Edit
+  #     - Glob
+  #     - Grep
+  #     - Bash
+  #   polling:
+  #     initial_interval: 2m
+  #     max_interval: 5m
+  #     escalate_after: 30m
+  #     max_duration: 4h
+  #     max_response_rounds: 3
+  #   retry:
+  #     transient: 2
+  #     parse: 1
+  #     semantic: 0
+  #   depends_on:
+  #     - submit

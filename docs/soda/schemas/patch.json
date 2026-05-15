@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["ticket_key", "fix_results", "files_changed", "tests_passed", "too_complex"],
+  "properties": {
+    "ticket_key": { "type": "string" },
+    "fix_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fix_index", "status", "description"],
+        "properties": {
+          "fix_index": { "type": "integer" },
+          "status": { "type": "string" },
+          "description": { "type": "string" },
+          "reason": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "files_changed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "action"],
+        "properties": {
+          "path": { "type": "string" },
+          "action": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "tests_passed": { "type": "boolean" },
+    "too_complex": { "type": "boolean" },
+    "too_complex_reason": { "type": "string" }
+  },
+  "additionalProperties": false
+}
