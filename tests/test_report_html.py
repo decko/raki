@@ -2576,7 +2576,10 @@ class TestPhaseTimelineDotColoring:
         output = tmp_path / "report.html"
         write_html_report(report, output, include_sessions=True)
         content = output.read_text()
-        assert "phase-status-completed" in content
+        # Assert on the specific class attribute in the rendered <span> element, not
+        # the CSS definition (which uses a leading dot: `.phase-status-completed`).
+        assert 'class="phase-status phase-status-completed"' in content
+        assert 'class="phase-status phase-status-rework"' not in content
 
     def test_rework_phase_gen2_has_rework_dot(self, tmp_path: Path) -> None:
         """A completed phase with generation > 1 should have the rework status dot class."""
@@ -2588,7 +2591,9 @@ class TestPhaseTimelineDotColoring:
         output = tmp_path / "report.html"
         write_html_report(report, output, include_sessions=True)
         content = output.read_text()
-        assert "phase-status-rework" in content
+        # Rework dot uses phase-status-rework class, not phase-status-completed.
+        assert 'class="phase-status phase-status-rework"' in content
+        assert 'class="phase-status phase-status-completed"' not in content
 
     def test_failed_phase_has_failed_dot(self, tmp_path: Path) -> None:
         """Failed phases should use the red failed status dot regardless of generation."""
@@ -2600,4 +2605,16 @@ class TestPhaseTimelineDotColoring:
         output = tmp_path / "report.html"
         write_html_report(report, output, include_sessions=True)
         content = output.read_text()
-        assert "phase-status-failed" in content
+        assert 'class="phase-status phase-status-failed"' in content
+
+    def test_skipped_phase_has_skipped_dot(self, tmp_path: Path) -> None:
+        """Skipped phases should use the muted skipped status dot."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_phases(
+            [{"name": "monitor", "generation": 1, "status": "skipped"}]
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True)
+        content = output.read_text()
+        assert 'class="phase-status phase-status-skipped"' in content
