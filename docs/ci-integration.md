@@ -69,6 +69,8 @@ uv run raki report \
 
 Regression direction respects each metric's `higher_is_better` setting. For example, an increase in `rework_cycles` (lower is better) is flagged as a regression.
 
+For the full before/after comparison workflow — including manifest scoping, reading the diff output, and the `--html` option for a self-contained diff report — see [Comparing Runs](comparing-runs.md).
+
 ## Exit codes
 
 | Code | Meaning |

@@ -1,0 +1,5 @@
+Document the ``raki report --diff`` workflow for comparing evaluation runs. The new
+``docs/comparing-runs.md`` guide covers the full before/after comparison workflow:
+manifest scoping, reading metric deltas and direction indicators, per-session verdict
+transitions, ``--fail-on-regression`` for CI gating, and when to use ``--diff`` vs
+``raki trends``.
