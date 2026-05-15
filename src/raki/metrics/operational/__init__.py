@@ -1,4 +1,5 @@
 from raki.metrics.operational.cost import CostEfficiency
+from raki.metrics.operational.file_prediction import FilePredictionAccuracyMetric
 from raki.metrics.operational.latency import PhaseExecutionTimeMetric
 from raki.metrics.operational.rework import ReworkCycles
 from raki.metrics.operational.self_correction import SelfCorrectionRate
@@ -16,11 +17,13 @@ ALL_OPERATIONAL = [
     PhaseExecutionTimeMetric(),
     TokenEfficiencyMetric(),
     TriageCalibrationMetric(),
+    FilePredictionAccuracyMetric(),
 ]
 
 __all__ = [
     "ALL_OPERATIONAL",
     "CostEfficiency",
+    "FilePredictionAccuracyMetric",
     "FirstPassSuccessRate",
     "PhaseExecutionTimeMetric",
     "ReviewSeverityDistribution",

@@ -23,6 +23,7 @@ OPERATIONAL_METRICS = {
     "phase_execution_time",
     "token_efficiency",
     "triage_calibration",
+    "file_prediction_accuracy",
 }
 
 KNOWLEDGE_METRICS = {

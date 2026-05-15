@@ -126,6 +126,16 @@ METRIC_METADATA: dict[str, dict[str, str | bool]] = {
         "threshold": "Target: >= 80%",
         "docs_anchor": "triage-calibration",
     },
+    "file_prediction_accuracy": {
+        "display_name": "File prediction accuracy",
+        "higher_is_better": True,
+        "display_format": "percent",
+        "description": "Mean F1 between triage predicted files and actual files changed",
+        "subtitle": "How accurately the agent predicts which files will be modified at triage time",
+        "direction": "higher is better",
+        "threshold": "Target: >= 70%",
+        "docs_anchor": "file-prediction-accuracy",
+    },
     "faithfulness": {
         "display_name": "Faithfulness",
         "higher_is_better": True,

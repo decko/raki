@@ -157,6 +157,34 @@ Phases where both `tokens_in` and `tokens_out` are `None` are skipped. Phases wi
 
 ---
 
+## file_prediction_accuracy — File prediction accuracy
+
+**What it measures:** How accurately the agent's triage-phase file list (`triage.output_structured.files`) predicts the set of files actually changed during implementation.
+
+**What it tells you:** Whether the agent's scope assessment at triage time matches reality. A high score means the agent consistently identifies the right files at the start of a session, which improves planning reliability, review targeting, and cost forecasting. A low score suggests the scope estimate is unreliable — either missing files that will change (low recall) or predicting files that remain untouched (low precision).
+
+**What action it drives:** Examine sessions with low F1. Repeated low recall (agent misses files it later touches) suggests the triage prompt underspecifies scope. Repeated low precision (agent predicts files it never changes) suggests over-broad scope estimates. Both indicate triage quality issues worth addressing in prompts or code-area resolution.
+
+**How it's computed:** For each session with a non-empty `triage.output_structured["files"]` list:
+
+1. **Predicted set** — normalise each path (strip `./`, lowercase), collect as a set.
+2. **Actual set** — from `implement.output_structured["files_changed"]` (SODA format: list of dicts with `path` key) or `implement.files_modified` (Alcove format: list of strings). Falls back to `files_modified` when `files_changed` is absent or empty.
+3. **Per-session F1** = `2 × precision × recall / (precision + recall)` where precision = `|predicted ∩ actual| / |predicted|` and recall = `|predicted ∩ actual| / |actual|`. Returns `0.0` when either set is empty.
+
+**Score** = mean of per-session F1 values. Each session counts equally regardless of file count (macro-average).
+
+**Details dict** also includes `micro_precision`, `micro_recall`, and `micro_f1` computed by pooling all true positives, predicted counts, and actual counts across sessions — useful for aggregate diagnostics.
+
+**N/A conditions:** Returns `score=None` (displayed as N/A) when no sessions have triage file predictions. This is expected when the triage phase does not emit a `files` list or when sessions use an adapter that does not populate `output_structured`.
+
+| Zone | Range | Meaning |
+|------|-------|---------|
+| Green | >= 0.70 | Agent consistently identifies the right files |
+| Yellow | 0.40–0.69 | Scope estimates are partially correct |
+| Red | < 0.40 | Triage file predictions are unreliable |
+
+---
+
 ## triage_calibration -- Triage calibration
 
 **What it measures:** Fraction of sessions where the agent's triage complexity prediction is consistent with the actual session cost.
