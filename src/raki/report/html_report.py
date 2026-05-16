@@ -188,9 +188,13 @@ PHASE_ORDER: list[str] = [
     "triage",
     "plan",
     "implement",
+    "patch",
     "verify",
     "review",
     "submit",
+    "follow-up",
+    "create-pr",
+    "await-ci",
     "monitor",
 ]
 
@@ -201,15 +205,20 @@ def sort_phases(
 ) -> list[PhaseResult]:
     """Sort phases by canonical pipeline order, then by generation.
 
-    Uses ``pipeline_phases`` from ``SessionMeta`` when available (the actual
-    ordered list recorded by the orchestrator); otherwise falls back to
-    ``PHASE_ORDER``.  Unknown phase names sort to the end.  Within the same
-    phase name the secondary key is ``generation``, which places rework
-    repetitions in ascending order.
+    Always uses ``PHASE_ORDER`` as the authoritative execution sequence.
+    If ``pipeline_phases`` contains names not in ``PHASE_ORDER`` (e.g.
+    Alcove bridge steps), those are appended after the known phases but
+    before fully unknown names.  Within the same phase name the secondary
+    key is ``generation``, placing rework repetitions in ascending order.
     """
-    order_list = pipeline_phases if pipeline_phases else PHASE_ORDER
-    order_index: dict[str, int] = {name: idx for idx, name in enumerate(order_list)}
-    fallback = len(order_list)
+    order_index: dict[str, int] = {name: idx for idx, name in enumerate(PHASE_ORDER)}
+    if pipeline_phases:
+        next_idx = len(PHASE_ORDER)
+        for name in pipeline_phases:
+            if name not in order_index:
+                order_index[name] = next_idx
+                next_idx += 1
+    fallback = max(order_index.values(), default=0) + 1
     return sorted(
         phases,
         key=lambda phase: (order_index.get(phase.name, fallback), phase.generation),

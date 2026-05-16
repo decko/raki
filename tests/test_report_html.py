@@ -2528,16 +2528,35 @@ class TestSortPhases:
         assert sorted_phases[0].name == "implement"
         assert sorted_phases[1].name == "custom-phase"
 
-    def test_pipeline_phases_overrides_phase_order(self) -> None:
-        """When pipeline_phases is provided it takes priority over PHASE_ORDER."""
+    def test_pipeline_phases_adds_unknown_names(self) -> None:
+        """pipeline_phases contributes unknown phase names after PHASE_ORDER entries."""
         from raki.report.html_report import sort_phases
 
         implement = self._make_phase("implement")
         verify = self._make_phase("verify")
-        # Custom order: verify before implement
-        sorted_phases = sort_phases([implement, verify], pipeline_phases=["verify", "implement"])
-        assert sorted_phases[0].name == "verify"
+        custom_step = self._make_phase("await-review")
+        sorted_phases = sort_phases(
+            [custom_step, implement, verify],
+            pipeline_phases=["await-review"],
+        )
+        assert sorted_phases[0].name == "implement"
+        assert sorted_phases[1].name == "verify"
+        assert sorted_phases[2].name == "await-review"
+
+    def test_canonical_order_ignores_alphabetical_pipeline_phases(self) -> None:
+        """pipeline_phases in alphabetical order should not override PHASE_ORDER."""
+        from raki.report.html_report import sort_phases
+
+        implement = self._make_phase("implement")
+        verify = self._make_phase("verify")
+        triage = self._make_phase("triage")
+        sorted_phases = sort_phases(
+            [implement, verify, triage],
+            pipeline_phases=["implement", "triage", "verify"],
+        )
+        assert sorted_phases[0].name == "triage"
         assert sorted_phases[1].name == "implement"
+        assert sorted_phases[2].name == "verify"
 
     def test_empty_list_returns_empty(self) -> None:
         """sort_phases on an empty list should return an empty list."""
