@@ -494,9 +494,13 @@ class TestHtmlSessionStripping:
         for sample_result in rendered_report.sample_results:
             for phase in sample_result.sample.phases:
                 assert phase.output == "<stripped>"
-                assert phase.output_structured is None
                 assert phase.knowledge_context is None
                 assert phase.instruction_context is None
+                if phase.output_structured is not None:
+                    from raki.report.json_report import STRUCTURED_DISPLAY_FIELDS
+
+                    for key in phase.output_structured:
+                        assert key in STRUCTURED_DISPLAY_FIELDS
 
     def test_include_sessions_retains_data(self, tmp_path: Path) -> None:
         """When include_sessions=True, raw session data should be retained."""
@@ -2905,3 +2909,274 @@ class TestDrillDownToolCallCount:
         write_html_report(report, output)
         content = output.read_text()
         assert "tool-call-count" in content
+
+
+class TestStructuredDetailSections:
+    """Tests for output_structured rendering as formatted HTML inline per-phase."""
+
+    @staticmethod
+    def _make_report_with_structured(
+        session_id: str,
+        phase_name: str,
+        output_structured: dict,
+    ) -> EvalReport:
+        from raki.model.dataset import EvalSample, SessionMeta
+        from raki.model.phases import PhaseResult
+        from raki.model.report import EvalReport, SampleResult
+
+        meta = SessionMeta(
+            session_id=session_id,
+            started_at=datetime(2026, 5, 15, tzinfo=timezone.utc),
+            total_phases=1,
+            rework_cycles=0,
+            total_cost_usd=5.0,
+        )
+        phase = PhaseResult(
+            name=phase_name,
+            generation=1,
+            status="completed",
+            output="done",
+            output_structured=output_structured,
+        )
+        sample = EvalSample(session=meta, phases=[phase], findings=[], events=[])
+        return EvalReport(
+            run_id="test-structured",
+            sample_results=[SampleResult(sample=sample, scores=[])],
+        )
+
+    def test_triage_approach_renders(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_structured(
+            "sess-tri",
+            "triage",
+            {
+                "approach": "Add a new metric to the operational tier",
+                "complexity": "medium",
+                "code_area": "src/raki/metrics/operational",
+                "files": ["metric.py", "test_metric.py"],
+                "risks": ["May break existing tests"],
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True, session_count=1)
+        content = output.read_text()
+        assert "structured-detail" in content
+        assert "Add a new metric to the operational tier" in content
+        assert "medium" in content
+        assert "metric.py" in content
+        assert "May break existing tests" in content
+
+    def test_plan_tasks_render_as_list(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_structured(
+            "sess-plan",
+            "plan",
+            {
+                "tasks": [
+                    {"id": "1", "description": "Write failing test for the new metric"},
+                    {"id": "2", "description": "Implement the metric class"},
+                ],
+                "verification": {"commands": ["uv run pytest tests/ -v"]},
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True, session_count=1)
+        content = output.read_text()
+        assert "Plan (2 tasks)" in content
+        assert "Write failing test for the new metric" in content
+        assert "Implement the metric class" in content
+        assert "uv run pytest tests/ -v" in content
+
+    def test_implement_files_changed_render(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_structured(
+            "sess-impl",
+            "implement",
+            {
+                "files_changed": [
+                    {"path": "src/metric.py", "action": "added"},
+                    {"path": "src/cli.py", "action": "modified"},
+                ],
+                "commits": [{"message": "feat: add new metric"}],
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True, session_count=1)
+        content = output.read_text()
+        assert "2 files changed" in content
+        assert "src/metric.py" in content
+        assert "src/cli.py" in content
+        assert "file-action-A" in content
+        assert "file-action-M" in content
+        assert "feat: add new metric" in content
+
+    def test_verify_fail_renders_expanded(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_structured(
+            "sess-ver",
+            "verify",
+            {
+                "verdict": "FAIL",
+                "command_results": [
+                    {"command": "pytest tests/", "exit_code": 1, "passed": False},
+                    {"command": "ruff check src/", "exit_code": 0, "passed": True},
+                ],
+                "fixes_required": ["Fix failing test assertions"],
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True, session_count=1)
+        content = output.read_text()
+        assert "verdict-inline-fail" in content
+        assert "FAIL" in content
+        assert "pytest tests/" in content
+        assert "ruff check src/" in content
+        assert "Fix failing test assertions" in content
+
+    def test_verify_pass_renders_collapsed(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_structured(
+            "sess-ver-pass",
+            "verify",
+            {
+                "verdict": "PASS",
+                "command_results": [
+                    {"command": "pytest tests/", "exit_code": 0, "passed": True},
+                ],
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True, session_count=1)
+        content = output.read_text()
+        assert "verdict-inline-pass" in content
+        assert 'structured-detail" open' not in content.replace(
+            'structured-detail"', 'structured-detail"'
+        )
+
+    def test_review_verdict_renders(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_structured(
+            "sess-rev",
+            "review",
+            {
+                "verdict": "approve",
+                "findings": [
+                    {"severity": "MINOR", "file": "cli.py", "issue": "Unused import"},
+                ],
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True, session_count=1)
+        content = output.read_text()
+        assert "verdict-inline-pass" in content
+        assert "approve" in content
+        assert "1 finding" in content
+
+    def test_no_structured_section_without_data(self, tmp_path: Path) -> None:
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_structured("sess-empty", "implement", {})
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=True, session_count=1)
+        content = output.read_text()
+        assert '<details class="structured-detail"' not in content
+
+    def test_structured_renders_without_include_sessions(self, tmp_path: Path) -> None:
+        """Structured sections should render even without --include-sessions."""
+        from raki.report.html_report import write_html_report
+
+        report = self._make_report_with_structured(
+            "sess-stripped",
+            "triage",
+            {
+                "approach": "Visible even when stripped",
+                "complexity": "small",
+            },
+        )
+        output = tmp_path / "report.html"
+        write_html_report(report, output, include_sessions=False, session_count=1)
+        content = output.read_text()
+        assert "Visible even when stripped" in content
+        assert "structured-detail" in content
+
+
+class TestStripSessionDataPreservesStructured:
+    """Tests for strip_session_data preserving curated output_structured fields."""
+
+    def test_preserves_display_fields(self) -> None:
+        from raki.report.json_report import strip_session_data
+
+        data = {
+            "sample_results": [
+                {
+                    "sample": {
+                        "phases": [
+                            {
+                                "output": "raw text",
+                                "output_structured": {
+                                    "verdict": "PASS",
+                                    "approach": "do the thing",
+                                    "raw_output": "should be stripped",
+                                    "knowledge_context": "also stripped",
+                                },
+                            }
+                        ],
+                        "events": [],
+                    },
+                }
+            ],
+        }
+        strip_session_data(data)
+        structured = data["sample_results"][0]["sample"]["phases"][0]["output_structured"]
+        assert structured is not None
+        assert "verdict" in structured
+        assert "approach" in structured
+        assert "raw_output" not in structured
+        assert "knowledge_context" not in structured
+
+    def test_sets_none_when_no_display_fields(self) -> None:
+        from raki.report.json_report import strip_session_data
+
+        data = {
+            "sample_results": [
+                {
+                    "sample": {
+                        "phases": [
+                            {
+                                "output": "raw text",
+                                "output_structured": {
+                                    "raw_output": "nothing useful",
+                                    "ticket_key": "123",
+                                },
+                            }
+                        ],
+                        "events": [],
+                    },
+                }
+            ],
+        }
+        strip_session_data(data)
+        structured = data["sample_results"][0]["sample"]["phases"][0]["output_structured"]
+        assert structured is None
+
+    def test_handles_none_output_structured(self) -> None:
+        from raki.report.json_report import strip_session_data
+
+        data = {
+            "sample_results": [
+                {
+                    "sample": {
+                        "phases": [{"output": "raw", "output_structured": None}],
+                        "events": [],
+                    },
+                }
+            ],
+        }
+        strip_session_data(data)
+        assert "output_structured" not in data["sample_results"][0]["sample"]["phases"][0]
