@@ -1,1 +1,0 @@
-Add ``file_prediction_accuracy`` operational metric that computes mean per-session F1 between the triage-phase file predictions and the files actually changed during implementation. Supports both SODA (``files_changed`` dict list) and Alcove (``files_modified`` string list) session formats.
