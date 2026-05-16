@@ -1,3 +1,42 @@
+## [0.13.0] — 2026-05-15
+
+### Features
+
+- Structured drill-down sections in the HTML report: the per-session expanded view now
+  wraps **Phases**, **Findings**, and **Metrics** in individually collapsible
+  ``<details>`` blocks with item counts in each summary label (e.g. "Phases (3)",
+  "Findings (2)", "Metrics (4)"). Each phase item also shows the count of tool calls
+  used and a list of files modified (when ``PhaseResult.files_modified`` is populated). (#250)
+- Add `triage_calibration` metric — measures how well the agent's triage complexity prediction
+  (`small` / `medium` / `large`) matches the actual session cost. Calibration thresholds:
+  small ≤ $8.00, medium ≤ $16.00, large: any cost. Returns N/A when no sessions have both a
+  triage complexity estimate and a cost. (#251)
+- Add ``file_prediction_accuracy`` operational metric that computes mean per-session F1 between the triage-phase file predictions and the files actually changed during implementation. Supports both SODA (``files_changed`` dict list) and Alcove (``files_modified`` string list) session formats. (#252)
+
+### Bug Fixes
+
+- Fix phase timeline ordering in the HTML report — phases are now sorted by their
+  canonical pipeline position (triage → plan → implement → verify → review → submit
+  → monitor) using the new ``sort_phases()`` helper.  Rework phases (generation > 1)
+  are highlighted with an amber dot instead of green, making it visually obvious
+  which pipeline steps were repeated. (#249)
+- Render ``output_structured`` as formatted HTML in the drill-down instead of raw
+  JSON.  Triage shows approach/complexity/risks, plan shows a numbered task list,
+  implement shows files changed with M/A/D prefixes, verify shows verdict badge
+  with command results (auto-expanded on failure), and review shows findings with
+  severity badges.  Phases are now sorted chronologically with rework interleaving
+  (e.g. implement(1) → verify(1) → implement(2) → verify(2)) instead of grouped
+  by phase name.
+
+### Documentation
+
+- Document the ``raki report --diff`` workflow for comparing evaluation runs. The new
+  ``docs/comparing-runs.md`` guide covers the full before/after comparison workflow:
+  manifest scoping, reading metric deltas and direction indicators, per-session verdict
+  transitions, ``--fail-on-regression`` for CI gating, and when to use ``--diff`` vs
+  ``raki trends``. (#258)
+
+
 ## [0.12.0] — 2026-05-08
 
 ### Features
