@@ -818,6 +818,101 @@
     margin-left: 0.4rem;
     vertical-align: middle;
   }
+
+  /* Structured detail sections within phase items */
+  details.structured-detail {
+    margin: 0.3rem 0 0.5rem 1.4rem;
+    border-left: 2px solid var(--border-color);
+    padding-left: 0.75rem;
+  }
+
+  details.structured-detail > summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    user-select: none;
+    list-style: none;
+    padding: 0.15rem 0;
+  }
+
+  details.structured-detail > summary::before {
+    content: "▸ ";
+  }
+
+  details.structured-detail[open] > summary::before {
+    content: "▾ ";
+  }
+
+  .structured-field {
+    display: flex;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .structured-field-label {
+    font-weight: 600;
+    color: var(--text-muted);
+    min-width: 100px;
+    flex-shrink: 0;
+  }
+
+  .structured-field-value {
+    word-break: break-word;
+  }
+
+  .structured-task-list {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding-left: 1.2rem;
+    margin: 0.2rem 0;
+    line-height: 1.6;
+  }
+
+  .structured-file-change {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.78rem;
+    padding: 0.05rem 0;
+    color: var(--text-secondary);
+  }
+
+  .file-action-A { color: var(--green, #22c55e); }
+  .file-action-M { color: var(--amber, #f59e0b); }
+  .file-action-D { color: var(--red, #ef4444); }
+
+  .structured-command {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.78rem;
+    padding: 0.1rem 0;
+    color: var(--text-secondary);
+  }
+
+  .verdict-badge-inline {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+
+  .verdict-inline-pass { background: rgba(34,197,94,0.15); color: #22c55e; }
+  .verdict-inline-fail { background: rgba(239,68,68,0.15); color: #ef4444; }
+
+  .structured-risks {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    padding-left: 1rem;
+    margin: 0.1rem 0;
+    line-height: 1.5;
+  }
+
+  .structured-commit {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding: 0.05rem 0 0.05rem 1rem;
+  }
 </style>
 </head>
 <body>
@@ -1125,6 +1220,134 @@
             {% endfor %}
           </div>
           {% endif %}
+          {# --- Structured detail from output_structured --- #}
+          {% if phase.output_structured and phase.output_structured is mapping %}
+          {% set os = phase.output_structured %}
+
+          {# Triage summary #}
+          {% if os.approach is defined %}
+          <details class="structured-detail">
+            <summary>Triage detail</summary>
+            <div>
+              <div class="structured-field"><span class="structured-field-label">Approach</span><span class="structured-field-value">{{ os.approach }}</span></div>
+              {% if os.complexity is defined %}
+              <div class="structured-field"><span class="structured-field-label">Complexity</span><span class="structured-field-value">{{ os.complexity }}</span></div>
+              {% endif %}
+              {% if os.code_area is defined or os.target_area is defined %}
+              <div class="structured-field"><span class="structured-field-label">Code area</span><span class="structured-field-value">{{ os.code_area or os.target_area }}</span></div>
+              {% endif %}
+              {% if os.files is defined and os.files %}
+              <div class="structured-field"><span class="structured-field-label">Target files</span><span class="structured-field-value">{{ os.files | join(", ") if os.files is iterable and os.files is not string else os.files }}</span></div>
+              {% elif os.candidate_files is defined %}
+              <div class="structured-field"><span class="structured-field-label">Target files</span><span class="structured-field-value">{{ os.candidate_files }}</span></div>
+              {% endif %}
+              {% if os.risks is defined and os.risks %}
+              <div class="structured-risks">
+                {% for risk in os.risks %}<div>⚠ {{ risk }}</div>{% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          </details>
+          {% endif %}
+
+          {# Plan tasks #}
+          {% if os.tasks is defined and os.tasks %}
+          <details class="structured-detail">
+            <summary>Plan ({{ os.tasks | length }} task{{ "s" if os.tasks | length != 1 else "" }})</summary>
+            <div>
+              <ol class="structured-task-list">
+                {% for task in os.tasks %}
+                <li>{{ task.description if task is mapping and task.description is defined else task }}</li>
+                {% endfor %}
+              </ol>
+              {% if os.verification is defined and os.verification is mapping and os.verification.commands is defined %}
+              <div class="structured-field" style="margin-top: 0.3rem;"><span class="structured-field-label">Verification</span><span class="structured-field-value">{{ os.verification.commands | join("; ") }}</span></div>
+              {% elif os.verification_commands is defined %}
+              <div class="structured-field" style="margin-top: 0.3rem;"><span class="structured-field-label">Verification</span><span class="structured-field-value">{{ os.verification_commands if os.verification_commands is string else os.verification_commands | join("; ") }}</span></div>
+              {% endif %}
+            </div>
+          </details>
+          {% endif %}
+
+          {# Implement — files changed + commits #}
+          {% if os.files_changed is defined and os.files_changed %}
+          <details class="structured-detail">
+            <summary>{{ os.files_changed | length }} file{{ "s" if os.files_changed | length != 1 else "" }} changed</summary>
+            <div>
+              {% for fc in os.files_changed %}
+              {% set action = fc.action if fc is mapping and fc.action is defined else "?" %}
+              {% set prefix = "A" if action in ("added", "created") else "D" if action in ("deleted", "removed") else "M" if action in ("modified", "changed") else action[:1] | upper %}
+              {% set action_class = "A" if prefix == "A" else "D" if prefix == "D" else "M" %}
+              <div class="structured-file-change"><span class="file-action-{{ action_class }}">{{ prefix }}</span> {{ fc.path if fc is mapping and fc.path is defined else fc }}</div>
+              {% endfor %}
+              {% if os.commits is defined and os.commits %}
+              {% for commit in os.commits %}
+              <div class="structured-commit">{{ commit.message if commit is mapping and commit.message is defined else commit }}</div>
+              {% endfor %}
+              {% endif %}
+            </div>
+          </details>
+          {% endif %}
+
+          {# Verify results #}
+          {% if os.verdict is defined and phase.name == "verify" %}
+          {% set verdict_lower = os.verdict | lower %}
+          <details class="structured-detail"{% if verdict_lower == "fail" %} open{% endif %}>
+            <summary>Verify: <span class="verdict-badge-inline verdict-inline-{{ 'pass' if verdict_lower == 'pass' else 'fail' }}">{{ os.verdict }}</span></summary>
+            <div>
+              {% if os.command_results is defined and os.command_results %}
+              {% for cmd in os.command_results %}
+              <div class="structured-command">{{ "✓" if cmd.passed is defined and cmd.passed else "✗" }} {{ cmd.command if cmd is mapping and cmd.command is defined else cmd }}{% if cmd is mapping and cmd.exit_code is defined %} (exit {{ cmd.exit_code }}){% endif %}</div>
+              {% endfor %}
+              {% endif %}
+              {% if os.code_issues is defined and os.code_issues %}
+              <div style="margin-top: 0.3rem; font-size: 0.8rem; color: var(--text-secondary);">
+                {% for issue in os.code_issues %}
+                <div>• {% if issue is mapping %}{% if issue.severity is defined %}<strong>{{ issue.severity }}</strong> {% endif %}{% if issue.file is defined %}{{ issue.file }}{% if issue.line is defined %}:{{ issue.line }}{% endif %}: {% endif %}{{ issue.issue if issue.issue is defined else issue }}{% else %}{{ issue }}{% endif %}</div>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% if os.fixes_required is defined and os.fixes_required %}
+              <div style="margin-top: 0.3rem; font-size: 0.8rem; color: var(--text-secondary);">
+                <div class="structured-field-label">Fixes required:</div>
+                {% for fix in os.fixes_required %}
+                <div style="padding-left: 0.5rem;">• {{ fix }}</div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          </details>
+          {% endif %}
+
+          {# Review summary #}
+          {% if os.verdict is defined and phase.name == "review" %}
+          <details class="structured-detail">
+            <summary>Review: <span class="verdict-badge-inline verdict-inline-{{ 'pass' if os.verdict | lower in ('approve', 'pass', 'pass-with-follow-ups') else 'fail' }}">{{ os.verdict }}</span>{% if os.findings is defined and os.findings %} ({{ os.findings | length }} finding{{ "s" if os.findings | length != 1 else "" }}){% endif %}</summary>
+            <div>
+              {% if os.findings is defined and os.findings %}
+              <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                {% for finding in os.findings %}
+                <div style="padding: 0.15rem 0;">
+                  {% if finding is mapping %}
+                  <span class="severity-badge severity-{{ finding.severity | default('minor') | lower }}" style="font-size: 0.7rem; padding: 0.05rem 0.3rem;">{{ finding.severity | default('?') }}</span>
+                  {% if finding.file is defined %}<span style="font-family: monospace; font-size: 0.75rem; color: var(--text-muted);">{{ finding.file }}{% if finding.line is defined %}:{{ finding.line }}{% endif %}</span> {% endif %}
+                  {{ finding.issue | default('') }}
+                  {% else %}
+                  {{ finding }}
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
+              {% if os.comments is defined and os.comments %}
+              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.3rem;">{{ os.comments }}</div>
+              {% endif %}
+            </div>
+          </details>
+          {% endif %}
+
+          {% endif %}
+          {# --- End structured detail --- #}
           {% if phase.output and phase.output != "<stripped>" %}
           <details class="phase-transcript">
             <summary>View transcript</summary>

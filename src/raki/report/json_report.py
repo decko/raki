@@ -26,15 +26,51 @@ def write_json_report(report: EvalReport, output: Path, include_sessions: bool =
     output.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
 
+STRUCTURED_DISPLAY_FIELDS = {
+    "approach",
+    "complexity",
+    "risks",
+    "files",
+    "candidate_files",
+    "target_area",
+    "code_area",
+    "tasks",
+    "plan",
+    "verification",
+    "verification_commands",
+    "files_changed",
+    "commits",
+    "summary",
+    "verdict",
+    "code_issues",
+    "fixes_required",
+    "command_results",
+    "criteria_results",
+    "comments",
+    "approved",
+}
+
+
 def strip_session_data(data: dict) -> None:
-    """Remove large raw data fields from sample results to keep reports compact."""
+    """Remove large raw data fields from sample results to keep reports compact.
+
+    Preserves a curated subset of ``output_structured`` keys needed for
+    rendering structured drill-down sections in the HTML report.
+    """
     for sample_result in data.get("sample_results", []):
         sample = sample_result.get("sample", {})
         for phase in sample.get("phases", []):
-            # output is a required str field — replace with sentinel instead of removing
             phase["output"] = "<stripped>"
-            # optional fields — safe to remove entirely
-            phase.pop("output_structured", None)
+            structured = phase.get("output_structured")
+            if isinstance(structured, dict):
+                filtered = {
+                    key: value
+                    for key, value in structured.items()
+                    if key in STRUCTURED_DISPLAY_FIELDS
+                }
+                phase["output_structured"] = filtered if filtered else None
+            else:
+                phase.pop("output_structured", None)
             phase.pop("knowledge_context", None)
             phase.pop("instruction_context", None)
             for tool_call in phase.get("tool_calls", []):

@@ -296,7 +296,12 @@ class TestJsonReportStripping:
             assert phase["output"] == "<stripped>"
         # Optional sensitive fields should be removed entirely
         for phase in sample["phases"]:
-            assert "output_structured" not in phase
+            structured = phase.get("output_structured")
+            if structured is not None:
+                from raki.report.json_report import STRUCTURED_DISPLAY_FIELDS
+
+                for key in structured:
+                    assert key in STRUCTURED_DISPLAY_FIELDS
             assert "knowledge_context" not in phase
             assert "instruction_context" not in phase
         # Events data should be stripped
