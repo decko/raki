@@ -1324,8 +1324,23 @@
           <details class="structured-detail">
             <summary>Review: <span class="verdict-badge-inline verdict-inline-{{ 'pass' if os.verdict | lower in ('approve', 'pass', 'pass-with-follow-ups') else 'fail' }}">{{ os.verdict }}</span>{% if os.findings is defined and os.findings %} ({{ os.findings | length }} finding{{ "s" if os.findings | length != 1 else "" }}){% endif %}</summary>
             <div>
+              {% if os.findings is defined and os.findings %}
+              <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                {% for finding in os.findings %}
+                <div style="padding: 0.15rem 0;">
+                  {% if finding is mapping %}
+                  <span class="severity-badge severity-{{ finding.severity | default('minor') | lower }}" style="font-size: 0.7rem; padding: 0.05rem 0.3rem;">{{ finding.severity | default('?') }}</span>
+                  {% if finding.file is defined %}<span style="font-family: monospace; font-size: 0.75rem; color: var(--text-muted);">{{ finding.file }}{% if finding.line is defined %}:{{ finding.line }}{% endif %}</span> {% endif %}
+                  {{ finding.issue | default('') }}
+                  {% else %}
+                  {{ finding }}
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+              {% endif %}
               {% if os.comments is defined and os.comments %}
-              <div style="font-size: 0.8rem; color: var(--text-secondary);">{{ os.comments }}</div>
+              <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.3rem;">{{ os.comments }}</div>
               {% endif %}
             </div>
           </details>
