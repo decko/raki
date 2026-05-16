@@ -203,13 +203,16 @@ def sort_phases(
     phases: list[PhaseResult],
     pipeline_phases: list[str] | None = None,
 ) -> list[PhaseResult]:
-    """Sort phases by canonical pipeline order, then by generation.
+    """Sort phases in chronological execution order.
 
-    Always uses ``PHASE_ORDER`` as the authoritative execution sequence.
-    If ``pipeline_phases`` contains names not in ``PHASE_ORDER`` (e.g.
-    Alcove bridge steps), those are appended after the known phases but
-    before fully unknown names.  Within the same phase name the secondary
-    key is ``generation``, placing rework repetitions in ascending order.
+    Primary key is ``generation`` — this interleaves rework cycles so the
+    timeline reads as it actually happened: triage(1) → plan(1) →
+    implement(1) → verify(1) → implement(2) → verify(2) → review(2) …
+
+    Secondary key is the position in ``PHASE_ORDER`` (the canonical
+    pipeline sequence).  If ``pipeline_phases`` contains names not in
+    ``PHASE_ORDER`` (e.g. Alcove bridge steps), those are appended after
+    the known phases.
     """
     order_index: dict[str, int] = {name: idx for idx, name in enumerate(PHASE_ORDER)}
     if pipeline_phases:
@@ -221,7 +224,7 @@ def sort_phases(
     fallback = max(order_index.values(), default=0) + 1
     return sorted(
         phases,
-        key=lambda phase: (order_index.get(phase.name, fallback), phase.generation),
+        key=lambda phase: (phase.generation, order_index.get(phase.name, fallback)),
     )
 
 

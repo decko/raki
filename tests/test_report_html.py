@@ -2481,7 +2481,7 @@ class TestHtmlReportHeaderEnrichment:
 
 
 class TestSortPhases:
-    """sort_phases orders phases by (PHASE_ORDER index, generation)."""
+    """sort_phases orders phases chronologically: (generation, PHASE_ORDER index)."""
 
     def _make_phase(
         self,
@@ -2563,6 +2563,30 @@ class TestSortPhases:
         from raki.report.html_report import sort_phases
 
         assert sort_phases([]) == []
+
+    def test_chronological_interleaving(self) -> None:
+        """Rework cycles interleave by generation: impl(1)→verify(1)→impl(2)→verify(2)."""
+        from raki.report.html_report import sort_phases
+
+        triage = self._make_phase("triage", generation=1)
+        plan = self._make_phase("plan", generation=1)
+        impl1 = self._make_phase("implement", generation=1)
+        verify1 = self._make_phase("verify", generation=1)
+        impl2 = self._make_phase("implement", generation=2)
+        verify2 = self._make_phase("verify", generation=2)
+        review2 = self._make_phase("review", generation=2)
+
+        sorted_phases = sort_phases([review2, verify2, impl2, verify1, impl1, plan, triage])
+        names_gens = [(ph.name, ph.generation) for ph in sorted_phases]
+        assert names_gens == [
+            ("triage", 1),
+            ("plan", 1),
+            ("implement", 1),
+            ("verify", 1),
+            ("implement", 2),
+            ("verify", 2),
+            ("review", 2),
+        ]
 
 
 class TestPhaseTimelineDotColoring:
