@@ -148,6 +148,8 @@ def test_round_trip_reaggregated_matches_engine_aggregate():
         "cost_efficiency",
         "phase_execution_time",
         "token_efficiency",
+        "triage_calibration",
+        "file_prediction_accuracy",
     ]
 
     for metric_name in roundtrip_metrics:
