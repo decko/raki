@@ -101,3 +101,72 @@ def test_single_session_returns_its_scores():
 
     assert result["rework_cycles"] == pytest.approx(3.0)
     assert result["cost_efficiency"] == pytest.approx(42.0)
+
+
+# ---------------------------------------------------------------------------
+# Round-trip integration test (Task 2)
+# ---------------------------------------------------------------------------
+
+
+def test_round_trip_reaggregated_matches_engine_aggregate():
+    """reaggregate_scores(report.sample_results) must match report.aggregate_scores
+    for all metrics that support per-sample scoring.
+
+    Metrics explicitly skipped:
+    - review_severity_distribution: aggregate-only (no sample_scores), absent from
+      sample_results.scores and therefore from reaggregated output.
+    - self_correction_rate: ratio-of-sums (resolved/total across all sessions) vs
+      mean-of-ratios (mean of per-session 0.0/1.0), which differ when sessions have
+      unequal finding counts.
+    """
+    from conftest import make_dataset
+
+    from raki.metrics.engine import MetricsEngine
+    from raki.metrics.operational import ALL_OPERATIONAL
+
+    samples = [
+        make_sample(
+            "s1", rework_cycles=0, cost=10.0, duration_ms=3000, tokens_in=500, tokens_out=200
+        ),
+        make_sample(
+            "s2", rework_cycles=2, cost=20.0, duration_ms=6000, tokens_in=1000, tokens_out=400
+        ),
+        make_sample(
+            "s3", rework_cycles=0, cost=15.0, duration_ms=4500, tokens_in=750, tokens_out=300
+        ),
+    ]
+    dataset = make_dataset(*samples)
+    engine = MetricsEngine(metrics=ALL_OPERATIONAL)
+    report = engine.run(dataset, skip_judge=True)
+
+    reaggregated = reaggregate_scores(report.sample_results)
+
+    # Metrics that support per-sample scores and round-trip cleanly
+    roundtrip_metrics = [
+        "first_pass_success_rate",
+        "rework_cycles",
+        "cost_efficiency",
+        "phase_execution_time",
+        "token_efficiency",
+    ]
+
+    for metric_name in roundtrip_metrics:
+        if metric_name not in report.aggregate_scores:
+            continue  # metric was skipped (e.g., requires ground truth)
+        engine_score = report.aggregate_scores[metric_name]
+        reagg_score = reaggregated.get(metric_name)
+
+        if engine_score is None:
+            assert reagg_score is None, f"{metric_name}: engine=None but reaggregated={reagg_score}"
+        else:
+            assert reagg_score is not None, (
+                f"{metric_name}: engine={engine_score} but reaggregated=None"
+            )
+            assert reagg_score == pytest.approx(engine_score, rel=1e-6), (
+                f"{metric_name}: engine={engine_score} != reaggregated={reagg_score}"
+            )
+
+    # Aggregate-only metrics must be absent from reaggregated output
+    assert "review_severity_distribution" not in reaggregated, (
+        "review_severity_distribution is aggregate-only; must not appear in reaggregated output"
+    )
